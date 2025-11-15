@@ -53,7 +53,7 @@ process.on('uncaughtException', error => {
 
 // Import and execute specs
 (async function() {
-  const { CompoundReporter, ConsoleReporter, CoverageReporter } = await import(pathToFileURL(path.join(__dirname, '../lib/index.js')).href);
+  const { ProcessEventForwarder } = await import(pathToFileURL(path.join(__dirname, '../lib/index.js')).href);
   const jasmineCore = await import(pathToFileURL(path.join(__dirname, '../node_modules/jasmine-core/lib/jasmine-core/jasmine.js')).href);
 
   // Initialize Jasmine
@@ -75,8 +75,10 @@ process.on('uncaughtException', error => {
   }
 
   process.on('message', (msg) => {
-    const failures = reporter.failureCount || 0;
-    process.exit(failures === 0 ? 0 : 1);
+    if (msg.type !== 'hostReady') {
+      const failures = reporter.failureCount || 0;
+      process.exit(failures === 0 ? 0 : 1);
+    }
   });
 
   process.on('SIGINT', onExit);
@@ -89,21 +91,23 @@ process.on('uncaughtException', error => {
   });
 
   env.clearReporters();
-  const reporter = new CompoundReporter([new ConsoleReporter(), new CoverageReporter({ coverage: ${this.config.coverage} })]);
-  env.addReporter(reporter);
-  reporter.userAgent(undefined);
-
-  try {
+  const forwarder = new ProcessEventForwarder(jasmine);
+  env.addReporter(forwarder);
+  
 ${imports}
-    await env.execute();
-  } catch (error) {
-    console.error(\`❌ Error during test execution: \${error}\`);
-    setImmediate(() => process.exit(1));
-  } finally {
-    // get failure count from the reporter
-    const failures = reporter.failureCount || 0;
-    setImmediate(() => process.exit(failures === 0 ? 0 : 1));
-  }
+  setTimeout(async () => {
+    try {
+      forwarder.userAgent();
+      await env.execute();
+    } catch (error) {
+      console.error(\`❌ Error during test execution: \${error}\`);
+      setImmediate(() => process.exit(1));
+    } finally {
+      // get failure count from the reporter
+      const failures = reporter.failureCount || 0;
+      setImmediate(() => process.exit(failures === 0 ? 0 : 1));
+    }
+  }, 300);
 })();
 `;
   }

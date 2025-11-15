@@ -23,39 +23,40 @@ export class NodeTestRunner {
     this.reporter = options.reporter ?? new ConsoleReporter();
   }
 
-  async start(): Promise<void> {
-    if (this.child) {
-      this.reporter.testsAborted('Test process already running');
-      return;
-    }
-
-    const childFile =
-      this.options.file ??
-      path.resolve(process.cwd(), './test-runner-child.js');
-
-    logger.println(`🚀 Starting Jasmine Test Runner...`);
-
-    this.child = spawn('node', [childFile], {
-      cwd: this.options.cwd ?? process.cwd(),
-      env: { ...process.env, ...(this.options.env || {}), NODE_ENV: 'test' },
-      stdio: ['inherit', 'inherit', 'inherit', 'ipc'], // include IPC
-    });
-
-    // connect HostAdapter
-    this.adapter = new HostAdapter(this.child, this.reporter);
-
-    this.child.on('exit', (code) => {
-      if (code !== 0) {
-        this.reporter.testsAborted(`Child exited with code ${code}`);
-      } else {
-        logger.printRaw('\n\n');
-        logger.println('🛑 Tests aborted by user (Ctrl+C)');
+  async start(): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      if (this.child) {
+        this.reporter.testsAborted('Test process already running');
+        reject('Test process already running');
       }
-      this.child = undefined;
-    });
 
-    this.child.on('error', (err) => {
-      this.reporter.testsAborted(`Child process error: ${err.message}`);
+      const childFile = path.resolve(this.options.cwd || process.cwd(), this.options.file || 'test-runner.js');
+      logger.println(`🚀 Starting child process...`);
+
+      this.child = spawn('node', [childFile], {
+        cwd: this.options.cwd ?? process.cwd(),
+        env: { ...process.env, ...(this.options.env || {}), NODE_ENV: 'test' },
+        stdio: ['inherit', 'inherit', 'inherit', 'ipc'], // include IPC
+      });
+
+      // connect HostAdapter
+      this.adapter = new HostAdapter(this.child, this.reporter);
+
+      this.child.on('exit', (code) => {
+        if (code !== 0) {
+          this.reporter.testsAborted(`Child exited with code ${code}`);
+        } else {
+          logger.printRaw('\n\n');
+          logger.println('🛑 Tests aborted by user (Ctrl+C)');
+        }
+        this.child = undefined;
+        resolve(code || 0);
+      });
+
+      this.child.on('error', (err) => {
+        this.reporter.testsAborted(`Child process error: ${err.message}`);
+        reject(err.message);
+      });
     });
   }
 

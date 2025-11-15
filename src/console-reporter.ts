@@ -1,8 +1,7 @@
 import util from 'util';
 import { logger, wrapLine } from './console-repl';
-import { MAX_LENGTH } from 'picomatch/lib/constants';
 
-interface EnvironmentInfo {
+export interface EnvironmentInfo {
   node: string;
   platform: string;
   arch: string;
@@ -13,7 +12,7 @@ interface EnvironmentInfo {
   userAgent?: UserAgent;
 }
 
-interface UserAgent {
+export interface UserAgent {
   userAgent: string;
   appName: string;
   appVersion: string;
@@ -23,7 +22,7 @@ interface UserAgent {
   languages: string[];
 }
 
-interface TestSpec {
+export interface TestSpec {
   id: string;
   description: string;
   fullName: string;
@@ -33,7 +32,7 @@ interface TestSpec {
   pendingReason?: string;
 }
 
-interface TestSuite {
+export interface TestSuite {
   id: string;
   description: string;
   fullName: string;
@@ -643,7 +642,7 @@ export class ConsoleReporter {
 
           // Stack trace — lightly indented and gray
           if (expectation.stack) {
-            const stackLines = wrapLine(logger.reformat(expectation.stack, { width: MAX_LENGTH, align: 'left' }).map((l: string) => l.trim()).join(' '), this.lineWidth, 2);
+            const stackLines = wrapLine(logger.reformat(expectation.stack, { width: 80, align: 'left' }).map((l: string) => l.trim()).join(' '), this.lineWidth, 2);
             stackLines.forEach(line => (this.print(this.colored('gray', line)), this.print('\n')));
           }
 

@@ -9,7 +9,7 @@ export class HostAdapter {
   }
 
   private bindListeners() {
-    this.child.on('message', (msg: any) => {
+    this.child.on('message', async (msg: any) => {
       if (!msg || typeof msg !== 'object') return;
       const { type, data } = msg;
 
@@ -18,7 +18,8 @@ export class HostAdapter {
           this.reporter.userAgent(data);
           break;
         case 'jasmineStarted':
-          this.reporter.jasmineStarted(data);
+          await this.reporter.jasmineStarted(data);
+          this.child.send({ type: 'hostReady', timestamp: Date.now()});
           break;
         case 'suiteStarted':
           this.reporter.suiteStarted(data);
@@ -39,20 +40,11 @@ export class HostAdapter {
           this.reporter.testsAborted(data?.message);
           break;
         case 'ready':
-          logger.println('Child test process ready');
+          logger.println('🟢 Child test process ready');
           break;
         default:
-          logger.println(`⚠ Unknown message type: ${type}`);
+          logger.println(`⚠️  Unknown message type: ${type}`);
       }
-    });
-
-    this.child.on('exit', (code) => {
-      if (code !== 0)
-        this.reporter.testsAborted(`Child exited with code ${code}`);
-    });
-
-    this.child.on('error', (err) => {
-      this.reporter.testsAborted(`Child process error: ${err.message}`);
     });
   }
 }

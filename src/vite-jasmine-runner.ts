@@ -58,12 +58,16 @@ export class ViteJasmineRunner extends EventEmitter {
     this.nodeRunnerGenerator = new NodeTestRunnerGenerator(this.config);
     this.browserManager = new BrowserManager(this.config);
     this.httpServerManager = new HttpServerManager(this.config);
-    this.nodeTestRunner = new NodeTestRunner(this.config);
     this.instrumenter = new IstanbulInstrumenter(this.config);
     this.multiReporter = new CompoundReporter([
       new ConsoleReporter(),
       new CoverageReporter(),
     ]);
+    this.nodeTestRunner = new NodeTestRunner({
+      reporter: new ConsoleReporter(),
+      cwd: this.config.outDir,
+      file: 'test-runner.js' 
+    });
   }
 
   async preprocess(): Promise<void> {
@@ -238,7 +242,7 @@ export class ViteJasmineRunner extends EventEmitter {
     if (!browserType) {
       logger.println('⚠️  Headless browser not available. Falling back to Node.js runner.');
       this.nodeRunnerGenerator.generateTestRunner();
-      const success = await this.nodeTestRunner.runHeadlessTests();
+      const success = await this.nodeTestRunner.start();
       await this.cleanup();
       process.exit(success ? 0 : 1);
     }
@@ -255,7 +259,7 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   private async runHeadlessNodeMode(): Promise<void> {
-    const success = await this.nodeTestRunner.runHeadlessTests();
+    const success = await this.nodeTestRunner.start();
     process.exit(success ? 0 : 1);
   }
 
