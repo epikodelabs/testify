@@ -63,10 +63,7 @@ process.on('uncaughtException', error => {
   Object.assign(globalThis, jasmineRequire.interface(jasmine, env));
   globalThis.jasmine = jasmine;
   
-  process.on('exit', (code) => {
-    console.log(\`🚪 Process exiting with code: \${code}\`);
-    reporter.testsAborted('aborted');
-  });
+  const forwarder = new ProcessEventForwarder(jasmine);
 
   function onExit(signal) {
     console.log(\`\\n⚙️  Caught \${signal}. Cleaning up...\`);
@@ -91,23 +88,21 @@ process.on('uncaughtException', error => {
   });
 
   env.clearReporters();
-  const forwarder = new ProcessEventForwarder(jasmine);
   env.addReporter(forwarder);
   
 ${imports}
-  setTimeout(async () => {
-    try {
-      forwarder.userAgent();
-      await env.execute();
-    } catch (error) {
-      console.error(\`❌ Error during test execution: \${error}\`);
-      setImmediate(() => process.exit(1));
-    } finally {
-      // get failure count from the reporter
-      const failures = reporter.failureCount || 0;
-      setImmediate(() => process.exit(failures === 0 ? 0 : 1));
-    }
-  }, 300);
+
+  try {
+    forwarder.userAgent();
+    await env.execute();
+  } catch (error) {
+    console.error(\`❌ Error during test execution: \${error}\`);
+    setImmediate(() => process.exit(1));
+  } finally {
+    // get failure count from the reporter
+    const failures = forwarder.failureCount || 0;
+    setImmediate(() => process.exit(failures === 0 ? 0 : 1));
+  }
 })();
 `;
   }

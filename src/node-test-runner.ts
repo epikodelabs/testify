@@ -4,29 +4,31 @@ import path from 'node:path';
 import { ConsoleReporter } from './console-reporter';
 import { HostAdapter } from './host-adapter';
 import { logger } from './console-repl';
+import { CompoundReporter } from './compound-reporter';
+import { CoverageReporter } from './coverage-reporter';
 
 export interface TestRunnerOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  reporter?: ConsoleReporter;
+  reporter?: jasmine.CustomReporter;
   file?: string; // child entry file
 }
 
 export class NodeTestRunner {
   private child?: ChildProcess;
-  private reporter: ConsoleReporter;
+  private reporter: jasmine.CustomReporter;
   private adapter?: HostAdapter;
   private options: TestRunnerOptions;
 
   constructor(options: TestRunnerOptions = {}) {
     this.options = options;
-    this.reporter = options.reporter ?? new ConsoleReporter();
+    this.reporter = options.reporter ?? new CompoundReporter([new ConsoleReporter(), new CoverageReporter()]);
   }
 
   async start(): Promise<number> {
     return new Promise<number>((resolve, reject) => {
       if (this.child) {
-        this.reporter.testsAborted('Test process already running');
+        (this.reporter as any).testsAborted('Test process already running');
         reject('Test process already running');
       }
 
@@ -43,18 +45,12 @@ export class NodeTestRunner {
       this.adapter = new HostAdapter(this.child, this.reporter);
 
       this.child.on('exit', (code) => {
-        if (code !== 0) {
-          this.reporter.testsAborted(`Child exited with code ${code}`);
-        } else {
-          logger.printRaw('\n\n');
-          logger.println('🛑 Tests aborted by user (Ctrl+C)');
-        }
         this.child = undefined;
         resolve(code || 0);
       });
 
       this.child.on('error', (err) => {
-        this.reporter.testsAborted(`Child process error: ${err.message}`);
+        (this.reporter as any).jasmineFailed(`Child process error: ${err.message}`);
         reject(err.message);
       });
     });
@@ -62,7 +58,7 @@ export class NodeTestRunner {
 
   send(message: any): void {
     if (!this.child || !this.child.connected) {
-      this.reporter.testsAborted('Cannot send message — no child process');
+      (this.reporter as any).testsAborted('Cannot send message — no child process');
       return;
     }
     this.child.send(message);

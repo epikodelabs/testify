@@ -4,7 +4,7 @@ import { ConsoleReporter } from './console-reporter';
 import { logger } from './console-repl';
 
 export class HostAdapter {
-  constructor(private child: ChildProcess, private reporter: ConsoleReporter) {
+  constructor(private child: ChildProcess, private reporter: jasmine.CustomReporter) {
     this.bindListeners();
   }
 
@@ -15,29 +15,30 @@ export class HostAdapter {
 
       switch (type) {
         case 'userAgent':
-          this.reporter.userAgent(data);
+          (this.reporter as any).userAgent(data);
           break;
         case 'jasmineStarted':
-          await this.reporter.jasmineStarted(data);
+          await (this.reporter as any).jasmineStarted(data);
           this.child.send({ type: 'hostReady', timestamp: Date.now()});
           break;
         case 'suiteStarted':
-          this.reporter.suiteStarted(data);
+          this.reporter.suiteStarted!(data);
           break;
         case 'specStarted':
-          this.reporter.specStarted(data);
+          this.reporter.specStarted!(data);
           break;
         case 'specDone':
-          this.reporter.specDone(data);
+          this.reporter.specDone!(data);
           break;
         case 'suiteDone':
-          this.reporter.suiteDone(data);
+          this.reporter.suiteDone!(data);
           break;
         case 'jasmineDone':
-          this.reporter.jasmineDone(data);
+          (globalThis as any).__coverage__ = data.coverage;
+          this.reporter.jasmineDone!(data.result);
           break;
         case 'testsAborted':
-          this.reporter.testsAborted(data?.message);
+          (this.reporter as any).testsAborted(data?.message);
           break;
         case 'ready':
           logger.println('🟢 Child test process ready');

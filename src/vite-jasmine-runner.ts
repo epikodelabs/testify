@@ -64,7 +64,7 @@ export class ViteJasmineRunner extends EventEmitter {
       new CoverageReporter(),
     ]);
     this.nodeTestRunner = new NodeTestRunner({
-      reporter: new ConsoleReporter(),
+      reporter: this.multiReporter,
       cwd: this.config.outDir,
       file: 'test-runner.js' 
     });

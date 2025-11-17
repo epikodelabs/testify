@@ -276,6 +276,13 @@ export class ProcessEventForwarder {
     });
   };
 
+  testsAborted(message: string) {
+     this.send({
+      type: "testsAborted",
+      data: { message }
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // PARENT MESSAGE HANDLER
   // ---------------------------------------------------------------------------
