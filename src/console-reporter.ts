@@ -662,11 +662,10 @@ export class ConsoleReporter {
     this.print(this.colored('yellow', '  ────────────────────────────────────────────────────────────\n'));
 
     
-    this.pendingSpecs.forEach((spec) => {
-      this.print(`  ${this.colored('brightYellow', '○')} ${this.colored('dim', spec.fullName)}\n`);
-      if (spec.pendingReason) {
-        this.print(`    ${this.colored('yellow', spec.pendingReason)}\n`);
-      }
+    this.pendingSpecs.forEach((spec, idx) => {
+      // Print numbered spec header with wrapping
+      const header = wrapLine(`${this.colored('brightYellow', '○')} ${this.colored('white', spec.fullName)}`, this.lineWidth, 1, 'word');
+      header.forEach(line => (this.print(line), this.print('\n')));
     });
   }
 

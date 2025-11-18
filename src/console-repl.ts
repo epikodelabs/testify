@@ -11,14 +11,30 @@ export function visibleWidth(text: string): number {
   return [...clean].length; // Unicode-safe
 }
 
-// Wraps text into lines that fit the given width, preserving ANSI and indentation
-export function wrapLine(text: string, width: number, indentation: number = 0): string[] {
+export type WrapMode = 'word' | 'char';
+
+export function wrapLine(
+  text: string, 
+  width: number, 
+  indentation: number = 0,
+  mode: WrapMode = 'char'
+): string[] {
   const indent = "  ".repeat(indentation); // 2 spaces per level
   const indentWidth = indent.length;
 
   // Sanity check: avoid zero-width rendering
   if (width <= indentWidth) width = indentWidth + 1;
 
+  // Use character-based wrapping for 'char' mode
+  if (mode === 'char') {
+    return wrapByChar(text, width, indent, indentWidth);
+  }
+
+  // Use word-based wrapping for 'word' mode
+  return wrapByWord(text, width, indent, indentWidth);
+}
+
+function wrapByChar(text: string, width: number, indent: string, indentWidth: number): string[] {
   const lines: string[] = [];
   let buffer = "";
   let visible = 0;
@@ -48,6 +64,106 @@ export function wrapLine(text: string, width: number, indentation: number = 0): 
   }
 
   if (buffer.length > 0) lines.push(indent + buffer);
+  return lines;
+}
+
+function wrapByWord(text: string, width: number, indent: string, indentWidth: number): string[] {
+  const lines: string[] = [];
+  let buffer = "";
+  let visible = 0;
+  let wordBuffer = "";
+  let wordVisible = 0;
+
+  // Split text into ANSI-safe tokens (keeps escape sequences intact)
+  const tokens = text.split(
+    /(\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)))/g
+  );
+
+  const flushWord = () => {
+    if (wordBuffer.length === 0) return;
+    
+    // If adding this word would exceed width, flush current line first
+    if (visible > 0 && visible + wordVisible >= width - indentWidth) {
+      lines.push(indent + buffer.trimEnd());
+      buffer = "";
+      visible = 0;
+    }
+    
+    // If word itself is longer than available width, split it character-by-character
+    if (wordVisible >= width - indentWidth) {
+      let tempBuffer = "";
+      let tempVisible = 0;
+      const wordTokens = wordBuffer.split(/(\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)))/g);
+      
+      for (const token of wordTokens) {
+        if (ANSI_FULL_REGEX.test(token)) {
+          tempBuffer += token;
+          continue;
+        }
+        
+        for (const ch of [...token]) {
+          if (tempVisible + 1 >= width - indentWidth) {
+            lines.push(indent + tempBuffer);
+            tempBuffer = "";
+            tempVisible = 0;
+          }
+          tempBuffer += ch;
+          tempVisible += 1;
+        }
+      }
+      
+      buffer = tempBuffer;
+      visible = tempVisible;
+    } else {
+      buffer += wordBuffer;
+      visible += wordVisible;
+    }
+    
+    wordBuffer = "";
+    wordVisible = 0;
+  };
+
+  for (const token of tokens) {
+    // Preserve ANSI escape sequences without affecting visible width
+    if (ANSI_FULL_REGEX.test(token)) {
+      wordBuffer += token;
+      continue;
+    }
+
+    for (const ch of [...token]) {
+      // Check for whitespace (space, tab, newline)
+      if (/\s/.test(ch)) {
+        flushWord();
+        
+        // Handle newlines explicitly
+        if (ch === '\n') {
+          lines.push(indent + buffer.trimEnd());
+          buffer = "";
+          visible = 0;
+        } else {
+          // Add space to buffer if it fits
+          if (visible + 1 < width - indentWidth) {
+            buffer += ch;
+            visible += 1;
+          } else {
+            // Space would overflow, start new line
+            lines.push(indent + buffer.trimEnd());
+            buffer = "";
+            visible = 0;
+          }
+        }
+      } else {
+        // Accumulate non-whitespace characters into word buffer
+        wordBuffer += ch;
+        wordVisible += 1;
+      }
+    }
+  }
+
+  // Flush any remaining word and buffer
+  flushWord();
+  if (buffer.length > 0) lines.push(indent + buffer.trimEnd());
+  
   return lines;
 }
 
