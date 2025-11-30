@@ -61,12 +61,13 @@ export class ViteJasmineRunner extends EventEmitter {
     this.instrumenter = new IstanbulInstrumenter(this.config);
     this.multiReporter = new CompoundReporter([
       new ConsoleReporter(),
-      new CoverageReporter(),
+      new CoverageReporter({ coverage: this.config.coverage! }),
     ]);
     this.nodeTestRunner = new NodeTestRunner({
       reporter: this.multiReporter,
       cwd: this.config.outDir,
-      file: 'test-runner.js' 
+      file: 'test-runner.js',
+      coverage: this.config.coverage
     });
   }
 
@@ -252,7 +253,7 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.cleanup();
       process.exit(testSuccess ? 0 : 1);
     } catch (error) {
-      logger.error(`❌ Browser test execution failed: ${error}`);
+      logger.error(`❌ Browser test execution failed. Need to install playwright?`);
       await this.cleanup();
       process.exit(1);
     }

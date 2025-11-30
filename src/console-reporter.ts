@@ -201,11 +201,6 @@ export class ConsoleReporter {
       });
     }
 
-    // 4️⃣ Clean up root specs (optional)
-    if (this.rootSuite.specs.length > 0) {
-      logger.println(`⚠️  ${this.rootSuite.specs.length} orphan specs attached directly to root.`);
-    }
-
     // Debug summary
     const totalSuites = this.suiteById.size - 1;
     const totalSpecs = this.specById.size;
@@ -441,8 +436,6 @@ export class ConsoleReporter {
     this.printFinalStatus(result?.overallStatus);
     
     this.print('\n\n');
-
-    return this.failureCount;
   }
 
   /** Mark all specs and suites that were never executed as skipped */

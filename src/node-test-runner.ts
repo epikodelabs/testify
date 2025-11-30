@@ -12,6 +12,7 @@ export interface TestRunnerOptions {
   env?: NodeJS.ProcessEnv;
   reporter?: jasmine.CustomReporter;
   file?: string; // child entry file
+  coverage?: boolean;
 }
 
 export class NodeTestRunner {
@@ -22,7 +23,7 @@ export class NodeTestRunner {
 
   constructor(options: TestRunnerOptions = {}) {
     this.options = options;
-    this.reporter = options.reporter ?? new CompoundReporter([new ConsoleReporter(), new CoverageReporter()]);
+    this.reporter = options.reporter ?? new ConsoleReporter();
   }
 
   async start(): Promise<number> {

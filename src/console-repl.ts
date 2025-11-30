@@ -206,14 +206,12 @@ export class Logger {
   private showPrompt = true;
   private prompt: string;
   private errorPrompt: string;
-  private onError?: (msg: string) => void;
 
   constructor(options: LoggerOptions = {}) {
     const promptColor = options.promptColor ?? colors.brightGreen;
     const errorPromptColor = options.errorPromptColor ?? colors.brightRed;
     this.prompt = `${promptColor}> ${colors.reset}`;
     this.errorPrompt = `${errorPromptColor}> ${colors.reset}`;
-    this.onError = options.onError;
   }
 
   visibleWidth(str: string): number {
@@ -324,8 +322,6 @@ export class Logger {
     }
     process.stdout.write("\n");
     this.showPrompt = true;
-
-    if (this.onError) this.onError(msg);
     return true;
   }
 
@@ -342,8 +338,4 @@ export class Logger {
 
 // ─── Example ────────────────────────────────────────────────
 
-export const logger = new Logger({
-  onError: (msg) => {
-    console.error("[Logger] Error captured:", msg);
-  },
-});
+export const logger = new Logger();

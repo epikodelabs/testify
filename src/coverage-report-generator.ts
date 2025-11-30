@@ -4,11 +4,12 @@ import libReport from 'istanbul-lib-report';
 import libSourceMaps from 'istanbul-lib-source-maps';
 import libIstanbulApi from 'istanbul-api';
 import { logger } from './console-repl';
+import { norm } from './utils';
 
 export class CoverageReportGenerator {
   private reportDir: string;
 
-  constructor(reportDir: string = path.join(process.cwd(), 'coverage')) {
+  constructor(reportDir: string = norm(path.join(process.cwd(), 'coverage'))) {
     this.reportDir = reportDir;
   }
 
