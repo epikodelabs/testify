@@ -34,9 +34,9 @@ export class ConfigManager {
   static createDefaultConfig(): ViteJasmineConfig {
     const cwd = norm(process.cwd());
     return {
-      srcDir: cwd,
-      testDir: cwd,
-      outDir: norm(path.join(cwd, 'dist/.vite-jasmine-build/')),
+      srcDir: './src',
+      testDir: './tests',
+      outDir: './dist/.vite-jasmine-build/',
       browser: 'chrome',
       headless: false,
       port: 8888,
@@ -45,7 +45,7 @@ export class ConfigManager {
         sourcemap: true,
         minify: false,
         preserveModules: true,
-        preserveModulesRoot: cwd
+        preserveModulesRoot: '.'
       },
       jasmineConfig: {
         env: { stopSpecOnExpectationFailure: false, random: true, timeout: 120000 },
