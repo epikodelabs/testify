@@ -88,7 +88,7 @@ function installPlaywright() {
   // Install core packages
   run("npm install playwright-core --no-save", cwd);
   run("npm install playwright --no-save", cwd);
-  run("node ./node_modules/playwright/cli.js install", cwd);
+  run("npx ./node_modules/playwright/cli.js install", cwd);
 }
 
 // ---------- RUN INSTALLERS ----------
