@@ -26,6 +26,7 @@ export default defineConfig({
         { src: 'postinstall.mjs', dest: 'dist/ts-test-runner/' },
         { src: 'assets/favicon.ico', dest: 'dist/ts-test-runner/assets/' },
         { src: 'node_modules/chokidar/**/*', dest: 'dist/ts-test-runner/node_modules/' },
+        { src: 'node_modules/eslint-import-plugin/**/*', dest: 'dist/ts-test-runner/node_modules/' },
         { src: 'node_modules/istanbul-lib-instrument/**/*', dest: 'dist/ts-test-runner/node_modules/' },
         { src: 'node_modules/istanbul-lib-coverage/**/*', dest: 'dist/ts-test-runner/node_modules/' },
         { src: 'node_modules/istanbul-lib-report/**/*', dest: 'dist/ts-test-runner/node_modules/' },
