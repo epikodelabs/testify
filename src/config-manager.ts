@@ -32,21 +32,21 @@ export class ConfigManager {
   }
 
   static createDefaultConfig(): ViteJasmineConfig {
-    const configDir = process.cwd(); // folder where ts-test-runner.json will be located
+    const configDir = norm(process.cwd()); // folder where ts-test-runner.json will be located
 
     const rel = (p: string) => {
       const r = path.relative(configDir, p);
       return r === "" ? "." : norm(r);
     };
 
-    const srcAbsolute = path.join(configDir, 'src');
-    const testAbsolute = path.join(configDir, 'tests');
-    const outAbsolute = path.join(configDir, "dist/.vite-jasmine-build/");
+    const srcAbsolute = norm(path.join(configDir, 'src'));
+    const testAbsolute = norm(path.join(configDir, 'tests'));
+    const outAbsolute = norm(path.join(configDir, "dist/.vite-jasmine-build/"));
 
     return {
-      srcDir: rel(srcAbsolute),                 // "./src"
-      testDir: rel(testAbsolute),               // "./tests"
-      outDir: rel(outAbsolute),                 // "./dist/.vite-jasmine-build"
+      srcDir: norm(rel(srcAbsolute)),                 // "./src"
+      testDir: norm(rel(testAbsolute)),               // "./tests"
+      outDir: norm(rel(outAbsolute)),                 // "./dist/.vite-jasmine-build"
       browser: 'chrome',
       headless: false,
       port: 8888,
@@ -56,7 +56,7 @@ export class ConfigManager {
         sourcemap: true,
         minify: false,
         preserveModules: true,
-        preserveModulesRoot: rel(configDir)     // "./"
+        preserveModulesRoot: norm(rel(configDir))     // "./"
       },
 
       jasmineConfig: {
