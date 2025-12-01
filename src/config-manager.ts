@@ -39,14 +39,14 @@ export class ConfigManager {
       return r === "" ? "." : norm(r);
     };
 
-    const srcAbsolute = norm(path.join(configDir, 'src'));
-    const testAbsolute = norm(path.join(configDir, 'tests'));
-    const outAbsolute = norm(path.join(configDir, "dist/.vite-jasmine-build/"));
+    const srcAbsolute = path.join(configDir, 'src');
+    const testAbsolute = path.join(configDir, 'tests');
+    const outAbsolute = path.join(configDir, "dist/.vite-jasmine-build/");
 
     return {
-      srcDir: norm(rel(srcAbsolute)),                 // "./src"
-      testDir: norm(rel(testAbsolute)),               // "./tests"
-      outDir: norm(rel(outAbsolute)),                 // "./dist/.vite-jasmine-build"
+      srcDir: rel(srcAbsolute),                 // "./src"
+      testDir: rel(testAbsolute),               // "./tests"
+      outDir: rel(outAbsolute),                 // "./dist/.vite-jasmine-build"
       browser: 'chrome',
       headless: false,
       port: 8888,
@@ -56,7 +56,7 @@ export class ConfigManager {
         sourcemap: true,
         minify: false,
         preserveModules: true,
-        preserveModulesRoot: norm(rel(configDir))     // "./"
+        preserveModulesRoot: rel(configDir)     // "./"
       },
 
       jasmineConfig: {
