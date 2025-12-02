@@ -204,7 +204,9 @@ export class ConsoleReporter {
     // Debug summary
     const totalSuites = this.suiteById.size - 1;
     const totalSpecs = this.specById.size;
-    logger.println(`🧩 Suite tree built (${totalSuites} suites, ${totalSpecs} specs).`);
+    logger.println(`🧩 Suite tree built (${
+      (globalThis as any).__jasmine.getOrderedSuites().size} suites, ${
+      (globalThis as any).__jasmine.getOrderedSpecs().size} specs).`);
   }
 
   private normalizeDescription(desc: any): string {

@@ -11,7 +11,6 @@ export { CompoundReporter } from './compound-reporter';
 export { FileDiscoveryService } from './file-discovery-service';
 export { HtmlGenerator } from './html-generator';
 export { HttpServerManager } from './http-server-manager';
-export { NodeTestRunnerGenerator } from './node-test-runner-generator';
 export { NodeTestRunner } from './node-test-runner';
 export { WebSocketManager } from './websocket-manager';
 export { IstanbulInstrumenter } from './istanbul-instrumenter'

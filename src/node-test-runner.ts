@@ -1,87 +1,386 @@
 // test-runner.ts
-import { spawn, ChildProcess } from 'node:child_process';
-import path from 'node:path';
-import { ConsoleReporter } from './console-reporter';
-import { HostAdapter } from './host-adapter';
+import * as fs from 'fs';
+import * as path from 'path';
+import { pathToFileURL } from 'url';
+import { ViteJasmineConfig } from './vite-jasmine-config';
+import { norm } from './utils';
 import { logger } from './console-repl';
-import { CompoundReporter } from './compound-reporter';
-import { CoverageReporter } from './coverage-reporter';
+import { ConsoleReporter } from './console-reporter';
 
 export interface TestRunnerOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   reporter?: jasmine.CustomReporter;
-  file?: string; // child entry file
+  file?: string; // test runner entry file (generated)
   coverage?: boolean;
 }
 
 export class NodeTestRunner {
-  private child?: ChildProcess;
   private reporter: jasmine.CustomReporter;
-  private adapter?: HostAdapter;
   private options: TestRunnerOptions;
+  private isRunning = false;
+  private runnerModule: any = null;
+  private config: ViteJasmineConfig;
 
-  constructor(options: TestRunnerOptions = {}) {
+  constructor(config: ViteJasmineConfig, options: TestRunnerOptions = {}) {
+    this.config = config;
     this.options = options;
     this.reporter = options.reporter ?? new ConsoleReporter();
   }
 
-  async start(): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      if (this.child) {
-        (this.reporter as any).testsAborted('Test process already running');
-        reject('Test process already running');
-      }
+  /**
+   * Generate in-process test runner entry file that:
+   * - Bootstraps Jasmine
+   * - Imports compiled spec bundles
+   * - Exposes a stable API: runTests, getOrderedSpecs/Suites, getTestCounts
+   */
+  generateTestRunner(): void {
+    const outDir = this.config.outDir;
+    if (!fs.existsSync(outDir)) {
+      fs.mkdirSync(outDir, { recursive: true });
+    }
 
-      const childFile = path.resolve(this.options.cwd || process.cwd(), this.options.file || 'test-runner.js');
-      logger.println(`🚀 Starting child process...`);
+    const builtFiles = fs
+      .readdirSync(outDir)
+      .filter((f) => f.endsWith('.js') && f !== 'test-runner.js')
+      .sort();
 
-      this.child = spawn('node', [childFile], {
-        cwd: this.options.cwd ?? process.cwd(),
-        env: { ...process.env, ...(this.options.env || {}), NODE_ENV: 'test' },
-        stdio: ['inherit', 'pipe', 'pipe', 'ipc'], // include IPC
-      });
-
-      if (this.child) {
-        this.child.stdout!.on("data", d => logger.print(d.toString()));
-        this.child.stderr!.on("data", d => logger.error(d.toString()));
-
-        // connect HostAdapter
-        this.adapter = new HostAdapter(this.child, this.reporter);
-
-        this.child.on('exit', (code) => {
-          this.child = undefined;
-          resolve(code || 0);
-        });
-
-        this.child.on('error', (err) => {
-          (this.reporter as any).jasmineFailed(`Child process error: ${err.message}`);
-          reject(err.message);
-        });
-      }
-    }); 
-  }
-
-  send(message: any): void {
-    if (!this.child || !this.child.connected) {
-      (this.reporter as any).testsAborted('Cannot send message — no child process');
+    if (builtFiles.length === 0) {
+      logger.println('⚠️  No JS files found for test runner generation.');
       return;
     }
-    this.child.send(message);
+
+    const imports = builtFiles.map((f) => `    await import('./${f}');`).join('\n');
+
+    const runnerContent = this.generateRunnerTemplate(imports);
+    const testRunnerPath = norm(path.join(outDir, 'test-runner.js'));
+    fs.writeFileSync(testRunnerPath, runnerContent);
+    logger.println(
+      `🤖 Generated in-process test runner: ${norm(path.relative(outDir, testRunnerPath))}`,
+    );
+  }
+
+  /**
+   * Template for the generated ESM runner file.
+   * NOTE: This is emitted as JS, so keep syntax JS-friendly.
+   */
+  private generateRunnerTemplate(imports: string): string {
+    return `// Auto-generated in-process Jasmine test runner
+import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname, join } from 'path';
+
+// __dirname / __filename for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const __cwd = process.cwd();
+
+// Jasmine internals
+let jasmineInstance = null;
+let jasmineEnv = null;
+
+// ---------------------------
+// Introspection helpers
+// ---------------------------
+function collectSpecsAndSuites() {
+  if (!jasmineEnv) {
+    return { orderedSuites: [], orderedSpecs: [] };
+  }
+
+  const root = jasmineEnv.topSuite?.();
+  if (!root) {
+    return { orderedSuites: [], orderedSpecs: [] };
+  }
+
+  const orderedSuites = [];
+  const orderedSpecs = [];
+
+  function isSpec(node) {
+    // Specs usually have result + queueableFn
+    return !!(node && node.result && typeof node.getFullName === 'function');
+  }
+
+  function isSuite(node) {
+    return !!(node && node.children && node !== root);
+  }
+
+  function walkSuite(suite, parentId = null, path = []) {
+    if (!suite || !suite.id) return;
+
+    const fullPath = [...path, suite.description].filter(Boolean);
+    const suiteInfo = {
+      id: suite.id,
+      description: suite.description,
+      fullName: fullPath.join(' '),
+      parentSuiteId: parentId,
+      suite,
+      children: [],
+    };
+    orderedSuites.push(suiteInfo);
+
+    for (const child of suite.children || []) {
+      if (isSpec(child)) {
+        const specInfo = {
+          id: child.id,
+          description: child.description,
+          fullName: child.getFullName(),
+          suiteId: suite.id,
+          status: child.result?.status ?? 'unknown',
+          spec: child,
+        };
+        orderedSpecs.push(specInfo);
+        suiteInfo.children.push(specInfo.id);
+      }
+    }
+
+    for (const child of suite.children || []) {
+      if (isSuite(child)) {
+        walkSuite(child, suite.id, fullPath);
+      }
+    }
+  }
+
+  // topSuite() itself is synthetic root; walk children as real root suites
+  for (const child of root.children || []) {
+    if (isSuite(child)) {
+      walkSuite(child, null, []);
+    }
+  }
+
+  return { orderedSuites, orderedSpecs };
+}
+
+// Expose stable global API for external tooling
+globalThis.__jasmine = {
+  getOrderedSuites() {
+    return collectSpecsAndSuites().orderedSuites;
+  },
+  getOrderedSpecs() {
+    return collectSpecsAndSuites().orderedSpecs;
+  },
+  getAllSuites() {
+    return collectSpecsAndSuites().orderedSuites;
+  },
+  getAllSpecs() {
+    return collectSpecsAndSuites().orderedSpecs;
+  },
+  getTestCounts() {
+    const { orderedSuites, orderedSpecs } = collectSpecsAndSuites();
+    return { suites: orderedSuites.length, specs: orderedSpecs.length };
+  },
+};
+
+// Export utility functions via module too
+export function getOrderedSuites() {
+  return globalThis.__jasmine.getOrderedSuites();
+}
+export function getOrderedSpecs() {
+  return globalThis.__jasmine.getOrderedSpecs();
+}
+export function getAllSuites() {
+  return globalThis.__jasmine.getAllSuites();
+}
+export function getAllSpecs() {
+  return globalThis.__jasmine.getAllSpecs();
+}
+export function getTestCounts() {
+  return globalThis.__jasmine.getTestCounts();
+}
+
+// ---------------------------
+// Main runTests entrypoint
+// ---------------------------
+export async function runTests(reporter) {
+  return new Promise((resolve) => {
+    // Global error handlers
+    process.on('unhandledRejection', (error) => {
+      console.error(\`❌ Unhandled Rejection: \${error}\`);
+      process.exit(1);
+    });
+
+    process.on('uncaughtException', (error) => {
+      console.error(\`❌ Uncaught Exception: \${error}\`);
+      process.exit(1);
+    });
+
+    (async function () {
+      try {
+        // Load jasmine-core from ts-test-runner's own node_modules
+        const jasmineCorePath = join(
+          __cwd,
+          './node_modules/@actioncrew/ts-test-runner/node_modules/jasmine-core/lib/jasmine-core/jasmine.js',
+        );
+
+        const jasmineCore = await import(pathToFileURL(jasmineCorePath).href);
+        const jasmineRequire = jasmineCore.default;
+
+        jasmineInstance = jasmineRequire.core(jasmineRequire);
+        jasmineEnv = jasmineInstance.getEnv();
+
+        // Expose jasmine globals (describe, it, beforeEach, etc.)
+        Object.assign(globalThis, jasmineRequire.interface(jasmineInstance, jasmineEnv));
+        globalThis.jasmine = jasmineInstance;
+
+        // Clean shutdown
+        function onExit(signal) {
+          console.log(\`\\n⚙️  Caught \${signal}. Cleaning up...\`);
+          process.exit(0);
+        }
+        process.on('SIGINT', onExit);
+        process.on('SIGTERM', onExit);
+
+        // Configure env from template (inlined from ViteJasmineConfig)
+        jasmineEnv.configure({
+          random: ${this.config.jasmineConfig?.env?.random ?? false},
+          stopOnSpecFailure: ${
+            this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false
+          },
+        });
+
+        jasmineEnv.clearReporters();
+        jasmineEnv.addReporter(reporter);
+
+${imports}
+
+        // At this point, all describes/its are registered.
+        // We can collect suite/spec metadata before or after execution via __jasmine.
+
+        await jasmineEnv.execute();
+
+        const failures = reporter.failureCount || 0;
+        resolve(failures);
+      } catch (error) {
+        console.error(\`❌ Error during test execution: \${error}\`);
+        console.error(error.stack);
+        resolve(1);
+      }
+    })();
+  });
+}
+
+// ---------------------------
+// CLI entry (backward compat)
+// ---------------------------
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  (async () => {
+    try {
+      const consoleReporterPath = join(__dirname, '../lib/console-reporter.js');
+      const consoleReporterModule = await import(pathToFileURL(consoleReporterPath).href);
+      const ConsoleReporter = consoleReporterModule.ConsoleReporter;
+
+      const failures = await runTests(new ConsoleReporter());
+      process.exit(failures === 0 ? 0 : 1);
+    } catch (error) {
+      console.error(\`❌ Failed to run tests: \${error}\`);
+      process.exit(1);
+    }
+  })();
+}
+`;
+  }
+
+  /**
+   * Start the test runner in the current (host) process.
+   */
+  async start(): Promise<number> {
+    if (this.isRunning) {
+      (this.reporter as any).testsAborted?.('Test process already running');
+      return Promise.reject('Test process already running');
+    }
+
+    this.isRunning = true;
+
+    // Apply env overrides once per run
+    if (this.options.env) {
+      for (const [key, value] of Object.entries(this.options.env)) {
+        if (value == null) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+    process.env.NODE_ENV = 'test';
+
+    try {
+      const childFile = path.resolve(
+        this.options.cwd || process.cwd(),
+        this.options.file || path.join(this.config.outDir, 'test-runner.js'),
+      );
+
+      logger.println(`🚀 Starting test runner in current process...`);
+      const fileUrl = pathToFileURL(childFile).href;
+
+      this.runnerModule = await import(fileUrl);
+
+      if (typeof this.runnerModule.runTests === 'function') {
+        const failures: number = await this.runnerModule.runTests(this.reporter);
+        return failures === 0 ? 0 : 1;
+      } else {
+        logger.error('⚠️  Test runner does not export runTests function');
+        return 1;
+      }
+    } catch (error: any) {
+      (this.reporter as any).jasmineFailed?.(`Test execution error: ${error.message}`);
+      throw error;
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  // --------------- Introspection API ----------------
+
+  getAllSpecs(): any[] {
+    if (this.runnerModule?.getAllSpecs) {
+      return this.runnerModule.getAllSpecs();
+    }
+    // Fallback: use global if someone else created runner
+    return (globalThis as any).__jasmine?.getAllSpecs?.() ?? [];
+  }
+
+  getAllSuites(): any[] {
+    if (this.runnerModule?.getAllSuites) {
+      return this.runnerModule.getAllSuites();
+    }
+    return (globalThis as any).__jasmine?.getAllSuites?.() ?? [];
+  }
+
+  getOrderedSpecs(): any[] {
+    if (this.runnerModule?.getOrderedSpecs) {
+      return this.runnerModule.getOrderedSpecs();
+    }
+    return (globalThis as any).__jasmine?.getOrderedSpecs?.() ?? this.getAllSpecs();
+  }
+
+  getOrderedSuites(): any[] {
+    if (this.runnerModule?.getOrderedSuites) {
+      return this.runnerModule.getOrderedSuites();
+    }
+    return (globalThis as any).__jasmine?.getOrderedSuites?.() ?? this.getAllSuites();
+  }
+
+  getTestCounts(): { specs: number; suites: number } {
+    if (this.runnerModule?.getTestCounts) {
+      return this.runnerModule.getTestCounts();
+    }
+    const res = (globalThis as any).__jasmine?.getTestCounts?.();
+    if (res) return res;
+    return {
+      specs: this.getAllSpecs().length,
+      suites: this.getAllSuites().length,
+    };
+  }
+
+  getTestConfiguration(): { orderedSuites: any[]; orderedSpecs: any[] } {
+    return {
+      orderedSuites: this.getOrderedSuites(),
+      orderedSpecs: this.getOrderedSpecs(),
+    };
   }
 
   async stop(): Promise<void> {
-    if (!this.child) return;
-    try {
-      this.child.send({ type: 'shutdown' });
-    } catch (_) {
-      this.child.kill('SIGTERM');
-    }
-    this.child = undefined;
+    this.isRunning = false;
+    // nothing else to tear down in host mode (yet)
   }
 
-  restart(): void {
-    this.stop();
+  async restart(): Promise<void> {
+    await this.stop();
     setTimeout(() => this.start(), 300);
   }
 }

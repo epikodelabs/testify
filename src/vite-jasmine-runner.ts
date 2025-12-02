@@ -8,7 +8,6 @@ import { FileDiscoveryService } from './file-discovery-service';
 import { HtmlGenerator } from './html-generator';
 import { HttpServerManager } from './http-server-manager';
 import { NodeTestRunner } from './node-test-runner';
-import { NodeTestRunnerGenerator } from './node-test-runner-generator';
 import { ViteConfigBuilder } from './vite-config-builder';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { ConsoleReporter } from './console-reporter';
@@ -28,7 +27,6 @@ export class ViteJasmineRunner extends EventEmitter {
   private fileDiscovery: FileDiscoveryService;
   private viteConfigBuilder: ViteConfigBuilder;
   private htmlGenerator: HtmlGenerator;
-  private nodeRunnerGenerator: NodeTestRunnerGenerator;
   private browserManager: BrowserManager;
   private httpServerManager: HttpServerManager;
   private nodeTestRunner: NodeTestRunner;
@@ -55,7 +53,6 @@ export class ViteJasmineRunner extends EventEmitter {
     this.fileDiscovery = new FileDiscoveryService(this.config);
     this.viteConfigBuilder = new ViteConfigBuilder(this.config);
     this.htmlGenerator = new HtmlGenerator(this.fileDiscovery, this.config);
-    this.nodeRunnerGenerator = new NodeTestRunnerGenerator(this.config);
     this.browserManager = new BrowserManager(this.config);
     this.httpServerManager = new HttpServerManager(this.config);
     this.instrumenter = new IstanbulInstrumenter(this.config);
@@ -63,7 +60,7 @@ export class ViteJasmineRunner extends EventEmitter {
       new ConsoleReporter(),
       new CoverageReporter({ coverage: this.config.coverage! }),
     ]);
-    this.nodeTestRunner = new NodeTestRunner({
+    this.nodeTestRunner = new NodeTestRunner(this.config, {
       reporter: this.multiReporter,
       cwd: this.config.outDir,
       file: 'test-runner.js',
@@ -122,7 +119,7 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       if (this.config.headless && this.config.browser === 'node') {
-        this.nodeRunnerGenerator.generateTestRunner();
+        this.nodeTestRunner.generateTestRunner();
       }
     } catch (error) {
       logger.error(`❌ Preprocessing failed: ${error}`);
@@ -242,7 +239,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
     if (!browserType) {
       logger.println('⚠️  Headless browser not available. Falling back to Node.js runner.');
-      this.nodeRunnerGenerator.generateTestRunner();
+      this.nodeTestRunner.generateTestRunner();
       const success = await this.nodeTestRunner.start();
       await this.cleanup();
       process.exit(success ? 0 : 1);
