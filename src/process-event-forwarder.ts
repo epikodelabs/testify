@@ -73,18 +73,9 @@ export class ProcessEventForwarder {
   private orderedSpecs: AnyObj[] = [];
   private orderedSuites: AnyObj[] = [];
   private jasmine: any;
-  private envInfo: EnvironmentInfo | null = null;
-  private hostReadyPromise: Promise<void> | null = null;
-  private hostReadyResolve: any;
-  private hostReadyReject: any;
 
   constructor(jasmine: any) {
     this.jasmine = jasmine;
-
-    this.hostReadyPromise = new Promise<void>((resolve, reject) => {
-      this.hostReadyResolve = resolve;
-      this.hostReadyReject = reject;
-    });
 
     if (typeof process !== 'undefined' && (process as any).on) {
       (process as any).on('message', this.onParentMessage.bind(this));
@@ -226,8 +217,6 @@ export class ProcessEventForwarder {
       type: "jasmineStarted",
       data: config ?? null
     });
-
-    await this.hostReadyPromise;
   }
 
   suiteStarted(suite: any) {
@@ -293,7 +282,6 @@ export class ProcessEventForwarder {
     try {
       switch (msg.type) {
         case "hostReady":
-          this.hostReadyResolve();
           break;
         case "ping":
           this.send({ type: "pong", data: null });

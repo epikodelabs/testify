@@ -39,22 +39,27 @@ export class NodeTestRunner {
       this.child = spawn('node', [childFile], {
         cwd: this.options.cwd ?? process.cwd(),
         env: { ...process.env, ...(this.options.env || {}), NODE_ENV: 'test' },
-        stdio: ['inherit', 'inherit', 'inherit', 'ipc'], // include IPC
+        stdio: ['inherit', 'pipe', 'pipe', 'ipc'], // include IPC
       });
 
-      // connect HostAdapter
-      this.adapter = new HostAdapter(this.child, this.reporter);
+      if (this.child) {
+        this.child.stdout!.on("data", d => logger.print(d.toString()));
+        this.child.stderr!.on("data", d => logger.error(d.toString()));
 
-      this.child.on('exit', (code) => {
-        this.child = undefined;
-        resolve(code || 0);
-      });
+        // connect HostAdapter
+        this.adapter = new HostAdapter(this.child, this.reporter);
 
-      this.child.on('error', (err) => {
-        (this.reporter as any).jasmineFailed(`Child process error: ${err.message}`);
-        reject(err.message);
-      });
-    });
+        this.child.on('exit', (code) => {
+          this.child = undefined;
+          resolve(code || 0);
+        });
+
+        this.child.on('error', (err) => {
+          (this.reporter as any).jasmineFailed(`Child process error: ${err.message}`);
+          reject(err.message);
+        });
+      }
+    }); 
   }
 
   send(message: any): void {

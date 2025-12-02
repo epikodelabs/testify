@@ -265,8 +265,6 @@ export class ConsoleReporter {
   }
 
   async jasmineStarted(config: any) {
-    await this.jasmineReady;
-
     this.startTime = Date.now();
     this.specCount = 0;
     this.executableSpecCount = 0;
@@ -287,6 +285,7 @@ export class ConsoleReporter {
     this.printBox('Test Runner Started', 'cyan');
     this.printEnvironmentInfo();
     this.printTestConfiguration(config);
+    await this.jasmineReady;
   }
 
   suiteStarted(config: any) {
