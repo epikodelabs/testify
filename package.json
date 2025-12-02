@@ -60,7 +60,6 @@
     "path-scurry": "2.0.0",
     "picomatch": "4.0.3",
     "playwright": "1.55.0",
-    "playwright-core": "1.55.0",
     "rollup": "4.52.3",
     "tinyglobby": "0.2.15",
     "vite": "7.1.7",
