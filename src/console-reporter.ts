@@ -202,11 +202,10 @@ export class ConsoleReporter {
     }
 
     // Debug summary
-    const totalSuites = this.suiteById.size - 1;
-    const totalSpecs = this.specById.size;
-    logger.println(`🧩 Suite tree built (${
-      (globalThis as any).__jasmine.getOrderedSuites().size} suites, ${
-      (globalThis as any).__jasmine.getOrderedSpecs().size} specs).`);
+    const totalSuites = config.orderedSuites.length;
+    const totalSpecs = config.orderedSpecs.length;
+
+    logger.println(`🧩 Suite tree built (${totalSuites} suites, ${totalSpecs} specs).`);
   }
 
   private normalizeDescription(desc: any): string {
