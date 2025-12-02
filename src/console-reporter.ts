@@ -54,9 +54,7 @@ export class ConsoleReporter {
   private pendingSpecs: any[];
   private ansi: Record<string, string>;
   private startTime: number;
-  private jasmineReady: Promise<void>;
   private config: any | null = null;
-  private resolveJasmineReady: (() => void) | null;
   private envInfo: EnvironmentInfo | null;
   private rootSuite: TestSuite;
   private currentSuite: TestSuite | null;
@@ -78,13 +76,6 @@ export class ConsoleReporter {
     this.failedSpecs = [];
     this.pendingSpecs = [];
     this.startTime = 0;
-
-    // Fixed: Initialize both properties correctly
-    let resolveFunc: (() => void) | null = null;
-    this.jasmineReady = new Promise((resolve) => {
-      resolveFunc = resolve;
-    });
-    this.resolveJasmineReady = resolveFunc;
     
     this.envInfo = null;
     this.rootSuite = this.createRootSuite();
@@ -140,9 +131,10 @@ export class ConsoleReporter {
 
     this.suiteById.set(this.rootSuite.id, this.rootSuite);
 
+    const orderedSuites = (globalThis as any).jasmine.getOrderedSuites();
     // 1️⃣ Register suites
-    if (config.orderedSuites) {
-      config.orderedSuites.forEach((suiteConfig: any) => {
+    if (orderedSuites) {
+      orderedSuites.forEach((suiteConfig: any) => {
         const suite = {
           id: suiteConfig.id,
           description: this.normalizeDescription(suiteConfig.description ?? suiteConfig.id),
@@ -157,8 +149,9 @@ export class ConsoleReporter {
     }
 
     // 2️⃣ Attach specs to their suites (skip root)
-    if (config.orderedSpecs) {
-      config.orderedSpecs.forEach((specConfig: any) => {
+    const orderedSpecs = (globalThis as any).jasmine.getOrderedSpecs();
+    if (orderedSpecs) {
+      orderedSpecs.forEach((specConfig: any) => {
         const spec = {
           id: specConfig.id,
           description: specConfig.description ?? specConfig.id,
@@ -182,8 +175,8 @@ export class ConsoleReporter {
     }
 
     // 3️⃣ Attach suites to their parents
-    if (config.orderedSuites) {
-      config.orderedSuites.forEach((suiteConfig: any) => {
+    if (orderedSuites) {
+      orderedSuites.forEach((suiteConfig: any) => {
         const suite = this.suiteById.get(suiteConfig.id);
         if (!suite) return;
 
@@ -202,10 +195,17 @@ export class ConsoleReporter {
     }
 
     // Debug summary
-    const totalSuites = config.orderedSuites.length;
-    const totalSpecs = config.orderedSpecs.length;
-
+    const totalSuites = orderedSuites.length; // real suites (root excluded)
+    const totalSpecs = orderedSpecs.length;   // all specs
     logger.println(`🧩 Suite tree built (${totalSuites} suites, ${totalSpecs} specs).`);
+  }
+
+  countSpecs(suite: TestSuite) {
+    let total = suite.specs.length;
+    for (const child of suite.children) {
+      total += this.countSpecs(child);
+    }
+    return total;
   }
 
   private normalizeDescription(desc: any): string {
@@ -261,8 +261,6 @@ export class ConsoleReporter {
         userAgent
       };
     }
-    
-    this.resolveJasmineReady?.();    
   }
 
   async jasmineStarted(config: any) {
@@ -286,7 +284,6 @@ export class ConsoleReporter {
     this.printBox('Test Runner Started', 'cyan');
     this.printEnvironmentInfo();
     this.printTestConfiguration(config);
-    await this.jasmineReady;
   }
 
   suiteStarted(config: any) {
@@ -873,7 +870,7 @@ export class ConsoleReporter {
   private printSummary(totalTime: number) {
     const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
     const total = this.executableSpecCount;
-    const notRun = this.config.totalSpecsDefined - this.executableSpecCount;
+    const notRun = this.countSpecs(this.rootSuite) - this.executableSpecCount;
     const duration = `${totalTime.toFixed(3)}s`;
 
     const lineWidth = this.lineWidth;
