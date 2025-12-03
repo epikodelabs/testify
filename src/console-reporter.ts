@@ -131,7 +131,7 @@ export class ConsoleReporter {
 
     this.suiteById.set(this.rootSuite.id, this.rootSuite);
 
-    const orderedSuites = (globalThis as any).jasmine.getOrderedSuites();
+    const orderedSuites = this.config.orderedSuites;
     // 1️⃣ Register suites
     if (orderedSuites) {
       orderedSuites.forEach((suiteConfig: any) => {
@@ -149,7 +149,7 @@ export class ConsoleReporter {
     }
 
     // 2️⃣ Attach specs to their suites (skip root)
-    const orderedSpecs = (globalThis as any).jasmine.getOrderedSpecs();
+    const orderedSpecs = this.config.orderedSpecs;
     if (orderedSpecs) {
       orderedSpecs.forEach((specConfig: any) => {
         const spec = {

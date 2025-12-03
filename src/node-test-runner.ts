@@ -64,9 +64,8 @@ export class NodeTestRunner {
    * Template for the generated ESM runner file.
    * NOTE: This is emitted as JS, so keep syntax JS-friendly.
    */
-  private generateRunnerTemplate(imports: string): string {
-    
-  return `// Auto-generated in-process Jasmine test runner
+  private generateRunnerTemplate(imports: string): string {   
+    return `// Auto-generated in-process Jasmine test runner
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 
@@ -107,7 +106,7 @@ export function getAllSuites() {
 }
 
 export function getOrderedSpecs(seed, random) {
-  const all = this.getAllSpecs();
+  const all = getAllSpecs();
   if (!random) return all;
 
   const OrderCtor = jasmineInstance.Order;
@@ -120,7 +119,7 @@ export function getOrderedSpecs(seed, random) {
 }
 
 export function getOrderedSuites(seed, random) {
-  const all = this.getAllSuites();
+  const all = getAllSuites();
   if (!random) return all;
 
   const OrderCtor = jasmineInstance.Order;
@@ -171,7 +170,7 @@ export async function runTests(reporter) {
         
         // Expose jasmine globals (describe, it, beforeEach, etc.)
         Object.assign(globalThis, jasmineRequire.interface(jasmineInstance, jasmineEnv));
-        globalThis.jasmine = { ...globalThis.jasmine, ...utils };
+        globalThis.jasmine = { ...globalThis.jasmine, ...jasmineInstance, ...utils };
 
         // Clean shutdown
         function onExit(signal) {
@@ -182,11 +181,12 @@ export async function runTests(reporter) {
         process.on('SIGTERM', onExit);
 
         // Configure env from template (inlined from ViteJasmineConfig)
+        const random = ${this.config.jasmineConfig?.env?.random ?? false};
+        const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
+        
         jasmineEnv.configure({
-          random: ${this.config.jasmineConfig?.env?.random ?? false},
-          stopOnSpecFailure: ${
-            this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false
-          },
+          random: random,
+          stopOnSpecFailure: stopOnSpecFailure,
         });
 
         jasmineEnv.clearReporters();
@@ -194,11 +194,31 @@ export async function runTests(reporter) {
 
 ${imports}
         
-        // Collect suite/spec structure (before execution, so reporter can access it)
-
+        // Get the configuration with seed
+        const config = jasmineEnv.configuration();
+        const seed = config.seed || config.random;
         
-        // Notify reporter that we're ready
-        reporter.userAgent(undefined);
+        // Get ordered specs and suites based on configuration
+        const orderedSpecs = getOrderedSpecs(seed, random);
+        const orderedSuites = getOrderedSuites(seed, random);
+        
+        // Attach to config object for reporter access
+        config.orderedSpecs = orderedSpecs.map(spec => ({
+          id: spec.id,
+          description: spec.description,
+          fullName: spec.getFullName ? spec.getFullName() : spec.description
+        }));
+        
+        config.orderedSuites = orderedSuites.map(suite => ({
+          id: suite.id,
+          description: suite.description,
+          fullName: suite.getFullName ? suite.getFullName() : suite.description
+        }));
+        
+        // Notify reporter that we're ready (config now has orderedSpecs/orderedSuites)
+        if (typeof reporter.jasmineStarted === 'function') {
+          reporter.jasmineStarted(config);
+        }
         
         // Execute tests - this will populate spec results
         await jasmineEnv.execute();

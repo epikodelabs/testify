@@ -727,6 +727,47 @@ window.HMRClient = (function() {
       return suites;
     }
 
+    function getOrderedSpecs(seed, random) {
+      const all = getAllSpecs();
+      if (!random) return all;
+
+      const OrderCtor = globalThis.jasmine.Order;
+      try {
+        const order = new OrderCtor({ random, seed });
+        return typeof order.sort === "function" ? order.sort(all) : all;
+      } catch {
+        return all;
+      }
+    }
+
+    function getOrderedSuites(seed, random) {
+      const all = getAllSuites();
+      if (!random) return all;
+
+      const OrderCtor = globalThis.jasmine.Order;
+      try {
+        const order = new OrderCtor({ random, seed });
+        return typeof order.sort === "function" ? order.sort(all) : all;
+      } catch {
+        return all;
+      }
+    }
+
+    // Add utils to globalThis.jasmine
+    const utils = {
+      getAllSpecs,
+      getAllSuites,
+      getOrderedSpecs,
+      getOrderedSuites
+    };
+
+    globalThis.jasmine = {
+      ...globalThis.jasmine,
+      ...utils
+    };
+
+    console.log('🔧 Utils attached to globalThis.jasmine:', Object.keys(utils));
+
     // Store original filter to restore later
     let originalSpecFilter = null;
     let isExecuting = false;

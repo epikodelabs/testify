@@ -5,6 +5,7 @@ import libSourceMaps from 'istanbul-lib-source-maps';
 import libIstanbulApi from 'istanbul-api';
 import { logger } from './console-repl';
 import { norm } from './utils';
+import deasync from 'deasync';
 
 export class CoverageReportGenerator {
   private reportDir: string;
@@ -13,9 +14,7 @@ export class CoverageReportGenerator {
     this.reportDir = reportDir;
   }
 
-  // Add at top of file:
-  // import deasync from 'deasync';
-  generate(rawCoverageData: Record<string, any>): void {
+generate(rawCoverageData: Record<string, any>): void {
     if (!rawCoverageData || Object.keys(rawCoverageData).length === 0) {
       logger.println('⚠️  No coverage data received.');
       return;
@@ -28,11 +27,12 @@ export class CoverageReportGenerator {
     const remapper = libSourceMaps.createSourceMapStore();
     let remappedCoverage = coverageMap;
     
-    const maxAttempts = 50; // 50 attempts
+    const maxAttempts = 50;
     let attempts = 0;
+    let hasTransformed = false;
     
-    // Synchronous polling: call transformCoverage repeatedly until success
-    while (attempts < maxAttempts) {
+    // Iteratively call transformCoverage until we get TypeScript sources
+    while (attempts < maxAttempts && !hasTransformed) {
       let done = false;
       let result: any = null;
       let error: any = null;
@@ -48,7 +48,7 @@ export class CoverageReportGenerator {
           done = true;
         });
       
-      // Block until promise resolves (using deasync pattern)
+      // Block synchronously until promise resolves
       while (!done) {
         require('deasync').sleep(10);
       }
@@ -62,10 +62,11 @@ export class CoverageReportGenerator {
         
         if (hasSourceFiles) {
           remappedCoverage = result;
+          hasTransformed = true;
           if (attempts > 0) {
             logger.println(`✅ Coverage remapped after ${attempts + 1} attempts`);
           }
-          break; // Success!
+          break;
         }
       }
       
@@ -77,7 +78,7 @@ export class CoverageReportGenerator {
       attempts++;
     }
     
-    if (attempts >= maxAttempts) {
+    if (!hasTransformed) {
       logger.println('⚠️  Could not transform coverage to source files, using raw coverage');
     }
 

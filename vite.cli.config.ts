@@ -16,16 +16,17 @@ const EXTERNALS = [
   'vite', 'rollup', 'module-alias', 'playwright', 'playwright-core', 'esbuild', 
   'fdir', 'picomatch', 'jasmine-core', 'tinyglobby', 'path-scurry', 'lru-cache',
   'istanbul-lib-instrument', 'istanbul-lib-report', 'istanbul-lib-source-maps',
-  'istanbul-reports', 'istanbul-api', 'istanbul-lib-coverage', 'chokidar'
+  'istanbul-reports', 'istanbul-api', 'istanbul-lib-coverage', 'chokidar', 'deasync'
 ];
 
 export default defineConfig({
   plugins: [
     copy({
       targets: [
-        { src: 'postinstall.mjs', dest: 'dist/ts-test-runner/' },
+        { src: 'postinstall.script', dest: 'dist/ts-test-runner/', rename: 'postinstall.mjs' },
         { src: 'assets/favicon.ico', dest: 'dist/ts-test-runner/assets/' },
         { src: 'node_modules/chokidar/**/*', dest: 'dist/ts-test-runner/node_modules/' },
+        { src: 'node_modules/deasync/**/*', dest: 'dist/ts-test-runner/node_modules/' },
         { src: 'node_modules/eslint-import-plugin/**/*', dest: 'dist/ts-test-runner/node_modules/' },
         { src: 'node_modules/istanbul-lib-instrument/**/*', dest: 'dist/ts-test-runner/node_modules/' },
         { src: 'node_modules/istanbul-lib-coverage/**/*', dest: 'dist/ts-test-runner/node_modules/' },
