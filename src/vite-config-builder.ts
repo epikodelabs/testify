@@ -32,7 +32,7 @@ export class ViteConfigBuilder {
       inputMap[key] = norm(file);
     });
 
-    logger.println(`🎯 Built input map: ${Object.keys(inputMap).length} entries (${existingSrcFiles.length} source, ${existingTestFiles.length} test)`);
+    logger.println(`🎯 Built input map: ${Object.keys(inputMap).length} entries (${existingSrcFiles.length} source(s), ${existingTestFiles.length} test(s))`);
     
     return inputMap;
   }

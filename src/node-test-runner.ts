@@ -82,186 +82,54 @@ let jasmineEnv = null;
 // ---------------------------
 // Introspection helpers
 // ---------------------------
-// Cache for introspection data
-let cachedOrderedSuites = null;
-let cachedOrderedSpecs = null;
-
-// Flag to track if imports have been processed
-let importsProcessed = false;
-
-// Function to force Jasmine to process registered suites/specs
-function ensureImportsProcessed() {
-  if (importsProcessed) return;
-  
-  // Jasmine processes describe/it calls synchronously during import,
-  // but we need to ensure all suites are registered.
-  // Accessing the topSuite forces Jasmine to process pending registrations.
-  const root = jasmineEnv?.topSuite?.();
-  if (root) {
-    // Force Jasmine to process any pending suite/spec registrations
-    // This is a bit of a hack, but accessing children should trigger processing
-    const children = root.children || [];
-    importsProcessed = true;
-  }
-}
-
-function collectSpecsAndSuites() {
-  if (!jasmineEnv) {
-    return { orderedSuites: [], orderedSpecs: [] };
-  }
-
-  const root = jasmineEnv.topSuite?.();
-  if (!root) {
-    return { orderedSuites: [], orderedSpecs: [] };
-  }
-
-  // Return cached data if available
-  if (cachedOrderedSuites && cachedOrderedSpecs) {
-    return { orderedSuites: cachedOrderedSuites, orderedSpecs: cachedOrderedSpecs };
-  }
-
-  const orderedSuites = [];
-  const orderedSpecs = [];
-
-  // Helper to identify suite nodes
-  function isSuite(node) {
-    return node && 
-           node.children !== undefined && 
-           node !== root &&
-           typeof node.execute === 'function';
-  }
-
-  // Helper to identify spec nodes
-  function isSpec(node) {
-    return node && 
-           typeof node.getFullName === 'function' &&
-           typeof node.execute === 'function' &&
-           node.result !== undefined;
-  }
-
-  // Build a map for quick parent lookups
-  const suiteMap = new Map();
-  
-  function walkSuite(suite, parentId = null, path = []) {
-    if (!suite || !suite.id) return;
-
-    const fullPath = [...path, suite.description].filter(Boolean);
-    const suiteInfo = {
-      id: suite.id,
-      description: suite.description || 'Unnamed Suite',
-      fullName: fullPath.join(' ') || suite.description || 'Unnamed Suite',
-      parentSuiteId: parentId,
-      children: [],
-    };
-    
-    orderedSuites.push(suiteInfo);
-    suiteMap.set(suite.id, suiteInfo);
-
-    // Process children - store reference to actual spec object
-    for (const child of suite.children || []) {
-      if (isSpec(child)) {
-        const specInfo = {
-          id: child.id,
-          description: child.description || 'Unnamed Spec',
-          fullName: child.getFullName() || child.description || 'Unnamed Spec',
-          suiteId: suite.id,
-          _specRef: child, // Store reference to get live status
-        };
-        orderedSpecs.push(specInfo);
-        suiteInfo.children.push(specInfo.id);
-      }
-    }
-
-    // Recursively process child suites
-    for (const child of suite.children || []) {
-      if (isSuite(child)) {
-        walkSuite(child, suite.id, fullPath);
-      }
-    }
-  }
-
-  // Process top-level suites (children of the synthetic root)
-  for (const child of root.children || []) {
-    if (isSuite(child)) {
-      walkSuite(child, null, []);
-    }
-  }
-
-  // Cache the results
-  cachedOrderedSuites = orderedSuites;
-  cachedOrderedSpecs = orderedSpecs;
-
-  return { orderedSuites, orderedSpecs };
-}
-
-// Expose stable global API for external tooling
-const utils = {
-  getOrderedSuites() {
-    const { orderedSuites } = collectSpecsAndSuites();
-    return orderedSuites.map(suite => ({
-      id: suite.id,
-      description: suite.description,
-      fullName: suite.fullName,
-      parentSuiteId: suite.parentSuiteId,
-      children: [...suite.children] // Return copy of children IDs
-    }));
-  },
-  
-  getOrderedSpecs() {
-    const { orderedSpecs } = collectSpecsAndSuites();
-    return orderedSpecs.map(spec => ({
-      id: spec.id,
-      description: spec.description,
-      fullName: spec.fullName,
-      suiteId: spec.suiteId,
-      // Read live status from the spec reference
-      status: spec._specRef?.result?.status || 'pending',
-      duration: spec._specRef?.result?.duration,
-      failedExpectations: spec._specRef?.result?.failedExpectations ? 
-        [...spec._specRef.result.failedExpectations] : undefined,
-      pendingReason: spec._specRef?.result?.pendingReason
-    }));
-  },
-  
-  getAllSuites() {
-    return this.getOrderedSuites();
-  },
-  
-  getAllSpecs() {
-    return this.getOrderedSpecs();
-  },
-  
-  getTestCounts() {
-    const { orderedSuites, orderedSpecs } = collectSpecsAndSuites();
-    return { 
-      suites: orderedSuites.length, 
-      specs: orderedSpecs.length 
-    };
-  },
-  
-  // Clear cache (useful for re-running tests)
-  clearCache() {
-    cachedOrderedSuites = null;
-    cachedOrderedSpecs = null;
-    importsProcessed = false;
-  }
-};
-
-// Export utility functions via module
-export function getOrderedSuites() {
-  return utils.getOrderedSuites();
-}
-export function getOrderedSpecs() {
-  return utils.getOrderedSpecs();
-}
-export function getAllSuites() {
-  return utils.getAllSuites();
-}
 export function getAllSpecs() {
-  return utils.getAllSpecs();
+  const specs = [];
+  const traverse = (suite) => {
+    suite.children?.forEach((child) => {
+      if (child && typeof child.id === 'string' && !child.children) specs.push(child);
+      if (child?.children) traverse(child);
+    });
+  };
+  traverse(jasmineEnv.topSuite());
+  return specs;
 }
-export function getTestCounts() {
-  return utils.getTestCounts();
+
+export function getAllSuites() {
+  const suites = [];
+  const traverse = (suite) => {
+    suites.push(suite);
+    suite.children?.forEach((child) => {
+      if (child?.children) traverse(child);
+    });
+  };
+  traverse(jasmineEnv.topSuite());
+  return suites;
+}
+
+export function getOrderedSpecs(seed, random) {
+  const all = this.getAllSpecs();
+  if (!random) return all;
+
+  const OrderCtor = jasmineInstance.Order;
+  try {
+    const order = new OrderCtor({ random, seed });
+    return typeof order.sort === "function" ? order.sort(all) : all;
+  } catch {
+    return all;
+  }
+}
+
+export function getOrderedSuites(seed, random) {
+  const all = this.getAllSuites();
+  if (!random) return all;
+
+  const OrderCtor = jasmineInstance.Order;
+  try {
+    const order = new OrderCtor({ random, seed });
+    return typeof order.sort === "function" ? order.sort(all) : all;
+  } catch {
+    return all;
+  }
 }
 
 // ---------------------------
@@ -294,13 +162,16 @@ export async function runTests(reporter) {
         jasmineInstance = jasmineRequire.core(jasmineRequire);
         jasmineEnv = jasmineInstance.getEnv();
 
+        const utils = {
+          getAllSpecs,
+          getAllSuites,
+          getOrderedSpecs,
+          getOrderedSuites
+        };
+        
         // Expose jasmine globals (describe, it, beforeEach, etc.)
         Object.assign(globalThis, jasmineRequire.interface(jasmineInstance, jasmineEnv));
-        globalThis.jasmine = {
-          ...globalThis.jasmine,
-          ...jasmineInstance,
-          ...utils
-        };
+        globalThis.jasmine = { ...globalThis.jasmine, ...utils };
 
         // Clean shutdown
         function onExit(signal) {
@@ -322,13 +193,9 @@ export async function runTests(reporter) {
         jasmineEnv.addReporter(reporter);
 
 ${imports}
-
-        // Ensure Jasmine has processed all suite/spec registrations
-        ensureImportsProcessed();
         
         // Collect suite/spec structure (before execution, so reporter can access it)
-        // Note: At this point, specs have no results yet
-        collectSpecsAndSuites();
+
         
         // Notify reporter that we're ready
         reporter.userAgent(undefined);
