@@ -65,7 +65,7 @@ export class WebSocketManager extends EventEmitter {
     try {
       switch (message.type) {
         case 'userAgent':
-          (this.reporter as any)?.userAgent?.(message);
+          (this.reporter as any)?.userAgent?.(message.data, message.data.orderedSuites, message.data.orderedSpecs);
           break;
 
         case 'jasmineStarted':

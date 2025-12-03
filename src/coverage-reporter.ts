@@ -29,7 +29,9 @@ export class CoverageReporter implements Reporter {
         logger.println('⚠️  No coverage information found. Make sure code is instrumented.');
         return;
       }
-      new CoverageReportGenerator().generate(coverage);
+      const cov = new CoverageReportGenerator();
+      cov.saveCoverageToFile(coverage);
+      cov.generate(coverage);
     }
   }
 }

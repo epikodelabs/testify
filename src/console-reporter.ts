@@ -65,6 +65,8 @@ export class ConsoleReporter {
   private readonly lineWidth: number = 63;
   private interruptHandlersRegistered: boolean = false;
   private interrupted = false;
+  private orderedSuites: any[] | null = null;
+  private orderedSpecs: any[] | null = null;
 
   constructor() {
     this.print = (...args) => logger.printRaw(util.format(...args));
@@ -131,7 +133,7 @@ export class ConsoleReporter {
 
     this.suiteById.set(this.rootSuite.id, this.rootSuite);
 
-    const orderedSuites = this.config.orderedSuites;
+    const orderedSuites = this.orderedSuites;
     // 1️⃣ Register suites
     if (orderedSuites) {
       orderedSuites.forEach((suiteConfig: any) => {
@@ -149,7 +151,7 @@ export class ConsoleReporter {
     }
 
     // 2️⃣ Attach specs to their suites (skip root)
-    const orderedSpecs = this.config.orderedSpecs;
+    const orderedSpecs = this.orderedSpecs;
     if (orderedSpecs) {
       orderedSpecs.forEach((specConfig: any) => {
         const spec = {
@@ -195,8 +197,8 @@ export class ConsoleReporter {
     }
 
     // Debug summary
-    const totalSuites = orderedSuites.length; // real suites (root excluded)
-    const totalSpecs = orderedSpecs.length;   // all specs
+    const totalSuites = this.orderedSuites?.length; // real suites (root excluded)
+    const totalSpecs = this.orderedSpecs?.length;   // all specs
     logger.println(`🧩 Suite tree built (${totalSuites} suites, ${totalSpecs} specs).`);
   }
 
@@ -250,8 +252,11 @@ export class ConsoleReporter {
     return this.rootSuite.id;
   }
 
-  userAgent(message: any) {
+  userAgent(message: any, suites: any, specs: any) {
     this.envInfo = this.gatherEnvironmentInfo();
+    this.orderedSuites = suites ?? null;
+    this.orderedSpecs = specs ?? null;
+
     if(message) {
       const userAgent = { ...message };
       delete userAgent?.timestamp;
@@ -263,7 +268,7 @@ export class ConsoleReporter {
     }
   }
 
-  async jasmineStarted(config: any) {
+  jasmineStarted(config: any) {
     this.startTime = Date.now();
     this.specCount = 0;
     this.executableSpecCount = 0;

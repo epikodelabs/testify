@@ -180,48 +180,38 @@ export async function runTests(reporter) {
         process.on('SIGINT', onExit);
         process.on('SIGTERM', onExit);
 
-        // Configure env from template (inlined from ViteJasmineConfig)
-        const random = ${this.config.jasmineConfig?.env?.random ?? false};
-        const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
-        
-        jasmineEnv.configure({
-          random: random,
-          stopOnSpecFailure: stopOnSpecFailure,
-        });
-
         jasmineEnv.clearReporters();
         jasmineEnv.addReporter(reporter);
 
 ${imports}
         
-        // Get the configuration with seed
-        const config = jasmineEnv.configuration();
-        const seed = config.seed || config.random;
-        
+        // Configure env from template (inlined from ViteJasmineConfig)
+        const random = ${this.config.jasmineConfig?.env?.random ?? false};
+        const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
+        const seed = ${(this.config.jasmineConfig?.env as any)?.seed} ?? 0;
+
+        jasmineEnv.configure({
+          random,
+          stopOnSpecFailure,
+          seed
+        });
+
         // Get ordered specs and suites based on configuration
-        const orderedSpecs = getOrderedSpecs(seed, random);
-        const orderedSuites = getOrderedSuites(seed, random);
-        
-        // Attach to config object for reporter access
-        config.orderedSpecs = orderedSpecs.map(spec => ({
+        const orderedSpecs = getOrderedSpecs(seed, random).map(spec => ({
           id: spec.id,
           description: spec.description,
           fullName: spec.getFullName ? spec.getFullName() : spec.description
         }));
-        
-        config.orderedSuites = orderedSuites.map(suite => ({
+
+        const orderedSuites = getOrderedSuites(seed, random).map(suite => ({
           id: suite.id,
           description: suite.description,
           fullName: suite.getFullName ? suite.getFullName() : suite.description
         }));
-        
-        // Notify reporter that we're ready (config now has orderedSpecs/orderedSuites)
-        if (typeof reporter.jasmineStarted === 'function') {
-          reporter.jasmineStarted(config);
-        }
-        
+
         // Execute tests - this will populate spec results
-        await Promise((resolve) = setTimeout(() => resolve(), 300);
+        await new Promise((resolve) => setTimeout(() => resolve(), 300));
+        reporter.userAgent(undefined, orderedSuites, orderedSpecs);
         await jasmineEnv.execute();
 
         const failures = reporter.failureCount || 0;

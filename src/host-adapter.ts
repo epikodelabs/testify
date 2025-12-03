@@ -89,11 +89,11 @@ export class HostAdapter {
     }
   }
 
-  private async callReporter(method: any, arg: any) {
+  private async callReporter(method: any, ...args: any) {
     const fn = (this.reporter as any)[method];
     if (!fn) return;
 
     // jasmine callbacks can be sync or async → normalize to Promise
-    return Promise.resolve(fn.call(this.reporter, arg));
+    return Promise.resolve(fn.call(this.reporter, ...args));
   }
 }

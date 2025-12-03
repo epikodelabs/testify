@@ -195,12 +195,6 @@ export class ViteJasmineRunner extends EventEmitter {
     logger.println('🔥 HMR enabled - file changes will hot reload automatically');
     logger.println('⏹️  Press Ctrl+C to stop the server');
 
-    this.webSocketManager.on('testsCompleted', ({ coverage }) => {
-      if (this.config.coverage && coverage) {
-        new CoverageReportGenerator().generate(coverage);
-      }
-    });
-
     const onBrowserClose = async () => {
       logger.println('🔄 Browser window closed');
       await this.cleanup();
@@ -230,9 +224,6 @@ export class ViteJasmineRunner extends EventEmitter {
     let testSuccess = false;
     this.webSocketManager.on('testsCompleted', ({ success, coverage }) => {
       testSuccess = success;
-      if (this.config.coverage && coverage) {
-        new CoverageReportGenerator().generate(coverage);
-      }
     });
 
     const browserType = await this.browserManager.checkBrowser(this.config.browser!);
@@ -271,9 +262,6 @@ export class ViteJasmineRunner extends EventEmitter {
 
     this.webSocketManager.on('testsCompleted', ({ coverage }) => {
       testsCompleted = true;
-      if (this.config.coverage && coverage) {
-        new CoverageReportGenerator().generate(coverage);
-      }
     });
 
     const onBrowserClose = async () => {

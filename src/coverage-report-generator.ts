@@ -13,6 +13,24 @@ export class CoverageReportGenerator {
     this.reportDir = reportDir;
   }
 
+  saveCoverageToFile(coverage: any): void {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+
+      const outDir = path.resolve(process.cwd(), ".nyc_output");
+      const outFile = path.join(outDir, "out.json");
+
+      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+      fs.writeFileSync(outFile, JSON.stringify(coverage, null, 2), "utf8");
+
+      logger.println(`📄 Raw coverage saved to ${outFile}`);
+    } catch (err) {
+      logger.error(`❌ Failed to write coverage file: ${err}`);
+    }
+  }
+
   async generate(rawCoverageData: Record<string, any>): Promise<void> {
     if (!rawCoverageData || Object.keys(rawCoverageData).length === 0) {
       logger.println('⚠️  No coverage data received.');

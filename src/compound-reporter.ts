@@ -18,8 +18,8 @@ export class CompoundReporter {
     this.reporters.push(reporter);
   }
 
-  userAgent(agentInfo: any) {
-    this.reporters.forEach(r => (r as any)?.userAgent?.(agentInfo));  
+  userAgent(agentInfo: any, suites: any, specs: any) {
+    this.reporters.forEach(r => (r as any)?.userAgent?.(agentInfo, suites, specs));  
   }
 
   jasmineStarted(suiteInfo: any) {

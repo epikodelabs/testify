@@ -90,19 +90,18 @@ export class HtmlGenerator {
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
   <script src="/node_modules/jasmine-core/lib/jasmine-core/boot0.js"></script>
   <script src="/node_modules/jasmine-core/lib/jasmine-core/boot1.js"></script>
-  <script>
-    ${this.getWebSocketEventForwarderScript()}
-    
+  <script type="module">
     const forwarder = new WebSocketEventForwarder();
     forwarder.connect();
     jasmine.getEnv().addReporter(forwarder);
+    
+    ${imports}
+
+    ${this.getWebSocketEventForwarderScript()}
   </script>
 </head>
 <body>
   <div class="jasmine_html-reporter"></div>
-  <script type="module">
-    ${imports}
-  </script>
 </body>
 </html>`;
   }
@@ -229,16 +228,16 @@ export class HtmlGenerator {
 
   const script = document.createElement('script');
   script.src = '/node_modules/jasmine-core/lib/jasmine-core/boot0.js';
+
+  // Add the WebSocket forwarder as a reporter
+  const forwarder = new WebSocketEventForwarder();
+  forwarder.connect();
+  jasmine.getEnv().addReporter(forwarder);
+  
   script.onload = () => {
-    
     ${this.getWebSocketEventForwarderScript()}
     ${this.getHmrClientScript()}
     ${this.getRuntimeHelpersScript()}
-
-    // Add the WebSocket forwarder as a reporter
-    const forwarder = new WebSocketEventForwarder();
-    forwarder.connect();
-    jasmine.getEnv().addReporter(forwarder);  
   };
   document.head.appendChild(script);
 })();
@@ -270,16 +269,30 @@ function WebSocketEventForwarder() {
     self.ws.onopen = () => {
       self.connected = true;
       console.log('WebSocket connected to', wsUrl);
+      const seed = ${(this.config.jasmineConfig?.env as any)?.seed ?? 0};
+      const random = ${(this.config.jasmineConfig?.env as any)?.random ?? false};
 
       self.send({
         type: 'userAgent',
-        userAgent: navigator.userAgent,
-        appName: navigator.appName,
-        appVersion: navigator.appVersion,
-        platform: navigator.platform,
-        vendor: navigator.vendor,
-        language: navigator.language,
-        languages: navigator.languages,
+        data: {
+          userAgent: navigator.userAgent,
+          appName: navigator.appName,
+          appVersion: navigator.appVersion,
+          platform: navigator.platform,
+          vendor: navigator.vendor,
+          language: navigator.language,
+          languages: navigator.languages,
+          orderedSuites: self.getOrderedSuites(seed, random).map(suite => ({
+            id: suite.id,
+            description: suite.description,
+            fullName: suite.getFullName ? suite.getFullName() : suite.description
+          })),
+          orderedSpecs: self.getOrderedSpecs(seed, random).map(spec => ({
+            id: spec.id,
+            description: spec.description,
+            fullName: spec.getFullName ? spec.getFullName() : spec.description
+          }))
+        },
         timestamp: Date.now()
       });
 
@@ -408,17 +421,7 @@ function WebSocketEventForwarder() {
 
     self.send({
       type: 'jasmineStarted',
-      ...config,
-      orderedSpecs: orderedSpecs.map((spec) => ({
-        id: spec.id,
-        description: spec.description,
-        fullName: spec.getFullName()
-      })),
-      orderedSuites: orderedSuites.map((suite) => ({
-        id: suite.id,
-        description: suite.description,
-        fullName: suite.getFullName()
-      })),
+      data: config,
       timestamp: Date.now()
     });
   };
