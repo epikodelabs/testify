@@ -50,7 +50,7 @@ generate(rawCoverageData: Record<string, any>): void {
       
       // Block synchronously until promise resolves
       while (!done) {
-        require('deasync').sleep(10);
+        deasync.sleep(10);
       }
       
       // Check if we got valid transformed coverage
@@ -72,7 +72,7 @@ generate(rawCoverageData: Record<string, any>): void {
       
       // Wait before retry
       if (attempts < maxAttempts - 1) {
-        require('deasync').sleep(100);
+        deasync.sleep(100);
       }
       
       attempts++;

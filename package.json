@@ -46,6 +46,7 @@
   "dependencies": {
     "chokidar": "4.0.3",
     "chromium-bidi": "9.1.0",
+    "deasync": "^0.1.31",
     "esbuild": "0.25.11",
     "fdir": "6.5.0",
     "glob": "11.0.3",
@@ -92,11 +93,11 @@
     "rimraf": "6.0.1",
     "rollup-plugin-copy": "3.5.0",
     "typescript": "5.9.2",
-    "vite": "7.1.7",
-    "deasync": "^0.1.31"
+    "vite": "7.1.7"
   },
   "bundleDependencies": [
     "chokidar",
+    "deasync",
     "istanbul-lib-instrument",
     "istanbul-lib-coverage",
     "istanbul-lib-report",
