@@ -221,6 +221,7 @@ ${imports}
         }
         
         // Execute tests - this will populate spec results
+        await Promise((resolve) = setTimeout(() => resolve(), 300);
         await jasmineEnv.execute();
 
         const failures = reporter.failureCount || 0;
