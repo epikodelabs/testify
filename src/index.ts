@@ -6,7 +6,6 @@ export { CLIHandler } from './cli-handler';
 export { Logger } from './console-repl';
 export { ConfigManager } from './config-manager';
 export { ConsoleReporter } from './console-reporter';
-export { CoverageReporter } from './coverage-reporter';
 export { CompoundReporter } from './compound-reporter';
 export { FileDiscoveryService } from './file-discovery-service';
 export { HtmlGenerator } from './html-generator';
