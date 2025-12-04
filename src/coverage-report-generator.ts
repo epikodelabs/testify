@@ -31,14 +31,9 @@ export class CoverageReportGenerator {
     }
   }
 
-  async generate(rawCoverageData: Record<string, any>): Promise<void> {
-    if (!rawCoverageData || Object.keys(rawCoverageData).length === 0) {
-      logger.println('⚠️  No coverage data received.');
-      return;
-    }
-
+  async generate(coverage: Record<string, any>): Promise<void> {
     // 1️⃣ Coverage map from raw data
-    const coverageMap = libCoverage.createCoverageMap(rawCoverageData);
+    const coverageMap = libCoverage.createCoverageMap(coverage);
 
     // 2️⃣ Remap coverage using source maps (assumes map files are alongside JS files)
     const remapper = libSourceMaps.createSourceMapStore();
