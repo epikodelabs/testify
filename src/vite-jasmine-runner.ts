@@ -13,8 +13,6 @@ import { ViteJasmineConfig } from './vite-jasmine-config';
 import { ConsoleReporter } from './console-reporter';
 import { IstanbulInstrumenter } from './istanbul-instrumenter';
 import { WebSocketManager } from './websocket-manager';
-import { CompoundReporter } from './compound-reporter';
-import { CoverageReporter } from './coverage-reporter';
 import { CoverageReportGenerator } from './coverage-report-generator';
 import { HmrManager } from './hmr-manager';
 import { logger } from './console-repl';
@@ -31,10 +29,12 @@ export class ViteJasmineRunner extends EventEmitter {
   private httpServerManager: HttpServerManager;
   private nodeTestRunner: NodeTestRunner;
   private webSocketManager: WebSocketManager | null = null;
-  private multiReporter: CompoundReporter;
+  private consoleReporter: ConsoleReporter;
   private instrumenter: IstanbulInstrumenter;
   private hmrManager: HmrManager | null = null;
-
+  private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
+  private completePromiseResolve: (() => void) | null = null;
+  
   constructor(config: ViteJasmineConfig) {
     super();
 
@@ -56,12 +56,9 @@ export class ViteJasmineRunner extends EventEmitter {
     this.browserManager = new BrowserManager(this.config);
     this.httpServerManager = new HttpServerManager(this.config);
     this.instrumenter = new IstanbulInstrumenter(this.config);
-    this.multiReporter = new CompoundReporter([
-      new ConsoleReporter(),
-      new CoverageReporter({ coverage: this.config.coverage! }),
-    ]);
+    this.consoleReporter = new ConsoleReporter();
     this.nodeTestRunner = new NodeTestRunner(this.config, {
-      reporter: this.multiReporter,
+      reporter: this.consoleReporter,
       cwd: this.config.outDir,
       file: 'test-runner.js',
       coverage: this.config.coverage
@@ -185,7 +182,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
     const server = await this.httpServerManager.startServer();
     
-    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.multiReporter);
+    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
     this.hmrManager = new HmrManager(this.fileDiscovery, this.config, this.viteConfigBuilder, this.viteCache);
 
     this.webSocketManager.enableHmr(this.hmrManager);
@@ -219,7 +216,7 @@ export class ViteJasmineRunner extends EventEmitter {
   private async runHeadlessBrowserMode(): Promise<void> {
     const server = await this.httpServerManager.startServer();
     await this.httpServerManager.waitForServerReady(`http://localhost:${this.config.port}/index.html`, 10000);
-    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.multiReporter);
+    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     let testSuccess = false;
     this.webSocketManager.on('testsCompleted', ({ success, coverage }) => {
@@ -238,6 +235,11 @@ export class ViteJasmineRunner extends EventEmitter {
 
     try {
       await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
+      if (this.config.coverage) {
+        const coverage = (globalThis as any).__coverage__;
+        const cov = new CoverageReportGenerator();
+        cov.generate(coverage);
+      }
       await this.cleanup();
       process.exit(testSuccess ? 0 : 1);
     } catch (error) {
@@ -249,19 +251,28 @@ export class ViteJasmineRunner extends EventEmitter {
 
   private async runHeadlessNodeMode(): Promise<void> {
     const success = await this.nodeTestRunner.start();
+    if (this.config.coverage) {
+      const coverage = (globalThis as any).__coverage__;
+      const cov = new CoverageReportGenerator();
+      cov.generate(coverage);
+    }
     process.exit(success ? 0 : 1);
   }
 
   private async runHeadedBrowserMode(): Promise<void> {
     const server = await this.httpServerManager.startServer();
     let testsCompleted = false;
-    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.multiReporter);
+    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     logger.println('📡 WebSocket server ready for real-time test reporting');
     logger.println('⏹️  Press Ctrl+C to stop the server');
 
     this.webSocketManager.on('testsCompleted', ({ coverage }) => {
       testsCompleted = true;
+      if (this.config.coverage) {
+        const cov = new CoverageReportGenerator();
+        cov.generate(coverage);
+      }
     });
 
     const onBrowserClose = async () => {
@@ -271,7 +282,7 @@ export class ViteJasmineRunner extends EventEmitter {
             logger.clearLine();
             logger.printRaw('\n');
             logger.clearLine();
-            this.multiReporter.testsAborted();
+            this.consoleReporter.testsAborted();
             logger.clearLine();
             logger.printRaw('\n');
             logger.println('🔄 Browser window closed prematurely');
@@ -292,7 +303,7 @@ export class ViteJasmineRunner extends EventEmitter {
       if (!testsCompleted) {
         setImmediate(() => {
           logger.clearLine(); logger.printRaw('\n');
-          logger.clearLine(); this.multiReporter.testsAborted();
+          logger.clearLine(); this.consoleReporter.testsAborted();
           logger.clearLine(); logger.printRaw('\n');
           logger.printlnRaw("🛑 Tests aborted by user (Ctrl+C)");
         });

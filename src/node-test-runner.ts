@@ -6,6 +6,7 @@ import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import { logger } from './console-repl';
 import { ConsoleReporter } from './console-reporter';
+import { CoverageReportGenerator } from './coverage-report-generator';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -279,6 +280,11 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 
       if (typeof this.runnerModule.runTests === 'function') {
         const failures: number = await this.runnerModule.runTests(this.reporter);
+        const coverage = (globalThis as any).__coverage__;
+        if (coverage) {
+          const cov = new CoverageReportGenerator();
+          await cov.generate(coverage);
+        }
         return failures === 0 ? 0 : 1;
       } else {
         logger.error('⚠️  Test runner does not export runTests function');
