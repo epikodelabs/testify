@@ -221,6 +221,10 @@ export class ViteJasmineRunner extends EventEmitter {
     let testSuccess = false;
     this.webSocketManager.on('testsCompleted', ({ success, coverage }) => {
       testSuccess = success;
+      if (this.config.coverage) {
+        const cov = new CoverageReportGenerator();
+        cov.generate(coverage);
+      }
     });
 
     const browserType = await this.browserManager.checkBrowser(this.config.browser!);
