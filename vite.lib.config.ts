@@ -1,24 +1,34 @@
+import fs from 'fs';
 import path from 'path';
-import copy from 'rollup-plugin-copy';
+import { builtinModules } from 'module';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const EXTERNALS = [
-  'assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console',
-  'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs','fs/promises', 'http',
-  'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks',
-  'process', 'punycode', 'querystring', 'readline', 'repl', 'stream',
-  'string_decoder', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util',
-  'v8', 'vm', 'zlib', 'worker_threads', 'ws', 'fsevents', 'chromium-bidi', 'glob',
-  'vite', 'rollup', 'module-alias', 'playwright', 'playwright-core', 'esbuild', 
-  'fdir', 'picomatch', 'jasmine-core', 'tinyglobby', 'path-scurry', 'lru-cache',
-  'istanbul-lib-instrument', 'istanbul-lib-report', 'istanbul-lib-source-maps',
-  'istanbul-reports', 'istanbul-api', 'istanbul-lib-coverage', 'chokidar', 'jasmine',
-  'deasync'
-];
+const pkg = JSON.parse(
+  fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')
+);
+
+const dependencyExternals = new Set([
+  ...(pkg.bundleDependencies || []),
+  ...Object.keys(pkg.dependencies || {}),
+  ...Object.keys(pkg.peerDependencies || {}),
+  'playwright-core',
+  'fsevents'
+]);
+
+const builtinExternals = new Set(builtinModules);
+
+const isExternal = (id: string) => {
+  if (id.startsWith('node:')) return true;
+  if (builtinExternals.has(id)) return true;
+
+  return Array.from(dependencyExternals).some(
+    (dep) => id === dep || id.startsWith(`${dep}/`)
+  );
+};
 
 export default defineConfig({
   build: {
@@ -35,16 +45,8 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       external: (id) => {
-        // Externalize Node.js built-ins
-        if (id.startsWith('node:')) return true;
-        
-        // Externalize specific modules
-        if (EXTERNALS.includes(id)) return true;
-        
-        // Externalize all node_modules dependencies
         if (id.includes('node_modules')) return true;
-        
-        return false;
+        return isExternal(id);
       },
       output: {
         inlineDynamicImports: true,

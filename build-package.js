@@ -34,7 +34,7 @@ const distPackage = {
   author: mainPackage.author,
   license: mainPackage.license,
   dependencies: mainPackage.dependencies || {},
-  bundleDependencies: mainPackage.bundleDependencies || [],
+  bundleDependencies: Object.keys(mainPackage.dependencies || {}),
   peerDependencies: mainPackage.peerDependencies || {},
   overrides: mainPackage.overrides || {}
 };

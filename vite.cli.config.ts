@@ -1,4 +1,6 @@
+import fs from 'fs';
 import path from 'path';
+import { builtinModules } from 'module';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
 import copy from 'rollup-plugin-copy';
@@ -6,18 +8,28 @@ import copy from 'rollup-plugin-copy';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const EXTERNALS = [
-  'assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console',
-  'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs','fs/promises', 'http',
-  'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks',
-  'process', 'punycode', 'querystring', 'readline', 'repl', 'stream',
-  'string_decoder', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util',
-  'v8', 'vm', 'zlib', 'worker_threads', 'ws', 'fsevents', 'chromium-bidi', 'glob',
-  'vite', 'rollup', 'module-alias', 'playwright', 'playwright-core', 'esbuild', 
-  'fdir', 'picomatch', 'jasmine-core', 'tinyglobby', 'path-scurry', 'lru-cache',
-  'istanbul-lib-instrument', 'istanbul-lib-report', 'istanbul-lib-source-maps',
-  'istanbul-reports', 'istanbul-api', 'istanbul-lib-coverage', 'chokidar', 'deasync'
-];
+const pkg = JSON.parse(
+  fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')
+);
+
+const dependencyExternals = new Set([
+  ...(pkg.bundleDependencies || []),
+  ...Object.keys(pkg.dependencies || {}),
+  ...Object.keys(pkg.peerDependencies || {}),
+  'playwright-core',
+  'fsevents'
+]);
+
+const builtinExternals = new Set(builtinModules);
+
+const isExternal = (id: string) => {
+  if (id.startsWith('node:')) return true;
+  if (builtinExternals.has(id)) return true;
+
+  return Array.from(dependencyExternals).some(
+    (dep) => id === dep || id.startsWith(`${dep}/`)
+  );
+};
 
 export default defineConfig({
   plugins: [
@@ -25,21 +37,6 @@ export default defineConfig({
       targets: [
         { src: 'postinstall.script', dest: 'dist/ts-test-runner/', rename: 'postinstall.mjs' },
         { src: 'assets/favicon.ico', dest: 'dist/ts-test-runner/assets/' },
-        { src: 'node_modules/chokidar/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/deasync/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/eslint-import-plugin/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/istanbul-lib-instrument/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/istanbul-lib-coverage/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/istanbul-lib-report/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/istanbul-lib-source-maps/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/istanbul-reports/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/istanbul-api/**/*', dest: 'dist/ts-test-runner/node_modules/' },
-        { src: 'node_modules/glob/**/*', dest: 'dist/ts-test-runner/node_modules' },
-        { src: 'node_modules/ws/**/*', dest: 'dist/ts-test-runner/node_modules' },
-        { src: 'node_modules/jasmine-core/**/*', dest: 'dist/ts-test-runner/node_modules' },
-        { src: 'node_modules/fdir/**/*', dest: 'dist/ts-test-runner/node_modules' },
-        { src: 'node_modules/picomatch/**/*', dest: 'dist/ts-test-runner/node_modules' },
-        { src: 'node_modules/vite/**/*', dest: 'dist/ts-test-runner/node_modules' },
       ],
       hook: 'writeBundle',
       flatten: false
@@ -78,9 +75,8 @@ const __dirname = ___path.dirname(__filename);
         manualChunks: undefined
       },
       external: (id) => {
-        if (id.startsWith('node:')) return true;
-        if (EXTERNALS.includes(id)) return true;
-        return false;
+        if (id.includes('node_modules')) return true;
+        return isExternal(id);
       }
     }
   }

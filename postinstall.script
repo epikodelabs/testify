@@ -51,6 +51,24 @@ function getPackageVersion(pkgName) {
   return version.replace(/^[^0-9]*/, "");
 }
 
+// -------------------- DEPENDENCIES --------------------
+function installBundleDependencies() {
+  const pkgPath = path.join(__dirname, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+  const bundleDeps = pkg.bundleDependencies?.length
+    ? pkg.bundleDependencies
+    : Object.keys(pkg.dependencies || {});
+
+  if (!bundleDeps.length) {
+    console.log("[postinstall] No bundle dependencies declared, skipping.");
+    return bundleDeps;
+  }
+
+  const specs = bundleDeps.map((name) => `${name}@${getPackageVersion(name)}`);
+  run(`npm install --no-save ${specs.join(" ")}`);
+  return bundleDeps;
+}
+
 // -------------------- ESBUILD --------------------
 function installEsbuild() {
   const version = getPackageVersion("esbuild");
@@ -112,9 +130,6 @@ function installPlaywright() {
     `[postinstall] Installing Playwright browsers (${useBundled ? "bundled" : "global"} mode)`
   );
 
-  // Ensure playwright installed as dependency
-  run("npm install playwright --no-save");
-
   // Install browsers
   if (useBundled) {
     run("PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install");
@@ -125,9 +140,20 @@ function installPlaywright() {
 
 // -------------------- MAIN --------------------
 try {
-  installEsbuild();
-  installRollup();
-  installPlaywright();
+  const bundleDeps = installBundleDependencies();
+
+  if (bundleDeps.includes("esbuild")) {
+    installEsbuild();
+  }
+
+  if (bundleDeps.includes("rollup")) {
+    installRollup();
+  }
+
+  if (bundleDeps.includes("playwright")) {
+    installPlaywright();
+  }
+
   console.log("[postinstall] Completed successfully.");
 } catch (e) {
   console.error("[postinstall] ERROR:", e);
