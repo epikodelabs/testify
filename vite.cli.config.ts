@@ -59,9 +59,6 @@ export default defineConfig({
         entryFileNames: 'bin/ts-test-runner',
         format: 'es',
         banner: `#!/usr/bin/env node
-// @vite-ignore
-const url = new URL("../../../src/node/constants.ts", import.meta.url);
-
 import { createRequire as ___createRequire } from 'module';
 const require = ___createRequire(import.meta.url);
 
