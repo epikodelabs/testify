@@ -19,6 +19,9 @@ export function wrapLine(
   indentation: number = 0,
   mode: WrapMode = 'char'
 ): string[] {
+  // Remove all newline sequences before processing
+  text = text.replace(/\r?\n/g, ' ');
+  
   const indent = "  ".repeat(indentation); // 2 spaces per level
   const indentWidth = indent.length;
 
@@ -52,7 +55,7 @@ function wrapByChar(text: string, width: number, indent: string, indentWidth: nu
     }
 
     for (const ch of [...token]) {
-      if (visible + 1 >= width - indentWidth) {
+      if (visible + 1 > width - indentWidth) {
         // Push full line with indentation applied
         lines.push(indent + buffer);
         buffer = "";
@@ -83,14 +86,14 @@ function wrapByWord(text: string, width: number, indent: string, indentWidth: nu
     if (wordBuffer.length === 0) return;
     
     // If adding this word would exceed width, flush current line first
-    if (visible > 0 && visible + wordVisible >= width - indentWidth) {
+    if (visible > 0 && visible + wordVisible > width - indentWidth) {
       lines.push(indent + buffer.trimEnd());
       buffer = "";
       visible = 0;
     }
     
     // If word itself is longer than available width, split it character-by-character
-    if (wordVisible >= width - indentWidth) {
+    if (wordVisible > width - indentWidth) {
       let tempBuffer = "";
       let tempVisible = 0;
       const wordTokens = wordBuffer.split(/(\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)))/g);
@@ -102,7 +105,7 @@ function wrapByWord(text: string, width: number, indent: string, indentWidth: nu
         }
         
         for (const ch of [...token]) {
-          if (tempVisible + 1 >= width - indentWidth) {
+          if (tempVisible + 1 > width - indentWidth) {
             lines.push(indent + tempBuffer);
             tempBuffer = "";
             tempVisible = 0;
@@ -131,26 +134,20 @@ function wrapByWord(text: string, width: number, indent: string, indentWidth: nu
     }
 
     for (const ch of [...token]) {
-      // Check for whitespace (space, tab, newline)
+      // Check for whitespace (space, tab)
       if (/\s/.test(ch)) {
         flushWord();
         
-        // Handle newlines explicitly
-        if (ch === '\n') {
+        // Add space to buffer if it fits
+        if (visible + 1 <= width - indentWidth) {
+          buffer += ch;
+          visible += 1;
+        } else {
+          // Space would overflow, start new line
+          // The space is discarded as it would be at line end anyway
           lines.push(indent + buffer.trimEnd());
           buffer = "";
           visible = 0;
-        } else {
-          // Add space to buffer if it fits
-          if (visible + 1 < width - indentWidth) {
-            buffer += ch;
-            visible += 1;
-          } else {
-            // Space would overflow, start new line
-            lines.push(indent + buffer.trimEnd());
-            buffer = "";
-            visible = 0;
-          }
         }
       } else {
         // Accumulate non-whitespace characters into word buffer
