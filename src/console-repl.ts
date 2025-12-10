@@ -88,11 +88,11 @@ function wrapByWord(text: string, width: number, indent: string, indentWidth: nu
   const flushWord = () => {
     if (wordBuffer.length === 0) return;
 
-    // 🐛 FIX: Check if adding the word (plus a preceding space if visible > 0) exceeds width.
-    // Add 1 to visible for the space that will precede the word.
-    const currentLineLength = visible > 0 ? visible + 1 : visible;
+    // Check if adding the word (plus a preceding space if visible > 0) exceeds width.
+    // The space is the one added by the main loop when it processed whitespace.
+    const currentLineLength = visible + wordVisible; // visible already includes the preceding space or is 0
 
-    if (currentLineLength + wordVisible > availableWidth) {
+    if (currentLineLength > availableWidth) {
       // If current buffer has content, flush it as a complete line
       if (visible > 0) {
         lines.push(indent + buffer.trimEnd());
@@ -115,7 +115,6 @@ function wrapByWord(text: string, width: number, indent: string, indentWidth: nu
         }
 
         for (const ch of [...token]) {
-          // 🐛 FIX: Ensure we don't exceed the width
           if (tempVisible + 1 > availableWidth) {
             lines.push(indent + tempBuffer);
             tempBuffer = "";
@@ -129,11 +128,8 @@ function wrapByWord(text: string, width: number, indent: string, indentWidth: nu
       buffer = tempBuffer;
       visible = tempVisible;
     } else {
-      // Add a space if the buffer already has content
-      if (visible > 0) {
-        buffer += " ";
-        visible += 1;
-      }
+      // ADDED WORD DIRECTLY: The space is already in 'buffer' if a word was previously
+      // written and a space token was processed.
       buffer += wordBuffer;
       visible += wordVisible;
     }
@@ -155,12 +151,12 @@ function wrapByWord(text: string, width: number, indent: string, indentWidth: nu
         flushWord();
 
         // Add space to buffer *only* if it fits
+        // Since input is normalized, 'ch' will always be a single space here
         if (visible + 1 <= availableWidth) {
-          buffer += " ";
+          buffer += ch;
           visible += 1;
         } else {
           // Space would overflow, start new line.
-          // The space is discarded as it would be at line end anyway.
           lines.push(indent + buffer.trimEnd());
           buffer = "";
           visible = 0;
