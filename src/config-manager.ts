@@ -51,13 +51,14 @@ export class ConfigManager {
       outDir: rel(outAbsolute),                 // "./dist/.vite-jasmine-build"
       browser: 'chrome',
       headless: false,
+      coverage: false,
       port: 8888,
 
       viteBuildOptions: {
         target: 'es2022',
         sourcemap: true,
         minify: false,
-        preserveModules: true,
+        preserveModules: false,
         preserveModulesRoot: rel(configDir)     // "./"
       },
 

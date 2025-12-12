@@ -50,7 +50,12 @@ export default defineConfig({
       },
       output: {
         inlineDynamicImports: true,
-        manualChunks: undefined
+        manualChunks: undefined,
+        // Ensure externals stay as bare specifiers (avoid absolute Windows paths in ESM)
+        paths: (id) => {
+          const match = id.match(/node_modules[\\/](.+?)([\\/]|$)/);
+          return match ? match[1] : undefined;
+        }
       }
     }
   },

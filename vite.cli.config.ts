@@ -69,7 +69,12 @@ const __filename = ___fileURLToPath(import.meta.url);
 const __dirname = ___path.dirname(__filename);
 `,
         inlineDynamicImports: true,
-        manualChunks: undefined
+        manualChunks: undefined,
+        // Ensure externals stay as bare specifiers (avoid absolute Windows paths in ESM)
+        paths: (id) => {
+          const match = id.match(/node_modules[\\/](.+?)([\\/]|$)/);
+          return match ? match[1] : undefined;
+        }
       },
       external: (id) => {
         if (id.includes('node_modules')) return true;
