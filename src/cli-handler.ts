@@ -23,46 +23,7 @@ export class CLIHandler {
       browserName = args[browserIndex + 1];
     }
 
-    // Parse optional imports argument
-    const importsIndex = args.findIndex(a => a === '--imports');
     const preserveOutputsFlag = args.includes('--preserve');
-
-    const parseList = (index: number): string[] | undefined => {
-      if (index === -1 || index + 1 >= args.length) return undefined;
-      const nextArg = args[index + 1];
-      if (nextArg.startsWith('--')) return undefined;
-      return nextArg.split(',').map(p => p.trim()).filter(Boolean);
-    };
-
-    const parseImportEntries = (index: number): ImportEntry[] | undefined => {
-      const raw = parseList(index);
-      if (!raw) return undefined;
-      return raw.map((token, i) => {
-        const parts = token.split('=');
-        if (parts.length > 1) {
-          const name = parts.shift() || '';
-          const importPath = parts.join('=');
-          return { name: name || path.basename(importPath, path.extname(importPath)) || `import_${i}`, path: importPath };
-        }
-        const importPath = token;
-        return { name: path.basename(importPath, path.extname(importPath)) || `import_${i}`, path: importPath };
-      });
-    };
-
-    const normalizeImports = (imports?: ImportEntry[] | string[]): ImportEntry[] | undefined => {
-      if (!imports) return undefined;
-      return (imports as any[]).map((entry, index) => {
-        if (typeof entry === 'string') {
-          return { name: path.basename(entry, path.extname(entry)) || `import_${index}`, path: entry };
-        }
-        if (entry && typeof entry.path === 'string') {
-          return { name: entry.name || path.basename(entry.path, path.extname(entry.path)) || `import_${index}`, path: entry.path };
-        }
-        return null;
-      }).filter(Boolean) as ImportEntry[];
-    };
-
-    const imports = parseImportEntries(importsIndex);
     const preserveOutputsArg = preserveOutputsFlag ? true : undefined;
 
     // Handle init
