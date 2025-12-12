@@ -17,26 +17,6 @@ export class ViteConfigBuilder {
     return this.config.viteBuildOptions?.preserveModulesRoot ?? '.';
   }
 
-  private getImportEntries(): ImportEntry[] {
-    const imports = (this.config.imports ?? []) as any[];
-    const normalized: ImportEntry[] = [];
-
-    imports.forEach((entry, index) => {
-      if (!entry) return;
-      if (typeof entry === 'string') {
-        const fallbackName = path.basename(entry, path.extname(entry)) || `import_${index}`;
-        normalized.push({ name: fallbackName, path: entry });
-        return;
-      }
-      if (typeof entry.path === 'string') {
-        const name = entry.name || path.basename(entry.path, path.extname(entry.path)) || `import_${index}`;
-        normalized.push({ name, path: entry.path });
-      }
-    });
-
-    return normalized;
-  }
-
   /**
    * Normalize directory configuration to array format
    * Supports legacy string values and arrays of strings for backward compatibility.
@@ -175,22 +155,7 @@ export class ViteConfigBuilder {
       inputMap[key] = norm(file);
     });
 
-    // Add import files to input map
-    const importEntries = this.getImportEntries();
-    if (importEntries.length > 0) {
-      importEntries.forEach((entry, index) => {
-        if (fs.existsSync(entry.path)) {
-          const safeName = entry.name.replace(/[\\/\s]/g, '_');
-          const key = `__import_${index}_${safeName}`;
-          inputMap[key] = norm(entry.path);
-        } else {
-          logger.println(`⚠️  Import file not found: ${entry.path}`);
-        }
-      });
-    }
-
-    logger.println(`🎯 Built input map: ${Object.keys(inputMap).length} entries (${allSrcFiles.length} source(s), ${allTestFiles.length} test(s), ${importEntries.length} import(s))`);
-    
+    logger.println(`🎯 Built input map: ${Object.keys(inputMap).length} entries (${allSrcFiles.length} source(s), ${allTestFiles.length} test(s))`);
     return inputMap;
   }
 
@@ -263,21 +228,7 @@ export class ViteConfigBuilder {
       inputMap[key] = norm(file);
     });
 
-    // Add import files to input map
-    const importEntries = this.getImportEntries();
-    if (importEntries.length > 0) {
-      importEntries.forEach((entry, index) => {
-        if (fs.existsSync(entry.path)) {
-          const safeName = entry.name.replace(/[\\/\s]/g, '_');
-          const key = `__import_${index}_${safeName}`;
-          inputMap[key] = norm(entry.path);
-        } else {
-          logger.println(`⚠️  Import file not found: ${entry.path}`);
-        }
-      });
-    }
-
-    logger.println(`🎯 Built input map: ${Object.keys(inputMap).length} entries (${existingSrcFiles.length} source(s), ${existingTestFiles.length} test(s), ${importEntries.length} import(s))`);
+    logger.println(`🎯 Built input map: ${Object.keys(inputMap).length} entries (${existingSrcFiles.length} source(s), ${existingTestFiles.length} test(s))`);
     
     if (filteredSrcFiles.length < srcFiles.length || filteredTestFiles.length < testFiles.length) {
       logger.println(`📋 Filtered: ${srcFiles.length - filteredSrcFiles.length} source(s), ${testFiles.length - filteredTestFiles.length} test(s)`);
@@ -462,17 +413,5 @@ export class ViteConfigBuilder {
       logger.error(`⚠️  tsconfig parsing failed: ${err}`);
     }
     return aliases;
-  }
-
-  /**
-   * Get the list of import files that should be loaded
-   */
-  getImportFiles(): string[] {
-    const entries = this.getImportEntries();
-    if (entries.length === 0) {
-      return [];
-    }
-    
-    return entries.filter(e => fs.existsSync(e.path)).map(e => e.path);
   }
 }
