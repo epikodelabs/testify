@@ -36,8 +36,8 @@ export class ViteJasmineRunner extends EventEmitter {
   private completePromiseResolve: (() => void) | null = null;
   private primarySrcDir: string;
   private primaryTestDir: string;
-  private shouldPreserve(target: 'html' | 'runner'): boolean {
-    return Array.isArray(this.config.preserveOutputs) && this.config.preserveOutputs.includes(target);
+  private shouldPreserve(): boolean {
+    return !!this.config.preserveOutputs;
   }
   
   constructor(config: ViteJasmineConfig) {
@@ -122,7 +122,7 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       const htmlPath = path.join(this.config.outDir, 'index.html');
-      const preserveHtml = this.shouldPreserve('html') && fs.existsSync(htmlPath);
+      const preserveHtml = this.shouldPreserve() && fs.existsSync(htmlPath);
       if (!(this.config.headless && this.config.browser === 'node') && !preserveHtml) {
         if (this.config.watch) {
           await this.htmlGenerator.generateHtmlFileWithHmr();
@@ -134,7 +134,7 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       const runnerPath = path.join(this.config.outDir, 'test-runner.js');
-      const preserveRunner = this.shouldPreserve('runner') && fs.existsSync(runnerPath);
+      const preserveRunner = this.shouldPreserve() && fs.existsSync(runnerPath);
       if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
         this.nodeTestRunner.generateTestRunner();
       } else if (this.config.headless && this.config.browser === 'node' && preserveRunner) {

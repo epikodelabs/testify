@@ -47,6 +47,7 @@ export class ConfigManager {
       srcDirs: [rel(srcAbsolute)],              // ["./src"]
       testDirs: [rel(testAbsolute)],            // ["./tests"]
       exclude: ["**/node_modules/**"],
+      preserveOutputs: false,
       outDir: rel(outAbsolute),                 // "./dist/.vite-jasmine-build"
       browser: 'chrome',
       headless: false,
@@ -61,15 +62,11 @@ export class ConfigManager {
       },
 
       jasmineConfig: {
-        env: { stopSpecOnExpectationFailure: false, random: true, timeout: 120000 },
-        browser: { name: 'chrome', headless: false },
-        reporter: 'console'
+        env: { stopSpecOnExpectationFailure: false, random: true, timeout: 120000 }
       },
 
       htmlOptions: {
-        title: 'Jasmine Tests Runner',
-        includeSourceScripts: true,
-        includeSpecScripts: true
+        title: 'Jasmine Tests Runner'
       }
     };
   }

@@ -25,7 +25,7 @@ export class CLIHandler {
 
     // Parse optional imports argument
     const importsIndex = args.findIndex(a => a === '--imports');
-    const preserveOutputIndex = args.findIndex(a => a === '--preserve-output');
+    const preserveOutputsFlag = args.includes('--preserve');
 
     const parseList = (index: number): string[] | undefined => {
       if (index === -1 || index + 1 >= args.length) return undefined;
@@ -62,26 +62,8 @@ export class CLIHandler {
       }).filter(Boolean) as ImportEntry[];
     };
 
-    const normalizePreserveOutputs = (value?: string[] | Array<'html' | 'runner'>): Array<'html' | 'runner'> | undefined => {
-      if (!value) return undefined;
-      const set = new Set<'html' | 'runner'>();
-      value.forEach((v) => {
-        if (!v) return;
-        const lower = v.toLowerCase();
-        if (lower === 'all') {
-          set.add('html');
-          set.add('runner');
-        } else if (lower === 'html' || lower === 'index') {
-          set.add('html');
-        } else if (lower === 'runner' || lower === 'test-runner') {
-          set.add('runner');
-        }
-      });
-      return Array.from(set);
-    };
-
     const imports = parseImportEntries(importsIndex);
-    const preserveOutputsArg = normalizePreserveOutputs(parseList(preserveOutputIndex));
+    const preserveOutputsArg = preserveOutputsFlag ? true : undefined;
 
     // Handle init
     if (initOnly) {
@@ -125,17 +107,11 @@ export class CLIHandler {
         watch: watch ? true : (config.watch || false),
         srcDirs: normalizeDirConfig(config.srcDirs, './src'),
         testDirs: normalizeDirConfig(config.testDirs, './tests'),
-        imports: imports ?? normalizeImports(config.imports),
-        preserveOutputs: preserveOutputsArg ?? normalizePreserveOutputs(config.preserveOutputs),
+        preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,
       };
 
-      if (config.imports && config.imports.length > 0) {
-        const importSummary = config.imports.map((i) => `${i.name} -> ${i.path}`).join(', ');
-        logger.println(`📦 Additional imports: ${importSummary}`);
-      }
-
-      if (config.preserveOutputs && config.preserveOutputs.length > 0) {
-        logger.println(`🛑 Preserve outputs enabled for: ${config.preserveOutputs.join(', ')}`);
+      if (config.preserveOutputs) {
+        logger.println(`🛑 Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).`);
       }
 
       const runner = createViteJasmineRunner(config);

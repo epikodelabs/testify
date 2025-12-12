@@ -10,14 +10,13 @@ export interface ViteJasmineConfig {
   testDirs: string[];
   exclude: string[];
   outDir: string;
-  imports?: ImportEntry[];
 
   browser?: string;
   port?: number;
   coverage?: boolean;
   headless?: boolean;
   watch?: boolean;
-  preserveOutputs?: Array<'html' | 'runner'>;
+  preserveOutputs: boolean;
   
   tsconfig?: string;
   viteConfig?: InlineConfig;

@@ -287,19 +287,15 @@ export class ViteConfigBuilder {
   }
 
   /** Full library build, preserves modules for proper relative imports */
-  async createViteConfig(srcFiles?: string[], testFiles?: string[]): Promise<InlineConfig> {
+  createViteConfig(srcFiles?: string[], testFiles?: string[]): InlineConfig {
     // If file lists provided, use legacy method
     if (srcFiles && testFiles) {
       this.inputMap = this.buildInputMap(srcFiles, testFiles);
-    } else {
-      // Otherwise, discover files from directories
-      this.inputMap = await this.buildInputMapFromDirs();
     }
 
     return {
       ...this.config.viteConfig,
       root: process.cwd(),
-      configFile: false,
       build: {
         outDir: this.config.outDir,
         lib: false,
@@ -310,6 +306,15 @@ export class ViteConfigBuilder {
             entryFileNames: '[name].js',
             chunkFileNames: '[name]-[hash].js',
             preserveModules: true,
+            // Only bundle node_modules into vendor chunk
+            manualChunks: (id: string) => {
+              // Only create vendor chunk for node_modules, not for imports
+              if (id.includes('node_modules')) {
+                return 'vendor';
+              }
+              // Don't create separate chunks for import files
+              return undefined;
+            }
           },
           preserveEntrySignatures: 'strict',
         },
@@ -326,15 +331,13 @@ export class ViteConfigBuilder {
   }
 
   /** Incremental or partial rebuild, flattens output file names */
-  async createViteConfigForFiles(srcFiles?: string[], testFiles?: string[], viteCache?: any): Promise<InlineConfig> {
-    let newInput: Record<string, string>;
+  createViteConfigForFiles(srcFiles?: string[], testFiles?: string[], viteCache?: any): InlineConfig {
+    // Initialize newInput as empty object
+    let newInput: Record<string, string> = {};
     
     // If file lists provided, use legacy method
     if (srcFiles && testFiles) {
       newInput = this.buildInputMap(srcFiles, testFiles);
-    } else {
-      // Otherwise, discover files from directories
-      newInput = await this.buildInputMapFromDirs();
     }
     
     // Update inputMap by removing deleted files and adding new ones
@@ -387,7 +390,16 @@ export class ViteConfigBuilder {
             entryFileNames: ({ name }) => `${name.replace(/[\/\\]/g, '_')}.js`,
             chunkFileNames: '[name].js',
             preserveModules: true,
-            preserveModulesRoot: "."
+            preserveModulesRoot: ".",
+            // Only bundle node_modules into vendor chunk for incremental builds
+            manualChunks: (id: string) => {
+              // Only create vendor chunk for node_modules, not for imports
+              if (id.includes('node_modules')) {
+                return 'vendor';
+              }
+              // Don't create separate chunks for import files
+              return undefined;
+            }
           },
           cache: viteCache,
         },

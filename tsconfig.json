@@ -9,7 +9,8 @@
     "moduleResolution": "bundler",
     "sourceMap": false,
     "types": ["node", "jasmine"],
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true
   },
   "include": ["**/*.ts"],
   "exclude": ["lib"]
