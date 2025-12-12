@@ -1,6 +1,7 @@
 import { ConfigManager } from "./config-manager";
+import * as path from "path";
 import { logger } from "./console-repl";
-import { ViteJasmineConfig } from "./vite-jasmine-config";
+import { ImportEntry, ViteJasmineConfig } from "./vite-jasmine-config";
 import { ViteJasmineRunner } from "./vite-jasmine-runner";
 
 export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineRunner {
@@ -22,6 +23,66 @@ export class CLIHandler {
       browserName = args[browserIndex + 1];
     }
 
+    // Parse optional imports argument
+    const importsIndex = args.findIndex(a => a === '--imports');
+    const preserveOutputIndex = args.findIndex(a => a === '--preserve-output');
+
+    const parseList = (index: number): string[] | undefined => {
+      if (index === -1 || index + 1 >= args.length) return undefined;
+      const nextArg = args[index + 1];
+      if (nextArg.startsWith('--')) return undefined;
+      return nextArg.split(',').map(p => p.trim()).filter(Boolean);
+    };
+
+    const parseImportEntries = (index: number): ImportEntry[] | undefined => {
+      const raw = parseList(index);
+      if (!raw) return undefined;
+      return raw.map((token, i) => {
+        const parts = token.split('=');
+        if (parts.length > 1) {
+          const name = parts.shift() || '';
+          const importPath = parts.join('=');
+          return { name: name || path.basename(importPath, path.extname(importPath)) || `import_${i}`, path: importPath };
+        }
+        const importPath = token;
+        return { name: path.basename(importPath, path.extname(importPath)) || `import_${i}`, path: importPath };
+      });
+    };
+
+    const normalizeImports = (imports?: ImportEntry[] | string[]): ImportEntry[] | undefined => {
+      if (!imports) return undefined;
+      return (imports as any[]).map((entry, index) => {
+        if (typeof entry === 'string') {
+          return { name: path.basename(entry, path.extname(entry)) || `import_${index}`, path: entry };
+        }
+        if (entry && typeof entry.path === 'string') {
+          return { name: entry.name || path.basename(entry.path, path.extname(entry.path)) || `import_${index}`, path: entry.path };
+        }
+        return null;
+      }).filter(Boolean) as ImportEntry[];
+    };
+
+    const normalizePreserveOutputs = (value?: string[] | Array<'html' | 'runner'>): Array<'html' | 'runner'> | undefined => {
+      if (!value) return undefined;
+      const set = new Set<'html' | 'runner'>();
+      value.forEach((v) => {
+        if (!v) return;
+        const lower = v.toLowerCase();
+        if (lower === 'all') {
+          set.add('html');
+          set.add('runner');
+        } else if (lower === 'html' || lower === 'index') {
+          set.add('html');
+        } else if (lower === 'runner' || lower === 'test-runner') {
+          set.add('runner');
+        }
+      });
+      return Array.from(set);
+    };
+
+    const imports = parseImportEntries(importsIndex);
+    const preserveOutputsArg = normalizePreserveOutputs(parseList(preserveOutputIndex));
+
     // Handle init
     if (initOnly) {
       ConfigManager.initViteJasmineConfig();
@@ -41,14 +102,41 @@ export class CLIHandler {
     }
 
     try {
-      let config = ConfigManager.loadViteJasmineBrowserConfig('ts-test-runner.json');
+      type RunnerConfig = ViteJasmineConfig;
+      const normalizeDirConfig = (
+        dirConfig: string | string[] | undefined,
+        fallback: string
+      ): string[] => {
+        if (!dirConfig) return [fallback];
+        if (Array.isArray(dirConfig)) {
+          return dirConfig.length > 0 ? dirConfig : [fallback];
+        }
+        return [dirConfig];
+      };
+
+      let config = ConfigManager.loadViteJasmineBrowserConfig('ts-test-runner.json') as RunnerConfig;
+      
+      // Merge CLI args with config file, CLI takes precedence
       config = {
         ...config,
         headless: headless ? true : (config.headless || false),
         coverage: coverage ? true : (config.coverage || false),
         browser: hasBrowserArg ? browserName : (config.browser || 'chrome'),
-        watch: watch ? true : (config.watch || false)
+        watch: watch ? true : (config.watch || false),
+        srcDirs: normalizeDirConfig(config.srcDirs, './src'),
+        testDirs: normalizeDirConfig(config.testDirs, './tests'),
+        imports: imports ?? normalizeImports(config.imports),
+        preserveOutputs: preserveOutputsArg ?? normalizePreserveOutputs(config.preserveOutputs),
       };
+
+      if (config.imports && config.imports.length > 0) {
+        const importSummary = config.imports.map((i) => `${i.name} -> ${i.path}`).join(', ');
+        logger.println(`📦 Additional imports: ${importSummary}`);
+      }
+
+      if (config.preserveOutputs && config.preserveOutputs.length > 0) {
+        logger.println(`🛑 Preserve outputs enabled for: ${config.preserveOutputs.join(', ')}`);
+      }
 
       const runner = createViteJasmineRunner(config);
 

@@ -34,19 +34,33 @@ export class ViteJasmineRunner extends EventEmitter {
   private hmrManager: HmrManager | null = null;
   private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
   private completePromiseResolve: (() => void) | null = null;
+  private primarySrcDir: string;
+  private primaryTestDir: string;
+  private shouldPreserve(target: 'html' | 'runner'): boolean {
+    return Array.isArray(this.config.preserveOutputs) && this.config.preserveOutputs.includes(target);
+  }
   
   constructor(config: ViteJasmineConfig) {
     super();
 
     const cwd = norm(process.cwd());
+    const normalizedSrcDirs = (Array.isArray(config.srcDirs) ? config.srcDirs : [config.srcDirs ?? './src'])
+      .filter(Boolean)
+      .map(norm);
+    const normalizedTestDirs = (Array.isArray(config.testDirs) ? config.testDirs : [config.testDirs ?? './tests'])
+      .filter(Boolean)
+      .map(norm);
+    this.primarySrcDir = normalizedSrcDirs[0] ?? cwd;
+    this.primaryTestDir = normalizedTestDirs[0] ?? cwd;
+    
     this.config = {
       ...config,
       browser: config.browser ?? 'node',
       port: config.port ?? 8888,
       headless: config.headless ?? true,
       watch: config.watch ?? false,
-      srcDir: norm(config.srcDir) ?? cwd,
-      testDir: norm(config.testDir) ?? cwd,
+      srcDirs: normalizedSrcDirs,
+      testDirs: normalizedTestDirs,
       outDir: norm(config.outDir) ?? norm(path.join(cwd, 'dist/.vite-jasmine-build/')),
     };
 
@@ -76,13 +90,13 @@ export class ViteJasmineRunner extends EventEmitter {
       const input: Record<string, string> = {};
 
       srcFiles.forEach((file) => {
-        const relPath = path.relative(this.config.srcDir, file).replace(/\.(ts|js|mjs)$/, '');
+        const relPath = path.relative(this.primarySrcDir, file).replace(/\.(ts|js|mjs)$/, '');
         const key = relPath.replace(/[\/\\]/g, '_');
         input[key] = file;
       });
 
       specFiles.forEach((file) => {
-        const relPath = path.relative(this.config.testDir, file).replace(/\.spec\.(ts|js|mjs)$/, '');
+        const relPath = path.relative(this.primaryTestDir, file).replace(/\.spec\.(ts|js|mjs)$/, '');
         const key = `${relPath.replace(/[\/\\]/g, '_')}.spec`;
         input[key] = file;
       });
@@ -107,16 +121,24 @@ export class ViteJasmineRunner extends EventEmitter {
         fs.writeFileSync(outFile, instrumentedCode, 'utf-8');
       }
 
-      if (!(this.config.headless && this.config.browser === 'node')) {
+      const htmlPath = path.join(this.config.outDir, 'index.html');
+      const preserveHtml = this.shouldPreserve('html') && fs.existsSync(htmlPath);
+      if (!(this.config.headless && this.config.browser === 'node') && !preserveHtml) {
         if (this.config.watch) {
           await this.htmlGenerator.generateHtmlFileWithHmr();
         } else {
           await this.htmlGenerator.generateHtmlFile();
         }
+      } else if (preserveHtml) {
+        logger.println('ℹ️  Preserving existing index.html (no regeneration).');
       }
 
-      if (this.config.headless && this.config.browser === 'node') {
+      const runnerPath = path.join(this.config.outDir, 'test-runner.js');
+      const preserveRunner = this.shouldPreserve('runner') && fs.existsSync(runnerPath);
+      if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
         this.nodeTestRunner.generateTestRunner();
+      } else if (this.config.headless && this.config.browser === 'node' && preserveRunner) {
+        logger.println('ℹ️  Preserving existing test-runner.js (no regeneration).');
       }
     } catch (error) {
       logger.error(`❌ Preprocessing failed: ${error}`);

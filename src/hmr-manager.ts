@@ -83,6 +83,9 @@ export class HmrManager extends EventEmitter {
     '**/index.*' // root-level index files
   ];
 
+  private primarySrcDir: string;
+  private primaryTestDir: string;
+
   constructor(
     private fileDiscovery: FileDiscoveryService,
     private config: ViteJasmineConfig,
@@ -91,6 +94,10 @@ export class HmrManager extends EventEmitter {
     options?: HmrManagerOptions
   ) {
     super();
+    const srcDir = Array.isArray(config.srcDirs) && config.srcDirs.length > 0 ? config.srcDirs[0] : './src';
+    const testDir = Array.isArray(config.testDirs) && config.testDirs.length > 0 ? config.testDirs[0] : './tests';
+    this.primarySrcDir = norm(srcDir);
+    this.primaryTestDir = norm(testDir);
     this.pathAliases = (this.viteConfigBuilder as any).createPathAliases();
     if (options?.fileFilter) this.fileFilter = { ...this.fileFilter, ...options.fileFilter };
     if (options?.rebuildMode) this.rebuildMode = options.rebuildMode;
@@ -139,7 +146,7 @@ export class HmrManager extends EventEmitter {
    */
   private isTestFile(filePath: string): boolean {
     const normalized = norm(filePath);
-    return normalized.startsWith(this.config.testDir);
+    return normalized.startsWith(this.primaryTestDir);
   }
 
   /**
@@ -147,7 +154,7 @@ export class HmrManager extends EventEmitter {
    */
   private isSourceFile(filePath: string): boolean {
     const normalized = norm(filePath);
-    return normalized.startsWith(this.config.srcDir);
+    return normalized.startsWith(this.primarySrcDir);
   }
 
   /**
@@ -390,7 +397,9 @@ export class HmrManager extends EventEmitter {
   }
 
   async start(): Promise<void> {
-    this.watcher = watch([this.config.srcDir, this.config.testDir], {
+    const watchDirs = [...(this.config.srcDirs || []), ...(this.config.testDirs || [])].filter(Boolean);
+    const watchTargets = watchDirs.length > 0 ? watchDirs : [this.primarySrcDir, this.primaryTestDir];
+    this.watcher = watch(watchTargets, {
       ignored: /(^|[\/\\])\../,
       persistent: true,
       ignoreInitial: true
@@ -429,7 +438,7 @@ export class HmrManager extends EventEmitter {
         
         const fileType = this.isTestFile(filePath) ? 'test' : 
                         this.isSourceFile(filePath) ? 'source' : 'unknown';
-        const output = norm(this.isTestFile(filePath) ? path.relative(this.config.testDir, filePath) : path.relative(this.config.srcDir, filePath)); 
+        const output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
         logger.println(`➕ ${capitalize(fileType)} file added: ${output}`);
         
         this.queueRebuild(filePath, 'add');
@@ -469,7 +478,7 @@ export class HmrManager extends EventEmitter {
 
       const fileType = this.isTestFile(filePath) ? 'test' : 
                       this.isSourceFile(filePath) ? 'source' : 'unknown';
-      let output = norm(this.isTestFile(filePath) ? path.relative(this.config.testDir, filePath) : path.relative(this.config.srcDir, filePath)); 
+      let output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
       logger.println(`➖ ${capitalize(fileType)} file removed: ${output}`);
 
       // Determine update strategy
@@ -503,8 +512,8 @@ export class HmrManager extends EventEmitter {
     // ✅ FIX: Use operation queue
     this.operationQueue = this.operationQueue.then(async () => {
       dirPath = norm(dirPath);
-      const dirType = dirPath.startsWith(this.config.testDir) ? 'test': 'source';
-      const output = norm(dirPath.startsWith(this.config.testDir) ? path.relative(this.config.testDir, dirPath) : path.relative(this.config.srcDir, dirPath));
+      const dirType = dirPath.startsWith(this.primaryTestDir) ? 'test': 'source';
+      const output = norm(dirPath.startsWith(this.primaryTestDir) ? path.relative(this.primaryTestDir, dirPath) : path.relative(this.primarySrcDir, dirPath));
       logger.println(`📁 ${capitalize(dirType)} directory added: ${output}`);
       
       const defaultExtensions = this.fileFilter.extensions!.join(',');
@@ -548,8 +557,8 @@ export class HmrManager extends EventEmitter {
     this.operationQueue = this.operationQueue.then(async () => {
       dirPath = norm(dirPath);
 
-      const dirType = dirPath.startsWith(this.config.testDir) ? 'test': 'source';
-      const output = norm(dirPath.startsWith(this.config.testDir) ? path.relative(this.config.testDir, dirPath) : path.relative(this.config.srcDir, dirPath));
+      const dirType = dirPath.startsWith(this.primaryTestDir) ? 'test': 'source';
+      const output = norm(dirPath.startsWith(this.primaryTestDir) ? path.relative(this.primaryTestDir, dirPath) : path.relative(this.primarySrcDir, dirPath));
       logger.println(`📁 ${capitalize(dirType)} directory removed: ${output}`);
       
       const removedFiles = this.allFiles.filter(f => f.startsWith(dirPath + path.sep) || f === dirPath);

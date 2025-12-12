@@ -44,8 +44,9 @@ export class ConfigManager {
     const outAbsolute = path.join(configDir, "dist/.vite-jasmine-build/");
 
     return {
-      srcDir: rel(srcAbsolute),                 // "./src"
-      testDir: rel(testAbsolute),               // "./tests"
+      srcDirs: [rel(srcAbsolute)],              // ["./src"]
+      testDirs: [rel(testAbsolute)],            // ["./tests"]
+      exclude: ["**/node_modules/**"],
       outDir: rel(outAbsolute),                 // "./dist/.vite-jasmine-build"
       browser: 'chrome',
       headless: false,

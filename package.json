@@ -88,6 +88,7 @@
     "glob": "11.0.3",
     "globals": "16.3.0",
     "jasmine-core": "5.10.0",
+    "minimatch": "^10.1.1",
     "module-alias": "2.2.3",
     "prettier": "3.6.2",
     "rimraf": "6.0.1",

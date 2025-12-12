@@ -8,6 +8,18 @@ import { logger } from "./console-repl";
 export class FileDiscoveryService {
   constructor(private config: ViteJasmineConfig) {}
 
+  private getSrcDirConfigs(): string[] {
+    const srcDirs = Array.isArray(this.config.srcDirs) ? this.config.srcDirs : [this.config.srcDirs];
+    if (srcDirs.filter(Boolean).length === 0) return ['./src'];
+    return srcDirs.filter(Boolean) as string[];
+  }
+
+  private getTestDirConfigs(): string[] {
+    const testDirs = Array.isArray(this.config.testDirs) ? this.config.testDirs : [this.config.testDirs];
+    if (testDirs.filter(Boolean).length === 0) return ['./tests'];
+    return testDirs.filter(Boolean) as string[];
+  }
+
   async scanDir(dir: string, pattern: string, exclude: string[] = []): Promise<string[]> {
     const cleanPattern = pattern.startsWith('/') || pattern.startsWith('**') 
       ? pattern 
@@ -42,11 +54,29 @@ export class FileDiscoveryService {
   }
 
   async discoverSources(): Promise<{ srcFiles: string[]; specFiles: string[] }> {
-    // Normalize path for cross-platform compatibility
     try {
-      const srcFiles = await this.scanDir(norm(this.config.srcDir), '/**/*.{ts,js,mjs}', ["**/node_modules/**", "**/*.spec.*"]);
-      const specFiles = await this.scanDir(norm(this.config.testDir), '/**/*.spec.{ts,js,mjs}', ["**/node_modules/**"]);
-      return { srcFiles, specFiles };
+      const defaultSrcExclude = ["**/node_modules/**", "**/*.spec.*"];
+      const defaultTestExclude = ["**/node_modules/**"];
+      const sharedExclude = this.config.exclude ?? [];
+
+      const srcDirs = this.getSrcDirConfigs();
+      const testDirs = this.getTestDirConfigs();
+
+      const srcFiles: string[] = [];
+      for (const inc of srcDirs) {
+        const exclude = [...defaultSrcExclude, ...sharedExclude];
+        const files = await this.scanDir(norm(inc), '/**/*.{ts,js,mjs}', exclude);
+        srcFiles.push(...files);
+      }
+
+      const specFiles: string[] = [];
+      for (const inc of testDirs) {
+        const exclude = [...defaultTestExclude, ...sharedExclude];
+        const files = await this.scanDir(norm(inc), '/**/*.spec.{ts,js,mjs}', exclude);
+        specFiles.push(...files);
+      }
+
+      return { srcFiles: [...new Set(srcFiles)], specFiles: [...new Set(specFiles)] };
     } catch (error) {
       logger.error(`❌ Error discovering files: ${error}`);
       throw new Error("Failed to discover source and test files");
@@ -54,9 +84,23 @@ export class FileDiscoveryService {
   }
 
   getOutputName(filePath: string): string {
-    const relative = filePath.startsWith(norm(this.config.testDir))
-      ? path.relative(this.config.testDir, filePath)
-      : path.relative(norm(this.config.srcDir), filePath);
+    const srcDirs = this.getSrcDirConfigs();
+    const testDirs = this.getTestDirConfigs();
+    const normalizedPath = norm(filePath);
+
+    const matchDir = (dirs: string[]): string | null => {
+      for (const inc of dirs) {
+        const base = norm(inc);
+        if (normalizedPath.startsWith(base)) return base;
+      }
+      return null;
+    };
+
+    const baseTest = matchDir(testDirs);
+    const baseSrc = matchDir(srcDirs) ?? norm(srcDirs[0]);
+    const relative = baseTest
+      ? path.relative(baseTest, normalizedPath)
+      : path.relative(baseSrc, normalizedPath);
 
     const ext = path.extname(filePath);
     return norm(relative).replace(ext, '.js').replace(/[\/\\]/g, '_');
