@@ -1,6 +1,9 @@
 import util from 'util';
 import { logger, wrapLine } from './console-repl';
 
+// ─── Constants ──────────────────────────────────────────────
+export const MAX_WIDTH = 63;
+
 export interface EnvironmentInfo {
   node: string;
   platform: string;
@@ -62,7 +65,7 @@ export class ConsoleReporter {
   private currentSpec: TestSpec | null;
   private suiteById: Map<string, TestSuite> = new Map();
   private specById: Map<string, TestSpec> = new Map();
-  private readonly lineWidth: number = 63;
+  private readonly lineWidth: number = MAX_WIDTH;
   private interruptHandlersRegistered: boolean = false;
   private interrupted = false;
   private orderedSuites: any[] | null = null;
@@ -573,7 +576,8 @@ export class ConsoleReporter {
     const suiteNameLength = displayName.replace(/\.\.\.$/, '').length + (displayName.includes('...') ? 3 : 0);
     const dotsLength = this.countVisualDots(displayDots);
 
-    let padding = ' '.repeat(Math.max(0, availableWidth - suiteNameLength - dotsLength - 1));
+    // Make the line 1 character longer by not subtracting the -1
+    let padding = ' '.repeat(Math.max(0, availableWidth - suiteNameLength - dotsLength));
 
     this.print(prefix + this.colored('brightBlue', displayName) + padding + displayDots);
 
@@ -617,10 +621,14 @@ export class ConsoleReporter {
     return dotsString.replace(/\x1b\[[0-9;]*m/g, '').length;
   }
 
+  private separator(): string {
+    return '  ' + '─'.repeat(this.lineWidth - 2);
+  }
+
   private printFailures() {
     this.print('\n');
     this.printSectionHeader('FAILURES', 'red');
-    this.print(this.colored('red', '  ────────────────────────────────────────────────────────────\n'));
+    this.print(this.colored('red', this.separator() + '\n'));
 
     if (!this.failedSpecs.length) return;
 
@@ -654,8 +662,7 @@ export class ConsoleReporter {
   private printPendingSpecs() {
     this.print('\n');
     this.printSectionHeader('PENDING', 'yellow');
-    this.print(this.colored('yellow', '  ────────────────────────────────────────────────────────────\n'));
-
+    this.print(this.colored('yellow', this.separator() + '\n'));
 
     this.pendingSpecs.forEach((spec, idx) => {
       // Print numbered spec header with wrapping
@@ -681,7 +688,7 @@ export class ConsoleReporter {
 
   private printTestTree() {
     this.print(this.colored('bold', '  Demanding Attention\n'));
-    this.print(this.colored('gray', '  ────────────────────────────────────────────────────────────\n'));
+    this.print(this.colored('gray', this.separator() + '\n'));
 
     // Calculate suite statuses for ALL suites (including those that never started)
     for (const [id, suite] of this.suiteById) {
@@ -869,7 +876,7 @@ export class ConsoleReporter {
   }
 
   private printDivider() {
-    this.print(this.colored('gray', '  ────────────────────────────────────────────────────────────\n'));
+    this.print(this.colored('gray', this.separator() + '\n'));
   }
 
   private printSummary(totalTime: number) {
@@ -915,7 +922,7 @@ export class ConsoleReporter {
     // Build right-aligned info (total and duration)
     const rightInfo = `total: ${totalSpecs}  time: ${duration}`;
     const title = '  Test Summary';
-    const spacing = Math.max(1, lineWidth - title.length - rightInfo.length - 1);
+    const spacing = Math.max(1, lineWidth - title.length - rightInfo.length);
 
     // Header
     const headerLine =
@@ -925,8 +932,7 @@ export class ConsoleReporter {
 
     this.print('\n');
     this.print(headerLine + '\n');
-    this.print(this.colored('gray', '  ────────────────────────────────────────────────────────────\n'));
-
+    this.print(this.colored('gray', this.separator() + '\n'));
 
     // Inline summary line
     const parts: string[] = [];
@@ -982,7 +988,7 @@ export class ConsoleReporter {
 
     this.print('\n');
     this.print(this.colored('bold', '  Environment\n'));
-    this.print(this.colored('gray', '  ────────────────────────────────────────────────────────────\n'));
+    this.print(this.colored('gray', this.separator() + '\n'));
 
     this.print(this.colored('cyan', '  Node.js:   ') + this.colored('white', `${this.envInfo.node}\n`));
     this.print(this.colored('cyan', '  Platform:  ') + this.colored('white', `${this.envInfo.platform}\n`));
@@ -1032,7 +1038,7 @@ export class ConsoleReporter {
 
     this.print('\n');
     this.print(this.colored('bold', '  Browser/Navigator\n'));
-    this.print(this.colored('gray', '  ────────────────────────────────────────────────────────────\n'));
+    this.print(this.colored('gray', this.separator() + '\n'));
 
     const shortUA = this.truncateString(userAgent.userAgent, 45);
     this.print(this.colored('cyan', '  User Agent: ') + this.colored('white', `${shortUA}\n`));
@@ -1092,12 +1098,7 @@ export class ConsoleReporter {
 
     this.print("\n");
     this.print(headerLine + "\n");
-    this.print(
-      this.colored(
-        "gray",
-        "  ────────────────────────────────────────────────────────────\n"
-      )
-    );
+    this.print(this.colored("gray", this.separator() + "\n"));
 
     // Then list the other flags in single line
     const parts = [];
