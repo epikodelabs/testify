@@ -111,6 +111,7 @@ npx ts-test-runner --headless --browser node
 - Limited to Node.js APIs only
 - Perfect for testing pure TypeScript logic
 - No DOM or browser-specific APIs
+- Use `--silent` or `--quiet` (or set `suppressConsoleLogs` in `ts-test-runner.json`) when you want to hide spec-level `console.log/info/debug/trace` output in Node runs (the same setting is exposed via `TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS=1`).
 
 ### Coverage Mode
 
@@ -170,6 +171,7 @@ After running `init`, you'll have a `ts-test-runner.json`:
   "port": 8888,                    // Development server port
   "browser": "chrome",             // Default browser for headless
   "headless": false,               // Default to browser mode
+  "suppressConsoleLogs": false,    // Hide console.log/info/debug/trace in Node mode
   "htmlOptions": {
     "title": "My Project Tests"    // Browser page title
   }
@@ -251,7 +253,7 @@ describe('Universal Code', () => {
 | `npx ts-test-runner --headless` | Run in headless Chrome |
 | `npx ts-test-runner --headless --browser firefox` | Run in headless Firefox |
 | `npx ts-test-runner --headless --browser webkit` | Run in headless Safari |
-| `npx ts-test-runner --headless --browser node` | Run in Node.js (fastest) |
+| `npx ts-test-runner --headless --browser node` | Run in Node.js (fastest); add `--silent`/`--quiet` or `suppressConsoleLogs` to hide `console.*` noise. |
 | `npx ts-test-runner init` | Create configuration file |
 | `npx ts-test-runner --config custom.json` | Use custom config file |
 

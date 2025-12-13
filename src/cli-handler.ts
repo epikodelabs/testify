@@ -16,6 +16,7 @@ export class CLIHandler {
     const headless = args.includes('--headless');
     const coverage = args.includes('--coverage');
     const browserIndex = args.findIndex(a => a === '--browser');
+    const silentLogs = args.includes('--silent') || args.includes('--quiet');
     const hasBrowserArg = browserIndex !== -1;
     let browserName: string = 'chrome';
     
@@ -66,6 +67,7 @@ export class CLIHandler {
         coverage: coverage ? true : (config.coverage || false),
         browser: hasBrowserArg ? browserName : (config.browser || 'chrome'),
         watch: watch ? true : (config.watch || false),
+        suppressConsoleLogs: silentLogs ? true : config.suppressConsoleLogs,
         srcDirs: normalizeDirConfig(config.srcDirs, './src'),
         testDirs: normalizeDirConfig(config.testDirs, './tests'),
         preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,

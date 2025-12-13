@@ -75,7 +75,8 @@ export class ViteJasmineRunner extends EventEmitter {
       reporter: this.consoleReporter,
       cwd: this.config.outDir,
       file: 'test-runner.js',
-      coverage: this.config.coverage
+      coverage: this.config.coverage,
+      suppressConsoleLogs: this.config.suppressConsoleLogs
     });
   }
 
@@ -90,17 +91,12 @@ export class ViteJasmineRunner extends EventEmitter {
       const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
       const input: Record<string, string> = {};
 
-      srcFiles.forEach((file) => {
-        const relPath = path.relative(this.primarySrcDir, file).replace(/\.(ts|js|mjs)$/, '');
-        const key = relPath.replace(/[\/\\]/g, '_');
-        input[key] = file;
-      });
+      const entryKeyFromOutput = (file: string) =>
+        this.fileDiscovery.getOutputName(file).replace(/\.js$/, '');
 
-      specFiles.forEach((file) => {
-        const relPath = path.relative(this.primaryTestDir, file).replace(/\.spec\.(ts|js|mjs)$/, '');
-        const key = `${relPath.replace(/[\/\\]/g, '_')}.spec`;
-        input[key] = file;
-      });
+      for (const file of entryFiles) {
+        input[entryKeyFromOutput(file)] = file;
+      }
 
       if (!fs.existsSync(this.config.outDir)) {
         fs.mkdirSync(this.config.outDir, { recursive: true });
@@ -262,11 +258,6 @@ export class ViteJasmineRunner extends EventEmitter {
 
     try {
       await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
-      if (this.config.coverage) {
-        const coverage = (globalThis as any).__coverage__;
-        const cov = new CoverageReportGenerator();
-        cov.generate(coverage);
-      }
       await this.cleanup();
       process.exit(testSuccess ? 0 : 1);
     } catch (error) {

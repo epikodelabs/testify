@@ -68,7 +68,8 @@ export class ConfigManager {
 
       htmlOptions: {
         title: 'Jasmine Tests Runner'
-      }
+      },
+      suppressConsoleLogs: false
     };
   }
 

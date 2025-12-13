@@ -14,6 +14,7 @@ export interface TestRunnerOptions {
   reporter?: jasmine.CustomReporter;
   file?: string; // test runner entry file (generated)
   coverage?: boolean;
+  suppressConsoleLogs?: boolean;
 }
 
 export class NodeTestRunner {
@@ -136,6 +137,19 @@ export function getOrderedSuites(seed, random) {
 // Main runTests entrypoint
 // ---------------------------
 export async function runTests(reporter) {
+  const envValue = process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;
+  const shouldSilenceConsole =
+    envValue === '1' || envValue?.toLowerCase() === 'true';
+
+  if (shouldSilenceConsole) {
+    const silentMethods = ['log', 'info', 'debug', 'trace', 'warn', 'table'];
+    for (const method of silentMethods) {
+      if (typeof console[method] === 'function') {
+        console[method] = () => {};
+      }
+    }
+  }
+
   return new Promise((resolve) => {
     // Global error handlers
     process.on('unhandledRejection', (error) => {
@@ -267,6 +281,12 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     }
     process.env.NODE_ENV = 'test';
 
+    const shouldSilenceConsole = !!this.options.suppressConsoleLogs;
+    const previousSuppressConsole = process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;
+    if (shouldSilenceConsole) {
+      process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS = '1';
+    }
+
     try {
       const childFile = path.resolve(
         this.options.cwd || process.cwd(),
@@ -294,6 +314,13 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       (this.reporter as any).jasmineFailed?.(`Test execution error: ${error.message}`);
       throw error;
     } finally {
+      if (shouldSilenceConsole) {
+        if (previousSuppressConsole === undefined) {
+          delete process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;
+        } else {
+          process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS = previousSuppressConsole;
+        }
+      }
       this.isRunning = false;
     }
   }

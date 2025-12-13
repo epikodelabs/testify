@@ -16,6 +16,7 @@ export interface ViteJasmineConfig {
   coverage?: boolean;
   headless?: boolean;
   watch?: boolean;
+  suppressConsoleLogs?: boolean;
   preserveOutputs: boolean;
   
   tsconfig?: string;

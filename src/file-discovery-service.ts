@@ -86,23 +86,52 @@ export class FileDiscoveryService {
   getOutputName(filePath: string): string {
     const srcDirs = this.getSrcDirConfigs();
     const testDirs = this.getTestDirConfigs();
-    const normalizedPath = norm(filePath);
+    const normalizedPath = norm(path.resolve(filePath));
+
+    const resolveDirs = (dirs: string[]) =>
+      dirs.map((dir) => norm(path.resolve(dir)));
+
+    const normalizedSrcDirs = resolveDirs(srcDirs);
+    const normalizedTestDirs = resolveDirs(testDirs);
+    if (!normalizedSrcDirs.length) {
+      normalizedSrcDirs.push(norm(path.resolve('./src')));
+    }
+    if (!normalizedTestDirs.length) {
+      normalizedTestDirs.push(norm(path.resolve('./tests')));
+    }
 
     const matchDir = (dirs: string[]): string | null => {
-      for (const inc of dirs) {
-        const base = norm(inc);
-        if (normalizedPath.startsWith(base)) return base;
+      for (const candidate of dirs) {
+        if (
+          normalizedPath === candidate ||
+          normalizedPath.startsWith(`${candidate}/`)
+        ) {
+          return candidate;
+        }
       }
       return null;
     };
 
-    const baseTest = matchDir(testDirs);
-    const baseSrc = matchDir(srcDirs) ?? norm(srcDirs[0]);
-    const relative = baseTest
-      ? path.relative(baseTest, normalizedPath)
-      : path.relative(baseSrc, normalizedPath);
+    const baseTest = matchDir(normalizedTestDirs);
+    const baseSrc = matchDir(normalizedSrcDirs) ?? normalizedSrcDirs[0];
+    const base = baseTest ?? baseSrc;
 
-    const ext = path.extname(filePath);
-    return norm(relative).replace(ext, '.js').replace(/[\/\\]/g, '_');
+    const relativePath = path.relative(base, normalizedPath);
+    const relativeNormalized = norm(relativePath);
+    const relativeWithoutExt = relativeNormalized.replace(/\.(ts|js|mjs)$/, '');
+
+    const sanitizeSegment = (segment: string) => {
+      if (segment === '..') return 'up';
+      if (segment === '.') return 'dot';
+      return segment;
+    };
+
+    const segments = relativeWithoutExt.split('/').filter(Boolean);
+    const sanitized =
+      segments.length > 0
+        ? segments.map(sanitizeSegment).join('_')
+        : sanitizeSegment(path.basename(relativeWithoutExt) || 'index');
+
+    return `${sanitized}.js`;
   }
 }
