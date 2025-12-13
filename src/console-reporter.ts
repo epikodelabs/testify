@@ -927,11 +927,6 @@ export class ConsoleReporter {
     this.print(headerLine + '\n');
     this.print(this.colored('gray', '  ────────────────────────────────────────────────────────────\n'));
 
-    // Show execution progress
-    if (totalSpecs > 0) {
-      const executedCount = executed + incomplete;
-      this.print(this.colored('gray', `  Executed: ${executedCount}/${totalSpecs}\n`));
-    }
 
     // Inline summary line
     const parts: string[] = [];
