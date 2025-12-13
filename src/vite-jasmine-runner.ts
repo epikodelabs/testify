@@ -86,7 +86,8 @@ export class ViteJasmineRunner extends EventEmitter {
         throw new Error('No test files found');
       }
 
-      const viteConfig = this.viteConfigBuilder.createViteConfig(srcFiles, specFiles);
+      const entryFiles = [...srcFiles, ...specFiles];
+      const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
       const input: Record<string, string> = {};
 
       srcFiles.forEach((file) => {

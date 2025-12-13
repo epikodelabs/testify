@@ -190,8 +190,9 @@ export class ViteConfigBuilder {
   /* FULL BUILD                                         */
   /* -------------------------------------------------- */
 
-  createViteConfig(): InlineConfig {
-    const files = this.discoverFilesSync();
+
+  createViteConfig(entryFiles?: string[]): InlineConfig {
+    const files = entryFiles && entryFiles.length > 0 ? entryFiles : this.discoverFilesSync();
     this.inputMap = this.buildInputMap(files);
 
     if (!Object.keys(this.inputMap).length) {
