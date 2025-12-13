@@ -873,9 +873,12 @@ export class ConsoleReporter {
   }
 
   private printSummary(totalTime: number) {
+    const totalSpecs = this.countSpecs(this.rootSuite);
+    const recordedSpecs = this.specCount;
+    const skipped = Math.max(0, recordedSpecs - this.executableSpecCount);
     const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
     const total = this.executableSpecCount;
-    const notRun = this.countSpecs(this.rootSuite) - this.executableSpecCount;
+    const notRun = Math.max(0, totalSpecs - recordedSpecs);
     const duration = `${totalTime.toFixed(3)}s`;
 
     const lineWidth = this.lineWidth;
@@ -895,6 +898,10 @@ export class ConsoleReporter {
     this.print(headerLine + '\n');
     this.print(this.colored('gray', '  ────────────────────────────────────────────────────────────\n'));
 
+    if (totalSpecs > 0) {
+      this.print(this.colored('gray', `  Specs recorded: ${recordedSpecs}/${totalSpecs}\n`));
+    }
+
     // Inline summary line
     const parts: string[] = [];
 
@@ -906,6 +913,9 @@ export class ConsoleReporter {
 
     if (this.pendingSpecs.length > 0)
       parts.push(this.colored('brightYellow', `○ Pending: ${this.pendingSpecs.length}`));
+
+    if (skipped > 0)
+      parts.push(this.colored('gray', `⏭ Skipped: ${skipped}`));
 
     if (notRun > 0)
       parts.push(this.colored('gray', `⊘ Not Run: ${notRun}`));
