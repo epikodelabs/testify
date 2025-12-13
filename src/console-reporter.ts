@@ -1090,7 +1090,7 @@ export class ConsoleReporter {
 
     // Header line with right alignment
     const title = "  Test Configuration";
-    const spacing = Math.max(1, lineWidth - title.length - rightInfo.length - 1);
+    const spacing = Math.max(1, lineWidth - title.length - rightInfo.length);
     const headerLine =
       this.colored("bold", title) +
       " ".repeat(spacing) +
