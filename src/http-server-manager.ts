@@ -95,8 +95,6 @@ export class HttpServerManager {
     const start = Date.now();
     const { hostname, port } = new URL(url);
 
-    logger.println(`⏳ Waiting for server to be ready at ${url}...`);
-
     while (Date.now() - start < timeout) {
       try {
         await new Promise<void>((resolve, reject) => {

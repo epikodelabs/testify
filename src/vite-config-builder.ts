@@ -199,7 +199,6 @@ export class ViteConfigBuilder {
       logger.error('❌ No files found to build');
     }
 
-    logger.println(`📦 Full build: ${Object.keys(this.inputMap).length} files`);
     return this.mergeUserConfig(this.baseConfig(this.inputMap, false));
   }
 

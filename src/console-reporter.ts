@@ -78,13 +78,13 @@ export class ConsoleReporter {
     this.failedSpecs = [];
     this.pendingSpecs = [];
     this.startTime = 0;
-    
+
     this.envInfo = null;
     this.rootSuite = this.createRootSuite();
     this.currentSuite = null;
     this.suiteStack = [this.rootSuite];
     this.currentSpec = null;
-    this.ansi = { 
+    this.ansi = {
       green: '\x1B[32m',
       brightGreen: '\x1B[92m',
       red: '\x1B[31m',
@@ -220,7 +220,7 @@ export class ConsoleReporter {
     // Try to find suite ID from spec's fullName or other hints
     // This is a fallback - ideally suiteId should be in the config
     if (specConfig.suiteId) return specConfig.suiteId;
-    
+
     // If we have a fullName, try to match it with suite fullNames
     if (specConfig.fullName) {
       for (const [id, suite] of this.suiteById) {
@@ -229,13 +229,13 @@ export class ConsoleReporter {
         }
       }
     }
-    
+
     return this.rootSuite.id;
   }
 
   private findParentSuiteId(suiteConfig: any): string {
     if (suiteConfig.parentSuiteId) return suiteConfig.parentSuiteId;
-    
+
     // Try to deduce from fullName
     if (suiteConfig.fullName) {
       const parts = suiteConfig.fullName.split(' ');
@@ -248,7 +248,7 @@ export class ConsoleReporter {
         }
       }
     }
-    
+
     return this.rootSuite.id;
   }
 
@@ -257,7 +257,7 @@ export class ConsoleReporter {
     this.orderedSuites = suites ?? null;
     this.orderedSpecs = specs ?? null;
 
-    if(message) {
+    if (message) {
       const userAgent = { ...message };
       delete userAgent?.timestamp;
       delete userAgent?.type;
@@ -281,10 +281,10 @@ export class ConsoleReporter {
     this.currentSuite = null;
     this.currentSpec = null;
     this.interrupted = false;
-    
+
     this.buildSuiteTree(config);
     this.setupInterruptHandler();
-    
+
     this.print('\n');
     this.printBox('Test Runner Started', 'cyan');
     this.printEnvironmentInfo();
@@ -333,7 +333,7 @@ export class ConsoleReporter {
 
   specStarted(config: any) {
     if (this.interrupted) return;
-    
+
     const spec = this.specById.get(config.id) ?? {
       id: config.id,
       description: config.description,
@@ -360,7 +360,7 @@ export class ConsoleReporter {
 
   specDone(result: any) {
     if (this.interrupted) return;
-    
+
     this.specCount++;
 
     const spec = this.specById.get(result.id);
@@ -400,7 +400,7 @@ export class ConsoleReporter {
 
   suiteDone(result: any) {
     if (this.interrupted) return;
-    
+
     const suite = this.suiteStack[this.suiteStack.length - 1];
     if (!suite) return;
 
@@ -418,10 +418,10 @@ export class ConsoleReporter {
   }
 
   jasmineDone(result: any) {
-    const totalTime = result?.totalTime 
-      ? result.totalTime / 1000 
+    const totalTime = result?.totalTime
+      ? result.totalTime / 1000
       : (Date.now() - this.startTime) / 1000;
-    
+
     this.clearCurrentLine();
 
     if (this.failedSpecs.length > 0) {
@@ -433,10 +433,10 @@ export class ConsoleReporter {
     }
 
     this.printSummary(totalTime);
-    
+
     this.print('\n');
     this.printFinalStatus(result?.overallStatus);
-    
+
     this.print('\n\n');
   }
 
@@ -480,29 +480,29 @@ export class ConsoleReporter {
     this.clearCurrentLine();  // Clear that line
     this.clearCurrentLine();  // Clear current line
     this.print('\n');
-    
+
     // Mark all unexecuted specs as skipped
     this.markUnexecutedAsSkipped();
-    
+
     // Calculate elapsed time
     const totalTime = (Date.now() - this.startTime) / 1000;
-    
+
     // Print failures if any
     if (this.failedSpecs.length > 0) {
       this.printFailures();
     }
-    
+
     // Print test tree
     this.printTestTree();
-    
+
     // Print summary
     this.print('\n');
     this.printSummary(totalTime);
-    
+
     this.print('\n');
     this.printBox('✕ TESTS INTERRUPTED', 'yellow');
     this.print('\n');
-    
+
     process.exit(1);
   }
 
@@ -548,7 +548,7 @@ export class ConsoleReporter {
 
   private updateStatusLine() {
     if (!this.currentSuite || !this.currentSpec) return;
-    
+
     const suiteName = this.currentSuite.description;
     const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
     const statusText = `\n  ${this.colored('dim', '→')} ${suiteName} ${this.colored('gray', `[${passed}/${this.executableSpecCount} passed]`)}`;
@@ -601,15 +601,15 @@ export class ConsoleReporter {
 
   private compressDots(suite: TestSuite, sideCount: number): string {
     const dots = suite.specs.map(spec => this.getSpecSymbol(spec));
-    
+
     if (dots.length <= sideCount * 2) {
       return dots.join('');
     }
-    
+
     const start = dots.slice(0, sideCount).join('');
     const end = dots.slice(-sideCount).join('');
     const ellipsis = this.colored('gray', '...');
-    
+
     return start + ellipsis + end;
   }
 
@@ -656,7 +656,7 @@ export class ConsoleReporter {
     this.printSectionHeader('PENDING', 'yellow');
     this.print(this.colored('yellow', '  ────────────────────────────────────────────────────────────\n'));
 
-    
+
     this.pendingSpecs.forEach((spec, idx) => {
       // Print numbered spec header with wrapping
       const header = wrapLine(`${this.colored('brightYellow', '○')} ${this.colored('white', spec.fullName)}`, this.lineWidth, 1, 'word');
@@ -690,11 +690,11 @@ export class ConsoleReporter {
 
     // Print all top-level suites (those whose parent is rootSuite)
     let hasProblems = false;
-    
+
     for (const [id, suite] of this.suiteById) {
       // Skip root suite itself
       if (suite.id === this.rootSuite.id) continue;
-      
+
       // Only print top-level suites (direct children of root)
       // Their children will be printed recursively
       if (!suite.parent || suite.parent.id === this.rootSuite.id) {
@@ -743,7 +743,7 @@ export class ConsoleReporter {
     } else {
       suite.status = 'passed';
     }
-    
+
     return suite.status;
   }
 
@@ -791,24 +791,24 @@ export class ConsoleReporter {
             if (incomplete > 0) statusParts.push(`${incomplete} incomplete`);
             if (skipped > 0) statusParts.push(`${skipped} skipped`);
             break;
-          
+
           case "incomplete":
             if (incomplete > 0) statusParts.push(`${incomplete} incomplete`);
             if (passed > 0) statusParts.push(`${passed} passed`);
             if (failed > 0) statusParts.push(`${failed} failed`);
             if (pending > 0) statusParts.push(`${pending} pending`);
             break;
-          
+
           case "pending":
             if (pending > 0) statusParts.push(`${pending} pending`);
             if (passed > 0) statusParts.push(`${passed} passed`);
             if (failed > 0) statusParts.push(`${failed} failed`);
             break;
-          
+
           case "skipped":
             statusParts.push(`${specCount} skipped`);
             break;
-          
+
           case "passed":
             statusParts.push(`${specCount} passed`);
             break;
@@ -873,18 +873,47 @@ export class ConsoleReporter {
   }
 
   private printSummary(totalTime: number) {
-    const totalSpecs = this.countSpecs(this.rootSuite);
-    const recordedSpecs = this.specCount;
-    const skipped = Math.max(0, recordedSpecs - this.executableSpecCount);
-    const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
-    const total = this.executableSpecCount;
-    const notRun = Math.max(0, totalSpecs - recordedSpecs);
+    // Count specs by their actual status
+    let passed = 0;
+    let failed = 0;
+    let pending = 0;
+    let skipped = 0;
+    let incomplete = 0;
+    let notRun = 0;
+
+    // Iterate through all specs to get accurate counts
+    for (const [id, spec] of this.specById) {
+      switch (spec.status) {
+        case 'passed':
+          passed++;
+          break;
+        case 'failed':
+          failed++;
+          break;
+        case 'pending':
+          pending++;
+          break;
+        case 'skipped':
+          skipped++;
+          break;
+        case 'incomplete':
+          incomplete++;
+          break;
+        default:
+          // Specs that never got a status are "not run"
+          notRun++;
+          break;
+      }
+    }
+
+    const totalSpecs = this.specById.size;
+    const executed = passed + failed + pending;
     const duration = `${totalTime.toFixed(3)}s`;
 
     const lineWidth = this.lineWidth;
 
     // Build right-aligned info (total and duration)
-    const rightInfo = `total: ${total}  time: ${duration}`;
+    const rightInfo = `total: ${totalSpecs}  time: ${duration}`;
     const title = '  Test Summary';
     const spacing = Math.max(1, lineWidth - title.length - rightInfo.length - 1);
 
@@ -898,8 +927,10 @@ export class ConsoleReporter {
     this.print(headerLine + '\n');
     this.print(this.colored('gray', '  ────────────────────────────────────────────────────────────\n'));
 
+    // Show execution progress
     if (totalSpecs > 0) {
-      this.print(this.colored('gray', `  Specs recorded: ${recordedSpecs}/${totalSpecs}\n`));
+      const executedCount = executed + incomplete;
+      this.print(this.colored('gray', `  Executed: ${executedCount}/${totalSpecs}\n`));
     }
 
     // Inline summary line
@@ -908,14 +939,17 @@ export class ConsoleReporter {
     if (passed > 0)
       parts.push(this.colored('brightGreen', `✓ Passed: ${passed}`));
 
-    if (this.failureCount > 0)
-      parts.push(this.colored('brightRed', `✕ Failed: ${this.failureCount}`));
+    if (failed > 0)
+      parts.push(this.colored('brightRed', `✕ Failed: ${failed}`));
 
-    if (this.pendingSpecs.length > 0)
-      parts.push(this.colored('brightYellow', `○ Pending: ${this.pendingSpecs.length}`));
+    if (pending > 0)
+      parts.push(this.colored('brightYellow', `○ Pending: ${pending}`));
+
+    if (incomplete > 0)
+      parts.push(this.colored('cyan', `◷ Incomplete: ${incomplete}`));
 
     if (skipped > 0)
-      parts.push(this.colored('gray', `⏭ Skipped: ${skipped}`));
+      parts.push(this.colored('gray', `⤼ Skipped: ${skipped}`));
 
     if (notRun > 0)
       parts.push(this.colored('gray', `⊘ Not Run: ${notRun}`));
