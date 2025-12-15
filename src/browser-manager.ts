@@ -4,6 +4,8 @@ import type * as PlayWright from 'playwright';
 
 export class BrowserManager {
   private playwright: typeof PlayWright | null = null;
+  private currentBrowser: PlayWright.Browser | null = null;
+  private currentPage: PlayWright.Page | null = null;
 
   constructor(private config: ViteJasmineConfig) {}
 
@@ -140,6 +142,8 @@ export class BrowserManager {
       });
       
       const page = await browser.newPage();
+      this.currentBrowser = browser;
+      this.currentPage = page;
       await page.goto(url);
       
       // Handle browser close event
@@ -147,6 +151,7 @@ export class BrowserManager {
         if (onBrowserClose) {
           await onBrowserClose();
         }
+        this.clearBrowserState();
         process.exit(0);
       });
       
@@ -158,6 +163,29 @@ export class BrowserManager {
         logger.error(`❌ Failed to open browser: ${error.message}`);
         logger.println(`💡 Please open browser manually: ${url}`);
       }
+    }
+  }
+
+  private clearBrowserState(): void {
+    this.currentPage = null;
+    this.currentBrowser = null;
+  }
+
+  async closeBrowser(): Promise<void> {
+    if (!this.currentBrowser && !this.currentPage) {
+      return;
+    }
+
+    try {
+      if (this.currentBrowser) {
+        await this.currentBrowser.close();
+      } else if (this.currentPage && !this.currentPage.isClosed()) {
+        await this.currentPage.close();
+      }
+    } catch (error: any) {
+      logger.error(`❌ Failed to close browser: ${error?.message ?? error}`);
+    } finally {
+      this.clearBrowserState();
     }
   }
 }

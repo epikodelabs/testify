@@ -209,7 +209,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
     logger.println('📡 WebSocket server ready for real-time test reporting');
     logger.println('🔥 HMR enabled - file changes will hot reload automatically');
-    logger.println('⏹️  Press Ctrl+C to stop the server');
+    logger.println('⌨️ Press Ctrl+C to stop the server');
 
     const onBrowserClose = async () => {
       logger.println('🔄 Browser window closed');
@@ -283,14 +283,25 @@ export class ViteJasmineRunner extends EventEmitter {
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     logger.println('📡 WebSocket server ready for real-time test reporting');
-    logger.println('⏹️  Press Ctrl+C to stop the server');
+    logger.println('⌨️ Press Ctrl+C to stop the server');
 
-    this.webSocketManager.on('testsCompleted', ({ coverage }) => {
-      testsCompleted = true;
+    const finishHeadedRun = async (coverage: Record<string, any> | undefined): Promise<void> => {
       if (this.config.coverage) {
         const cov = new CoverageReportGenerator();
-        cov.generate(coverage);
+        await cov.generate(coverage!);
       }
+      await this.browserManager.closeBrowser();
+    };
+
+    this.webSocketManager.on('testsCompleted', ({ coverage }) => {
+      if (testsCompleted) {
+        return;
+      }
+      testsCompleted = true;
+      finishHeadedRun(coverage).catch((error) => {
+        logger.error(`❌ Failed to finish headed browser run: ${error}`);
+        process.exit(1);
+      });
     });
 
     const onBrowserClose = async () => {
