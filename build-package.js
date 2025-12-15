@@ -15,6 +15,7 @@ const distPackage = {
   description: mainPackage.description,
   type: "module",
   bin: {
+    "ts-cli": "bin/ts-cli",
     "ts-test-runner": "bin/ts-test-runner"
   },
   files: [
