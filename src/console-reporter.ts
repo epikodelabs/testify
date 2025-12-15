@@ -107,6 +107,10 @@ export class ConsoleReporter {
     };
   }
 
+  getFailureCount(): number {
+    return this.failureCount;
+  }
+
   // Detect if terminal supports colors
   private detectColorSupport(): boolean {
     if (process.env.NO_COLOR) return false;
