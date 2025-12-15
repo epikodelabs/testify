@@ -209,7 +209,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
     logger.println('📡 WebSocket server ready for real-time test reporting');
     logger.println('🔥 HMR enabled - file changes will hot reload automatically');
-    logger.println('⌨️ Press Ctrl+C to stop the server');
+    logger.println('⌨️  Press Ctrl+C to stop the server');
 
     const onBrowserClose = async () => {
       logger.println('🔄 Browser window closed');
@@ -283,7 +283,7 @@ export class ViteJasmineRunner extends EventEmitter {
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     logger.println('📡 WebSocket server ready for real-time test reporting');
-    logger.println('⌨️ Press Ctrl+C to stop the server');
+    logger.println('⌨️  Press Ctrl+C to stop the server');
 
     const finishHeadedRun = async (coverage: Record<string, any> | undefined): Promise<void> => {
       if (this.config.coverage) {
