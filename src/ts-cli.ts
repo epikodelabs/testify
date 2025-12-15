@@ -20,12 +20,38 @@ async function registerTsNode(specFile: string): Promise<void> {
   try {
     process.env.TS_NODE_PROJECT ??= path.resolve(process.cwd(), 'tsconfig.json');
     process.env.TS_NODE_TRANSPILE_ONLY ??= 'true';
-    const tsNodePath = PACKAGE_REQUIRE.resolve('ts-node/esm/transpile-only/register');
-    await import(pathToFileURL(tsNodePath).href);
+    const tsNodePath = PACKAGE_REQUIRE.resolve('ts-node');
+    const tsNodeModule = await import(pathToFileURL(tsNodePath).href);
+    const registerFn =
+      (tsNodeModule as any).register ??
+      (tsNodeModule as any).default ??
+      (tsNodeModule.default && tsNodeModule.default.register) ??
+      null;
+
+    if (typeof registerFn === 'function') {
+      registerFn({
+        transpileOnly: true,
+        esm: true
+      });
+    } else {
+      throw new Error('ts-node register function not found');
+    }
   } catch (error: any) {
     logger.error(`❌ ts-node is required to run ts-cli with TypeScript specs.`);
     logger.error(`💡 install it with: npm install ts-node`);
-    throw error;
+    try {
+      const tsNodeRegister = PACKAGE_REQUIRE.resolve('ts-node/register');
+      const registerModule = await import(pathToFileURL(tsNodeRegister).href);
+      if (typeof registerModule.register === 'function') {
+        registerModule.register({ transpileOnly: true });
+      } else if (typeof registerModule.default === 'function') {
+        registerModule.default({ transpileOnly: true });
+      } else {
+        throw error;
+      }
+    } catch {
+      throw error;
+    }
   }
 }
 
