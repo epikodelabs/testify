@@ -3,6 +3,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 import { logger } from './console-repl';
+import JSONCleaner from './json-cleaner';
 
 const packageRoot = path.resolve(__dirname, '..');
 const packageRequire = createRequire(path.join(packageRoot, 'package.json'));
@@ -13,13 +14,20 @@ interface RunnerArgs {
   stopOnFail: boolean;
   seed?: number;
   help: boolean;
+  initLaunchConfig: boolean;
 }
+
+const vscodeLaunchConfigName = 'Debug current spec (ts-jasmine-cli)';
 
 function printHelp(): void {
   logger.println('ts-jasmine-cli: run a single Jasmine spec in Node');
   logger.println('');
   logger.println('Usage:');
-  logger.println('  ts-jasmine-cli --spec <path-to-spec>');
+  logger.println('  npx ts-jasmine-cli --spec <path-to-spec>');
+  logger.println('  npx ts-jasmine-cli init');
+  logger.println('');
+  logger.println('Commands:');
+  logger.println('  init                Create/update .vscode/launch.json (VS Code debug)');
   logger.println('');
   logger.println('Options:');
   logger.println('  --spec <path>        Path to a single spec file');
@@ -32,6 +40,9 @@ function printHelp(): void {
   logger.println(
     '  node --loader @actioncrew/ts-test-runner/esm-loader.mjs ./node_modules/@actioncrew/ts-test-runner/bin/ts-jasmine-cli --spec <file>',
   );
+  logger.println('');
+  logger.println('VS Code debug config name:');
+  logger.println(`  ${vscodeLaunchConfigName}`);
 }
 
 function parseArgs(argv: string[]): RunnerArgs {
@@ -43,6 +54,8 @@ function parseArgs(argv: string[]): RunnerArgs {
   };
 
   const help = args.includes('--help') || args.includes('-h');
+  const command = args[0];
+  const initLaunchConfig = args.includes('--init-launch-config') || command === 'init';
   const specRaw = get('--spec');
 
   if (help) {
@@ -52,6 +65,25 @@ function parseArgs(argv: string[]): RunnerArgs {
       stopOnFail: args.includes('--stop-on-fail'),
       seed: get('--seed') ? Number(get('--seed')) : undefined,
       help: true,
+      initLaunchConfig,
+    };
+  }
+
+  if (command && !command.startsWith('-') && command !== 'init') {
+    logger.error(`ERROR: Unknown command: ${command}`);
+    logger.println('');
+    printHelp();
+    process.exit(1);
+  }
+
+  if (initLaunchConfig) {
+    return {
+      spec: specRaw ? path.resolve(process.cwd(), specRaw) : '',
+      random: args.includes('--random'),
+      stopOnFail: args.includes('--stop-on-fail'),
+      seed: get('--seed') ? Number(get('--seed')) : undefined,
+      help: false,
+      initLaunchConfig: true,
     };
   }
 
@@ -75,6 +107,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     stopOnFail: args.includes('--stop-on-fail'),
     seed: seedRaw ? Number(seedRaw) : undefined,
     help: false,
+    initLaunchConfig: false,
   };
 }
 
@@ -98,6 +131,78 @@ function findNearestTsconfig(startDir: string): string | null {
     if (parent === current) return null;
     current = parent;
   }
+}
+
+function getDefaultVsCodeLaunchConfiguration(): Record<string, unknown> {
+  return {
+    type: 'node',
+    request: 'launch',
+    name: vscodeLaunchConfigName,
+    runtimeExecutable: 'node',
+    runtimeArgs: ['--loader', '@actioncrew/ts-test-runner/esm-loader.mjs', '--enable-source-maps'],
+    program: '${workspaceFolder}/node_modules/@actioncrew/ts-test-runner/bin/ts-jasmine-cli',
+    args: ['--spec', '${file}'],
+    cwd: '${workspaceFolder}',
+    console: 'integratedTerminal',
+    skipFiles: ['<node_internals>/**'],
+  };
+}
+
+function initVsCodeLaunchConfig(): void {
+  const vscodeDir = path.resolve(process.cwd(), '.vscode');
+  const launchJsonPath = path.join(vscodeDir, 'launch.json');
+  const config = getDefaultVsCodeLaunchConfiguration();
+
+  fs.mkdirSync(vscodeDir, { recursive: true });
+
+  if (!fs.existsSync(launchJsonPath)) {
+    const launchJson = { version: '0.2.0', configurations: [config] };
+    fs.writeFileSync(launchJsonPath, `${JSON.stringify(launchJson, null, 2)}\n`);
+    logger.println(`Created VS Code launch config at ${launchJsonPath}`);
+    logger.println(`Added configuration: ${vscodeLaunchConfigName}`);
+    return;
+  }
+
+  const raw = fs.readFileSync(launchJsonPath, 'utf-8');
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    try {
+      parsed = new JSONCleaner().parse(raw);
+    } catch (error) {
+      logger.error(`ERROR: Failed to parse existing VS Code launch config: ${launchJsonPath}`);
+      logger.error(String(error));
+      logger.println('');
+      logger.println('Add this configuration manually:');
+      logger.println(`${JSON.stringify(getDefaultVsCodeLaunchConfiguration(), null, 2)}`);
+      process.exit(1);
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object') parsed = {};
+  if (!Array.isArray(parsed.configurations)) parsed.configurations = [];
+
+  const programSuffix = '/bin/ts-jasmine-cli';
+  const alreadyHasConfig = parsed.configurations.some((c: any) => {
+    if (!c || typeof c !== 'object') return false;
+    if (c.name === vscodeLaunchConfigName) return true;
+
+    const program = typeof c.program === 'string' ? c.program.replace(/\\/g, '/') : '';
+    const args = Array.isArray(c.args) ? c.args : [];
+    return program.endsWith(programSuffix) && args.includes('--spec');
+  });
+
+  if (alreadyHasConfig) {
+    logger.println(`VS Code launch config already contains: ${vscodeLaunchConfigName}`);
+    return;
+  }
+
+  parsed.version ??= '0.2.0';
+  parsed.configurations.push(config);
+  fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
+  logger.println(`Updated VS Code launch config at ${launchJsonPath}`);
+  logger.println(`Added configuration: ${vscodeLaunchConfigName}`);
 }
 
 async function respawnWithLoader(args: RunnerArgs): Promise<never> {
@@ -154,6 +259,11 @@ async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
     printHelp();
+    process.exit(0);
+  }
+
+  if (args.initLaunchConfig) {
+    initVsCodeLaunchConfig();
     process.exit(0);
   }
 
