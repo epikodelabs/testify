@@ -15,12 +15,13 @@ const distPackage = {
   description: mainPackage.description,
   type: "module",
   bin: {
-    "ts-cli": "bin/ts-cli",
+    "ts-jasmine-cli": "bin/ts-jasmine-cli",
     "ts-test-runner": "bin/ts-test-runner"
   },
   files: [
     'README.md',
     'LICENSE',
+    'esm-loader.mjs',
     'package.json',
     'postinstall.mjs',
     'assets/',

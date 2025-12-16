@@ -3,13 +3,15 @@
   "version": "1.0.16",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
-    "ts-cli": "bin/ts-cli",
+    "ts-jasmine-cli": "bin/ts-jasmine-cli",
+    "ts-cli": "bin/ts-jasmine-cli",
     "ts-test-runner": "bin/ts-test-runner"
   },
   "type": "module",
   "files": [
     "LICENSE",
     "README.md",
+    "esm-loader.mjs",
     "package.json",
     "postinstall.mjs",
     "assets/",
@@ -24,7 +26,7 @@
     "build:runner": "vite build --config vite.runner.config.ts",
     "build": "npm run clean && npm run build:cli && npm run build:lib && npm run build:runner",
     "start": "node --import tsx ./src/index.ts",
-    "copyfiles": "copyfiles README.md LICENSE ./dist/ts-test-runner"
+    "copyfiles": "copyfiles README.md LICENSE esm-loader.mjs ./dist/ts-test-runner"
   },
   "repository": {
     "type": "git",
@@ -65,6 +67,7 @@
     "playwright": "1.55.0",
     "rollup": "4.52.3",
     "ts-node": "^10.9.1",
+    "tsconfig-paths": "^4.2.0",
     "tinyglobby": "0.2.15",
     "vite": "7.1.7",
     "word-wrap": "1.2.5",

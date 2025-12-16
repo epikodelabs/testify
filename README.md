@@ -257,6 +257,37 @@ describe('Universal Code', () => {
 | `npx ts-test-runner init` | Create configuration file |
 | `npx ts-test-runner --config custom.json` | Use custom config file |
 
+## ts-jasmine-cli (Single Spec Runner)
+
+`ts-jasmine-cli` runs exactly one spec file in Node using `jasmine-core`.
+
+```bash
+# JavaScript specs
+npx ts-jasmine-cli --spec ./src/tests/example.spec.js
+
+# TypeScript specs + tsconfig path aliases (recommended)
+node --loader @actioncrew/ts-test-runner/esm-loader.mjs ./node_modules/@actioncrew/ts-test-runner/bin/ts-jasmine-cli --spec ./src/tests/example.spec.ts
+```
+
+### VS Code Debug (Windows-friendly)
+
+Do not point Node at `node_modules/.bin/ts-jasmine-cli` (that file is a shell shim). Point it at the real JS entry:
+
+```json
+{
+  "type": "node",
+  "request": "launch",
+  "name": "Debug current spec (ts-jasmine-cli)",
+  "runtimeExecutable": "node",
+  "runtimeArgs": ["--loader", "@actioncrew/ts-test-runner/esm-loader.mjs", "--enable-source-maps"],
+  "program": "${workspaceFolder}/node_modules/@actioncrew/ts-test-runner/bin/ts-jasmine-cli",
+  "args": ["--spec", "${file}"],
+  "cwd": "${workspaceFolder}",
+  "console": "integratedTerminal",
+  "skipFiles": ["<node_internals>/**"]
+}
+```
+
 ## CI/CD Integration
 
 ### GitHub Actions Example

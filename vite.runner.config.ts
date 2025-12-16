@@ -38,9 +38,9 @@ export default defineConfig({
     minify: false,
     chunkSizeWarningLimit: 5000,
     rollupOptions: {
-      input: path.resolve(__dirname, './src/ts-cli.ts'),
+      input: path.resolve(__dirname, './src/ts-jasmine-cli.ts'),
       output: {
-        entryFileNames: 'bin/ts-cli',
+        entryFileNames: 'bin/ts-jasmine-cli',
         format: 'es',
         banner: `#!/usr/bin/env node
 import { createRequire as ___createRequire } from 'module';
