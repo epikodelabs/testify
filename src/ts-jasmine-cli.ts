@@ -214,7 +214,7 @@ function initVsCodeLaunchConfig(): void {
   }
 
   parsed.version ??= '0.2.0';
-  parsed.configurations.push(config);
+  parsed.configurations.unshift(config);
   fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
   logger.println(`Updated VS Code launch config at ${launchJsonPath}`);
   logger.println(`Added configuration: ${vscodeLaunchConfigName}`);
