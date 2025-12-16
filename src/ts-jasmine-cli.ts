@@ -19,6 +19,16 @@ interface RunnerArgs {
 
 const vscodeLaunchConfigName = 'Debug current spec (ts-jasmine-cli)';
 
+function isRunningInVsCode(): boolean {
+  const env = process.env;
+  return (
+    env.TERM_PROGRAM === 'vscode' ||
+    typeof env.VSCODE_PID === 'string' ||
+    typeof env.VSCODE_CWD === 'string' ||
+    typeof env.VSCODE_INSPECTOR_OPTIONS === 'string'
+  );
+}
+
 function printHelp(): void {
   logger.println('ts-jasmine-cli: run a single Jasmine spec in Node');
   logger.println('');
@@ -27,7 +37,7 @@ function printHelp(): void {
   logger.println('  npx ts-jasmine-cli init');
   logger.println('');
   logger.println('Commands:');
-  logger.println('  init                Create/update .vscode/launch.json (VS Code debug)');
+  logger.println('  init                Create/update .vscode/launch.json (VS Code debug; requires VS Code)');
   logger.println('');
   logger.println('Options:');
   logger.println('  --spec <path>        Path to a single spec file');
@@ -263,6 +273,12 @@ async function main() {
   }
 
   if (args.initLaunchConfig) {
+    if (!isRunningInVsCode()) {
+      logger.error('ERROR: `npx ts-jasmine-cli init` is only supported when run from VS Code.');
+      logger.println('');
+      logger.println('Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).');
+      process.exit(1);
+    }
     initVsCodeLaunchConfig();
     process.exit(0);
   }
