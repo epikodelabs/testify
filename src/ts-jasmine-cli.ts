@@ -19,8 +19,13 @@ interface RunnerArgs {
 
 const vscodeLaunchConfigName = 'Debug current spec (ts-jasmine-cli)';
 
+function getRuntimeEnv(): NodeJS.ProcessEnv {
+  const runtimeProcess = (globalThis as any).process as NodeJS.Process | undefined;
+  return runtimeProcess?.env ?? {};
+}
+
 function isRunningInVsCode(): boolean {
-  const env = process.env;
+  const env = getRuntimeEnv();
   return (
     env.TERM_PROGRAM === 'vscode' ||
     typeof env.VSCODE_PID === 'string' ||
@@ -127,7 +132,7 @@ function isTypeScriptLike(filePath: string): boolean {
 }
 
 function hasEsmLoader(): boolean {
-  const fromNodeOptions = (process.env.NODE_OPTIONS ?? '').split(/\s+/g).filter(Boolean);
+  const fromNodeOptions = (getRuntimeEnv().NODE_OPTIONS ?? '').split(/\s+/g).filter(Boolean);
   const argv = [...process.execArgv, ...fromNodeOptions];
   return argv.includes('--loader') || argv.some((a) => a.startsWith('--loader='));
 }
@@ -219,7 +224,7 @@ async function respawnWithLoader(args: RunnerArgs): Promise<never> {
   const { spawn } = await import('child_process');
 
   const tsconfig = findNearestTsconfig(path.dirname(args.spec));
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: NodeJS.ProcessEnv = { ...getRuntimeEnv() };
   if (tsconfig) env.TS_NODE_PROJECT = tsconfig;
   env.TS_NODE_TRANSPILE_ONLY ??= 'true';
 
