@@ -424,10 +424,13 @@ export class ConsoleReporter {
     this.currentSuite = this.suiteStack[this.suiteStack.length - 1] ?? null;
   }
 
-  jasmineDone(result: any) {
-    const totalTime = result?.totalTime
-      ? result.totalTime / 1000
-      : (Date.now() - this.startTime) / 1000;
+  jasmineDone(result?: any) {
+    const totalTimeMs =
+      typeof result?.totalTime === 'number'
+        ? result.totalTime
+        : Date.now() - this.startTime;
+
+    const totalTime = totalTimeMs / 1000;
 
     this.clearCurrentLine();
 
@@ -675,7 +678,26 @@ export class ConsoleReporter {
     });
   }
 
-  private printFinalStatus(overallStatus?: string) {
+  private computeOverallStatus(jasmineOverallStatus?: string): 'passed' | 'failed' | 'incomplete' {
+    if (this.failureCount > 0) return 'failed';
+
+    const hasIncompleteSpec = [...this.specById.values()].some(
+      (spec) => spec.status === 'incomplete' || spec.status === 'running'
+    );
+
+    const hasIncompleteSuite = [...this.suiteById.values()].some(
+      (suite) => suite.status === 'incomplete' || suite.status === 'running'
+    );
+
+    if (hasIncompleteSpec || hasIncompleteSuite || jasmineOverallStatus === 'incomplete') {
+      return 'incomplete';
+    }
+
+    return 'passed';
+  }
+
+  private printFinalStatus(jasmineOverallStatus?: string) {
+    const overallStatus = this.computeOverallStatus(jasmineOverallStatus);
     if (overallStatus === 'passed') {
       const msg = this.pendingSpecs.length === 0
         ? '✓ ALL TESTS PASSED'
