@@ -263,8 +263,6 @@ export class ViteConfigBuilder {
       logger.error('❌ No files found to build');
     }
 
-    logger.println(`📦 Building ${Object.keys(this.inputMap).length} modules`);
-
     return this.mergeUserConfig(this.baseConfig(this.inputMap, false));
   }
 
