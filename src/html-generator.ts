@@ -91,13 +91,30 @@ export class HtmlGenerator {
   <script src="/node_modules/jasmine-core/lib/jasmine-core/boot0.js"></script>
   <script src="/node_modules/jasmine-core/lib/jasmine-core/boot1.js"></script>
   <script type="module">
-    const forwarder = new WebSocketEventForwarder();
-    forwarder.connect();
-    jasmine.getEnv().addReporter(forwarder);
-    
-    ${imports}
-
     ${this.getWebSocketEventForwarderScript()}
+
+    async function waitForJasmine(maxAttempts = 50, interval = 100) {
+      let attempts = 0;
+      while (attempts < maxAttempts) {
+        if (window.jasmine && typeof window.jasmine.getEnv === 'function') {
+          return window.jasmine.getEnv();
+        }
+        attempts += 1;
+        await new Promise(resolve => setTimeout(resolve, interval));
+      }
+      throw new Error('Jasmine environment not found after waiting');
+    }
+
+    async function startRunner() {
+      const env = await waitForJasmine();
+      const forwarder = new WebSocketEventForwarder();
+      forwarder.connect();
+      env.addReporter(forwarder);
+      
+      ${imports}
+    }
+
+    startRunner().catch(err => console.error('Failed to start Jasmine runner:', err));
   </script>
 </head>
 <body>
@@ -121,6 +138,27 @@ export class HtmlGenerator {
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
 
   <script>
+${this.getWebSocketEventForwarderScript()}
+(function () {
+  function waitForJasmine(maxAttempts = 50, interval = 100) {
+    return new Promise((resolve, reject) => {
+      let attempts = 0;
+      function check() {
+        if (window.jasmine && typeof window.jasmine.getEnv === 'function') {
+          resolve(window.jasmine.getEnv());
+          return;
+        }
+        if (attempts >= maxAttempts) {
+          reject(new Error('Jasmine environment not found after waiting'));
+          return;
+        }
+        attempts += 1;
+        setTimeout(check, interval);
+      }
+      check();
+    });
+  }
+
 (function patchJasmineBeforeBoot() {
   if (!window.jasmineRequire) {
     return setTimeout(patchJasmineBeforeBoot, 10);
@@ -229,17 +267,19 @@ export class HtmlGenerator {
   const script = document.createElement('script');
   script.src = '/node_modules/jasmine-core/lib/jasmine-core/boot0.js';
 
-  // Add the WebSocket forwarder as a reporter
+  // Add the WebSocket forwarder as a reporter after Jasmine is ready
   const forwarder = new WebSocketEventForwarder();
   forwarder.connect();
-  jasmine.getEnv().addReporter(forwarder);
+  waitForJasmine()
+    .then(env => env.addReporter(forwarder))
+    .catch(err => console.error('Failed to attach Jasmine reporter:', err));
   
   script.onload = () => {
-    ${this.getWebSocketEventForwarderScript()}
     ${this.getHmrClientScript()}
     ${this.getRuntimeHelpersScript()}
   };
   document.head.appendChild(script);
+})();
 })();
 </script>
 </head>
@@ -340,6 +380,10 @@ function WebSocketEventForwarder() {
 
   // Collect all specs recursively
   this.getAllSpecs = function () {
+    const env = globalThis.jasmine && typeof globalThis.jasmine.getEnv === 'function'
+      ? globalThis.jasmine.getEnv()
+      : null;
+    if (!env || !env.topSuite) return [];
     const allSpecs = [];
     function collect(suite) {
       suite.children.forEach((child) => {
@@ -350,12 +394,16 @@ function WebSocketEventForwarder() {
         }
       });
     }
-    collect(jasmine.getEnv().topSuite());
+    collect(env.topSuite());
     return allSpecs;
   };
 
   // Collect suites recursively
   this.getAllSuites = function () {
+    const env = globalThis.jasmine && typeof globalThis.jasmine.getEnv === 'function'
+      ? globalThis.jasmine.getEnv()
+      : null;
+    if (!env || !env.topSuite) return [];
     const allSuites = [];
     function collect(suite) {
       allSuites.push(suite);
@@ -365,7 +413,7 @@ function WebSocketEventForwarder() {
         }
       });
     }
-    collect(jasmine.getEnv().topSuite());
+    collect(env.topSuite());
     return allSuites;
   };
 
@@ -374,7 +422,7 @@ function WebSocketEventForwarder() {
     const allSpecs = self.getAllSpecs();
     if (!random) return allSpecs;
 
-    const OrderCtor = jasmine.Order;
+    const OrderCtor = globalThis.jasmine ? globalThis.jasmine.Order : null;
     if (typeof OrderCtor === 'function') {
       try {
         const order = new OrderCtor({ random, seed });
@@ -393,7 +441,7 @@ function WebSocketEventForwarder() {
     const allSuites = self.getAllSuites();
     if (!random) return allSuites;
 
-    const OrderCtor = jasmine.Order;
+    const OrderCtor = globalThis.jasmine ? globalThis.jasmine.Order : null;
     if (typeof OrderCtor === 'function') {
       try {
         const order = new OrderCtor({ random, seed });
