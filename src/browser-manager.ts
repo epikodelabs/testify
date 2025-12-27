@@ -124,7 +124,11 @@ export class BrowserManager {
     }
   }
 
-  async openBrowser(port: number, onBrowserClose?: () => Promise<void>): Promise<void> {
+  async openBrowser(
+    port: number,
+    onBrowserClose?: () => Promise<void>,
+    options?: { exitOnClose?: boolean }
+  ): Promise<void> {
     let browserName = this.config.browser || 'chrome';
     const url = `http://localhost:${port}/index.html`;
     
@@ -168,12 +172,15 @@ export class BrowserManager {
       await page.goto(url);
       
       // Handle browser close event
+      const exitOnClose = options?.exitOnClose !== false;
       page.on('close', async () => {
         if (onBrowserClose) {
           await onBrowserClose();
         }
         this.clearBrowserState();
-        process.exit(0);
+        if (exitOnClose) {
+          process.exit(0);
+        }
       });
       
     } catch (error: any) {

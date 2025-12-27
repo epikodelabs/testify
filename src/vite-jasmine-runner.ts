@@ -207,28 +207,35 @@ export class ViteJasmineRunner extends EventEmitter {
     this.webSocketManager.enableHmr(this.hmrManager);
     await this.hmrManager.start();
 
-    logger.println('📡 WebSocket server ready for real-time test reporting');
-    logger.println('🔥 HMR enabled - file changes will hot reload automatically');
+    logger.println('📡 WebSocket server ready');
     logger.println('👌 Press Ctrl+C to stop the server');
 
+    let shuttingDown = false;
     const onBrowserClose = async () => {
+      if (shuttingDown) return;
       logger.println('🔄 Browser window closed');
       await this.cleanup();
       process.exit(0);
     };
 
-    await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
+    await this.browserManager.openBrowser(this.config.port!, onBrowserClose, { exitOnClose: false });
 
     process.once('SIGINT', async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       logger.println('🛑 Stopping HMR server...');
       await this.browserManager.closeBrowser();
+      logger.println('🔄 Browser window closed');
       await this.cleanup();
       process.exit(0);
     });
 
     process.once('SIGTERM', async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       logger.println('🛑 Received SIGTERM, stopping HMR server...');
       await this.browserManager.closeBrowser();
+      logger.println('🔄 Browser window closed');
       await this.cleanup();
       process.exit(0);
     });

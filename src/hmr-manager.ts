@@ -436,7 +436,7 @@ export class HmrManager extends EventEmitter {
       const normalizedTarget = norm(target);
       if (!fs.existsSync(normalizedTarget)) continue;
 
-      const pattern = path.join(normalizedTarget, `**/*{${defaultExtensions}}`);
+      const pattern = norm(path.join(normalizedTarget, `**/*{${defaultExtensions}}`));
       const files = glob.sync(pattern, { absolute: true, ignore: ['**/node_modules/**'] })
         .filter(f => this.matchesFilter(norm(f)));
 
@@ -537,9 +537,9 @@ export class HmrManager extends EventEmitter {
       logger.println(`📁 ${capitalize(dirType)} directory added: ${output}`);
       
       const defaultExtensions = this.fileFilter.extensions!.join(',');
-      const pattern = path.join(dirPath, `**/*{${defaultExtensions}}`);
+      const pattern = norm(path.join(dirPath, `**/*{${defaultExtensions}}`));
       const newFiles = glob.sync(pattern, { absolute: true, ignore: ['**/node_modules/**'] })
-        .filter(f => this.matchesFilter(f));
+        .filter(f => this.matchesFilter(norm(f)));
 
       const filesToProcess: string[] = [];
       for (const file of newFiles) {
