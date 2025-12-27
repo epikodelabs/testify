@@ -27,7 +27,7 @@ export class HtmlGenerator {
     const sourceFiles = builtFiles.filter(f => !f.endsWith('.spec.js'));
     const specFiles = builtFiles.filter(f => f.endsWith('.spec.js'));
     const imports = [...sourceFiles, ...specFiles]
-      .map(f => `import "./${f}";`)
+      .map(f => `await import("./${f}");`)
       .join('\n        ');
 
     const __filename = norm(fileURLToPath(import.meta.url));
