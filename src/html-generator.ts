@@ -739,8 +739,9 @@ window.HMRClient = (function() {
       return;
     }
 
-    const random = ${this.config.jasmineConfig?.env?.random ?? false};
-    let seed = ${(this.config.jasmineConfig?.env as any)?.seed ?? 0};
+    const initialSeed = ${(this.config.jasmineConfig?.env as any)?.seed ?? 0};
+    let random = ${this.config.jasmineConfig?.env?.random ?? false};
+    let seed = initialSeed;
     const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
 
     env.configure({
@@ -1016,8 +1017,16 @@ window.HMRClient = (function() {
         console.warn('Invalid seed (expected a number).');
         return seed;
       }
+      random = true;
       seed = parsed;
-      console.log('Seed updated to:', seed);
+      console.log('Seed updated to:', seed, 'Random enabled:', random);
+      return seed;
+    }
+
+    function resetSeed() {
+      random = false;
+      seed = initialSeed;
+      console.log('Seed reset to:', seed, 'Random reset to:', random);
       return seed;
     }
 
@@ -1047,6 +1056,7 @@ window.HMRClient = (function() {
       runSuite,
       listTests,
       setSeed,
+      resetSeed,
       reload: () => location.reload(),
     };
 
