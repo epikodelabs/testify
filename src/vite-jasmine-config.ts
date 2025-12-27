@@ -1,4 +1,5 @@
 import type { InlineConfig } from "vite";
+import type { RollupOptions, WarningHandlerWithDefault } from "rollup";
 
 export interface ImportEntry {
   name: string;
@@ -39,4 +40,9 @@ export interface ViteJasmineConfig {
   htmlOptions?: {
     title?: string;
   };
+}
+
+// Type-safe Rollup options with onwarn handler
+export interface TypedRollupOptions extends Partial<RollupOptions> {
+  onwarn?: WarningHandlerWithDefault;
 }

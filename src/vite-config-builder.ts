@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { InlineConfig } from 'vite';
+import type { WarningHandlerWithDefault } from 'rollup';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
@@ -117,6 +118,9 @@ export class ViteConfigBuilder {
     const map: Record<string, string> = {};
 
     for (const file of files) {
+      if (this.isTypeOnlyModule(file)) {
+        continue;
+      }
       const rel = path
         .relative(this.preserveRoot(), file)
         .replace(/\.(ts|js|mjs)$/, '');
@@ -127,6 +131,49 @@ export class ViteConfigBuilder {
     }
 
     return map;
+  }
+
+  private isTypeOnlyModule(filePath: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    if (!['.ts', '.mts', '.cts'].includes(ext)) return false;
+    if (filePath.endsWith('.d.ts')) return true;
+
+    let content = '';
+    try {
+      content = fs.readFileSync(filePath, 'utf8');
+    } catch {
+      return false;
+    }
+
+    const stripCommentsAndStrings = (input: string): string => {
+      let out = input.replace(/\/\*[\s\S]*?\*\//g, '');
+      out = out.replace(/\/\/.*$/gm, '');
+      out = out.replace(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g, '');
+      return out;
+    };
+
+    const code = stripCommentsAndStrings(content);
+
+    if (/\bexport\s+\*\s+from\b/.test(code)) return false;
+    if (/\bexport\s+default\b/.test(code)) return false;
+    if (/\bexport\s+(const|let|var|function|class|enum)\b/.test(code)) return false;
+    if (/\bimport\s+(?!type\b)/.test(code)) return false;
+    if (/\b(const|let|var|function|class|enum)\b/.test(code)) return false;
+
+    for (const match of code.matchAll(/export\s*(?:type\s*)?\{([^}]*)\}/g)) {
+      const specList = match[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const spec of specList) {
+        const cleaned = spec.replace(/^type\s+/, '').trim();
+        if (cleaned.length > 0 && !spec.startsWith('type ')) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   /* -------------------------------------------------- */
@@ -147,6 +194,17 @@ export class ViteConfigBuilder {
     incremental: boolean,
     viteCache?: any
   ): InlineConfig {
+    const onwarn: WarningHandlerWithDefault = (warning, warn) => {
+      // Ignore empty bundle warnings
+      if (warning.code === 'EMPTY_BUNDLE') return;
+      
+      // Optionally suppress circular dependency warnings
+      if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+      
+      // Pass through all other warnings
+      warn(warning);
+    };
+
     return {
       root: process.cwd(),
       configFile: incremental ? false : undefined,
@@ -165,6 +223,9 @@ export class ViteConfigBuilder {
             ? 'allow-extension'
             : 'strict',
 
+          // 🔥 Suppress empty bundle warnings
+          onwarn,
+
           output: {
             format: 'es',
 
@@ -180,7 +241,11 @@ export class ViteConfigBuilder {
       },
 
       resolve: { alias: this.createPathAliases() },
-      esbuild: { target: 'es2022', keepNames: false },
+      esbuild: { 
+        target: 'es2022', 
+        keepNames: false,
+        treeShaking: true // Enable tree shaking for type imports
+      },
       define: { 'process.env.NODE_ENV': '"test"' },
       logLevel: 'warn'
     };
@@ -190,7 +255,6 @@ export class ViteConfigBuilder {
   /* FULL BUILD                                         */
   /* -------------------------------------------------- */
 
-
   createViteConfig(entryFiles?: string[]): InlineConfig {
     const files = entryFiles && entryFiles.length > 0 ? entryFiles : this.discoverFilesSync();
     this.inputMap = this.buildInputMap(files);
@@ -198,6 +262,8 @@ export class ViteConfigBuilder {
     if (!Object.keys(this.inputMap).length) {
       logger.error('❌ No files found to build');
     }
+
+    logger.println(`📦 Building ${Object.keys(this.inputMap).length} modules`);
 
     return this.mergeUserConfig(this.baseConfig(this.inputMap, false));
   }
