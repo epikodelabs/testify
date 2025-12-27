@@ -399,6 +399,7 @@ export class HmrManager extends EventEmitter {
   async start(): Promise<void> {
     const watchDirs = [...(this.config.srcDirs || []), ...(this.config.testDirs || [])].filter(Boolean);
     const watchTargets = watchDirs.length > 0 ? watchDirs : [this.primarySrcDir, this.primaryTestDir];
+    this.initializeTrackedFiles(watchTargets);
     this.watcher = watch(watchTargets, {
       ignored: /(^|[\/\\])\../,
       persistent: true,
@@ -427,6 +428,25 @@ export class HmrManager extends EventEmitter {
       logger.println(`✅ HMR watching ${this.allFiles.length} files (mode: ${this.rebuildMode}, strategy: ${this.sourceChangeStrategy})`);
       this.emit('hmr:ready');
     });
+  }
+
+  private initializeTrackedFiles(watchTargets: string[]): void {
+    const defaultExtensions = this.fileFilter.extensions!.join(',');
+    for (const target of watchTargets) {
+      const normalizedTarget = norm(target);
+      if (!fs.existsSync(normalizedTarget)) continue;
+
+      const pattern = path.join(normalizedTarget, `**/*{${defaultExtensions}}`);
+      const files = glob.sync(pattern, { absolute: true, ignore: ['**/node_modules/**'] })
+        .filter(f => this.matchesFilter(norm(f)));
+
+      for (const file of files) {
+        const normalized = norm(file);
+        if (!this.allFiles.includes(normalized)) {
+          this.allFiles.push(normalized);
+        }
+      }
+    }
   }
 
   private async handleFileAdd(filePath: string): Promise<void> {
@@ -707,8 +727,7 @@ export class HmrManager extends EventEmitter {
 
         // ✅ FIX: Pass ONLY valid existing files to Vite config builder
         const viteConfig = this.viteConfigBuilder.createViteConfigForFiles(
-          validSourceFiles,
-          validTestFiles,
+          [...validSourceFiles, ...validTestFiles],
           this.viteCache
         );
 
@@ -733,8 +752,7 @@ export class HmrManager extends EventEmitter {
             }
 
             const retryConfig = this.viteConfigBuilder.createViteConfigForFiles(
-              finalSourceFiles,
-              finalTestFiles,
+              [...finalSourceFiles, ...finalTestFiles],
               this.viteCache
             );
             const result = await build(retryConfig);

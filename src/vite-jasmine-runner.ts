@@ -219,14 +219,16 @@ export class ViteJasmineRunner extends EventEmitter {
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
 
-    process.on('SIGINT', async () => {
+    process.once('SIGINT', async () => {
       logger.println('🛑 Stopping HMR server...');
+      await this.browserManager.closeBrowser();
       await this.cleanup();
       process.exit(0);
     });
 
-    process.on('SIGTERM', async () => {
+    process.once('SIGTERM', async () => {
       logger.println('🛑 Received SIGTERM, stopping HMR server...');
+      await this.browserManager.closeBrowser();
       await this.cleanup();
       process.exit(0);
     });
@@ -331,7 +333,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
 
-    process.on('SIGINT', async () => {
+    process.once('SIGINT', async () => {
       if (!testsCompleted) {
         setImmediate(() => {
           logger.clearLine(); logger.printRaw('\n');
@@ -340,6 +342,7 @@ export class ViteJasmineRunner extends EventEmitter {
           logger.printlnRaw("🛑 Tests aborted by user (Ctrl+C)");
         });
       }
+      await this.browserManager.closeBrowser();
       await this.cleanup();
       process.exit(testsCompleted ? (testSuccess ? 0 : 1) : 1);
     });

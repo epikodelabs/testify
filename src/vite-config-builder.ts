@@ -207,9 +207,13 @@ export class ViteConfigBuilder {
   /* -------------------------------------------------- */
 
   createViteConfigForFiles(
-    changedFiles: string[],
+    sourceFiles: string[],
+    testFilesOrCache?: string[] | any,
     viteCache?: any
   ): InlineConfig {
+    const testFiles = Array.isArray(testFilesOrCache) ? testFilesOrCache : [];
+    const cache = Array.isArray(testFilesOrCache) ? viteCache : testFilesOrCache;
+    const changedFiles = [...sourceFiles, ...testFiles];
     const updates = this.buildInputMap(changedFiles);
     this.inputMap = { ...this.inputMap, ...updates };
 
@@ -222,8 +226,26 @@ export class ViteConfigBuilder {
     );
 
     return this.mergeUserConfig(
-      this.baseConfig(this.inputMap, true, viteCache)
+      this.baseConfig(this.inputMap, true, cache)
     );
+  }
+
+  removeFromInputMap(filePath: string): void {
+    const normalized = norm(filePath);
+    for (const [key, value] of Object.entries(this.inputMap)) {
+      if (value === normalized || !fs.existsSync(value)) {
+        delete this.inputMap[key];
+      }
+    }
+  }
+
+  removeMultipleFromInputMap(filePaths: string[]): void {
+    const normalizedSet = new Set(filePaths.map(norm));
+    for (const [key, value] of Object.entries(this.inputMap)) {
+      if (normalizedSet.has(value) || !fs.existsSync(value)) {
+        delete this.inputMap[key];
+      }
+    }
   }
 
   /* -------------------------------------------------- */

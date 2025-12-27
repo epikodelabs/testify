@@ -27,24 +27,10 @@ export class HtmlGenerator {
     const sourceFiles = builtFiles.filter(f => !f.endsWith('.spec.js'));
     const specFiles = builtFiles.filter(f => f.endsWith('.spec.js'));
     const imports = [...sourceFiles, ...specFiles]
-      .map(f => `await import("./${f}");`)
+      .map(f => `import "./${f}";`)
       .join('\n        ');
 
-    const __filename = norm(fileURLToPath(import.meta.url));
-    const __dirname = norm(path.dirname(__filename));
-
-    // Read favicon from assets and convert to Base64
-    const faviconPath = path.resolve(__dirname, '../assets/favicon.ico');
-    let faviconTag = '';
-    if (fs.existsSync(faviconPath)) {
-      const faviconData = fs.readFileSync(faviconPath);
-      const faviconBase64 = faviconData.toString('base64');
-      faviconTag = `<link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,${faviconBase64}">`;
-    } else {
-      logger.println(`⚠️  Favicon not found at ${faviconPath}, using default <link>`);
-      faviconTag = `<link rel="icon" href="favicon.ico" type="image/x-icon" />`;
-    }
-
+    const faviconTag = this.getFaviconTag();
     const htmlContent = this.generateHtmlTemplate(imports, faviconTag);
     const htmlPath = norm(path.join(htmlDir, 'index.html'));
     fs.writeFileSync(htmlPath, htmlContent);
@@ -57,25 +43,26 @@ export class HtmlGenerator {
       fs.mkdirSync(htmlDir, { recursive: true });
     }
 
-    const __filename = norm(fileURLToPath(import.meta.url));
-    const __dirname = norm(path.dirname(__filename));
-
-    // Read favicon from assets and convert to Base64
-    const faviconPath = path.resolve(__dirname, '../assets/favicon.ico');
-    let faviconTag = '';
-    if (fs.existsSync(faviconPath)) {
-      const faviconData = fs.readFileSync(faviconPath);
-      const faviconBase64 = faviconData.toString('base64');
-      faviconTag = `<link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,${faviconBase64}">`;
-    } else {
-      logger.println(`⚠️  Favicon not found at ${faviconPath}, using default <link>`);
-      faviconTag = `<link rel="icon" href="favicon.ico" type="image/x-icon" />`;
-    }
-
-    const htmlContent = await this.generateHtmlTemplateWithHmr(faviconTag);
+    const faviconTag = this.getFaviconTag();
+    const htmlContent = this.generateHtmlTemplateWithHmr(faviconTag);
     const htmlPath = norm(path.join(htmlDir, 'index.html'));
     fs.writeFileSync(htmlPath, htmlContent);
     console.log('📄 Generated HMR-enabled test page:', norm(path.relative(this.config.outDir, htmlPath)));
+  }
+
+  private getFaviconTag(): string {
+    const __filename = norm(fileURLToPath(import.meta.url));
+    const __dirname = norm(path.dirname(__filename));
+    const faviconPath = path.resolve(__dirname, '../assets/favicon.ico');
+    
+    if (fs.existsSync(faviconPath)) {
+      const faviconData = fs.readFileSync(faviconPath);
+      const faviconBase64 = faviconData.toString('base64');
+      return `<link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,${faviconBase64}">`;
+    } else {
+      logger.println(`⚠️  Favicon not found at ${faviconPath}, using default <link>`);
+      return `<link rel="icon" href="favicon.ico" type="image/x-icon" />`;
+    }
   }
 
   private generateHtmlTemplate(imports: string, faviconTag: string): string {
@@ -92,29 +79,12 @@ export class HtmlGenerator {
   <script src="/node_modules/jasmine-core/lib/jasmine-core/boot1.js"></script>
   <script type="module">
     ${this.getWebSocketEventForwarderScript()}
-
-    async function waitForJasmine(maxAttempts = 50, interval = 100) {
-      let attempts = 0;
-      while (attempts < maxAttempts) {
-        if (window.jasmine && typeof window.jasmine.getEnv === 'function') {
-          return window.jasmine.getEnv();
-        }
-        attempts += 1;
-        await new Promise(resolve => setTimeout(resolve, interval));
-      }
-      throw new Error('Jasmine environment not found after waiting');
-    }
-
-    async function startRunner() {
-      const env = await waitForJasmine();
-      const forwarder = new WebSocketEventForwarder();
-      forwarder.connect();
-      env.addReporter(forwarder);
-      
-      ${imports}
-    }
-
-    startRunner().catch(err => console.error('Failed to start Jasmine runner:', err));
+    
+    const forwarder = new WebSocketEventForwarder();
+    forwarder.connect();
+    jasmine.getEnv().addReporter(forwarder);
+    
+    ${imports}
   </script>
 </head>
 <body>
@@ -123,7 +93,7 @@ export class HtmlGenerator {
 </html>`;
   }
 
-  private async generateHtmlTemplateWithHmr(faviconTag: string) {    
+  private generateHtmlTemplateWithHmr(faviconTag: string): string {    
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -133,97 +103,64 @@ export class HtmlGenerator {
   <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css">
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
-  <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css" />
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
 
   <script>
+${this.getJasminePatchScript()}
+
 ${this.getWebSocketEventForwarderScript()}
-(function () {
-  function waitForJasmine(maxAttempts = 50, interval = 100) {
-    return new Promise((resolve, reject) => {
-      let attempts = 0;
-      function check() {
-        if (window.jasmine && typeof window.jasmine.getEnv === 'function') {
-          resolve(window.jasmine.getEnv());
-          return;
-        }
-        if (attempts >= maxAttempts) {
-          reject(new Error('Jasmine environment not found after waiting'));
-          return;
-        }
-        attempts += 1;
-        setTimeout(check, interval);
-      }
-      check();
-    });
+
+${this.getHmrClientScript()}
+
+// Initialize everything after Jasmine is loaded
+(function initAfterJasmine() {
+  if (!window.jasmineRequire) {
+    return setTimeout(initAfterJasmine, 10);
   }
 
+  const script = document.createElement('script');
+  script.src = '/node_modules/jasmine-core/lib/jasmine-core/boot0.js';
+  
+  script.onload = () => {
+    // Add the WebSocket forwarder as a reporter
+    const forwarder = new WebSocketEventForwarder();
+    forwarder.connect();
+    jasmine.getEnv().addReporter(forwarder);
+    
+    ${this.getRuntimeHelpersScript()}
+  };
+  
+  script.onerror = (err) => {
+    console.error('Failed to load boot0.js:', err);
+  };
+  
+  document.head.appendChild(script);
+})();
+  </script>
+</head>
+<body>
+  <div class="jasmine_html-reporter"></div>
+</body>
+</html>`;
+  }
+
+  private getJasminePatchScript(): string {
+    return `
+// Patch Jasmine before boot to add metadata backlinks
 (function patchJasmineBeforeBoot() {
   if (!window.jasmineRequire) {
     return setTimeout(patchJasmineBeforeBoot, 10);
   }
 
   const j$ = jasmineRequire.core(jasmineRequire);
-
-  // Save originals
   const OriginalSuiteFactory = jasmineRequire.Suite || j$.Suite || null;
   const OriginalEnvFactory = jasmineRequire.Env || j$.Env || null;
-
-  // Helper: make sure we reference the right factory object to overwrite.
   const root = window.jasmineRequire || jasmineRequire;
 
-  // Patch Suite factory so returned Suite class sets metadata.__suite
-  root.Suite = function(j$local) {
-    // Get the original Suite class (as the factory would normally return)
-    const OriginalSuite = (OriginalSuiteFactory ? OriginalSuiteFactory(j$local) : j$.localSuite) || j$.Suite;
-
-    // Subclass to attach backref
-    return class PatchedSuite extends OriginalSuite {
-      constructor(attrs) {
-        super(attrs);
-        try {
-          // If metadata exists, keep a back-reference
-          if (this.metadata && typeof this.metadata === 'object' && !this.metadata.__suite) {
-            Object.defineProperty(this.metadata, '__suite', {
-              value: this,
-              enumerable: false,
-              configurable: true,
-              writable: false
-            });
-          }
-        } catch (err) {
-          // ignore; patch must not break Jasmine
-        }
-      }
-    };
-  };
-
-  // Patch Env factory to capture topSuite reference as soon as Env creates it
-  if (OriginalEnvFactory) {
-    root.Env = function(j$local) {
-      const OriginalEnv = OriginalEnvFactory(j$local);
-      return class PatchedEnv extends OriginalEnv {
-        constructor(attrs) {
-          super(attrs);
-          try {
-            // env.topSuite is usually created in the Env constructor
-            if (this.topSuite) {
-              // store reference globally if you need it elsewhere
-              window.__jasmine_real_topSuite = this.topSuite;
-              // Also ensure metadata backrefs for the topSuite and its children (optional)
-              attachMetadataBackrefsRecursive(this.topSuite);
-            }
-          } catch (err) {}
-        }
-      };
-    };
-  }
-
-  // optionally walk suite tree and attach metadata.__suite to every suite encountered
-  function attachMetadataBackrefsRecursive(suite) {
+  // Helper to attach metadata backref
+  function attachMetadataBackref(suite) {
+    if (!suite || !suite.metadata) return;
     try {
-      if (suite && suite.metadata && !suite.metadata.__suite) {
+      if (!suite.metadata.__suite) {
         Object.defineProperty(suite.metadata, '__suite', {
           value: suite,
           enumerable: false,
@@ -231,66 +168,102 @@ ${this.getWebSocketEventForwarderScript()}
           writable: false
         });
       }
-      if (Array.isArray(suite.children)) {
-        for (const ch of suite.children) attachMetadataBackrefsRecursive(ch);
-      }
-    } catch (e) {}
+    } catch (e) {
+      // Ignore errors
+    }
   }
 
-  // Wait for runner to be ready, then load all spec files
-  async function loadSpecs(srcFiles, specFiles) {
+  // Recursively attach backlinks
+  function attachMetadataBackrefsRecursive(suite) {
+    try {
+      attachMetadataBackref(suite);
+      if (Array.isArray(suite.children)) {
+        suite.children.forEach(attachMetadataBackrefsRecursive);
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+  }
+
+  // Patch Suite factory
+  if (OriginalSuiteFactory) {
+    root.Suite = function(j$local) {
+      const OriginalSuite = OriginalSuiteFactory(j$local);
+      
+      return class PatchedSuite extends OriginalSuite {
+        constructor(attrs) {
+          super(attrs);
+          attachMetadataBackref(this);
+        }
+      };
+    };
+  }
+
+  // Patch Env factory
+  if (OriginalEnvFactory) {
+    root.Env = function(j$local) {
+      const OriginalEnv = OriginalEnvFactory(j$local);
+      
+      return class PatchedEnv extends OriginalEnv {
+        constructor(attrs) {
+          super(attrs);
+          try {
+            if (this.topSuite) {
+              window.__jasmine_real_topSuite = this.topSuite;
+              attachMetadataBackrefsRecursive(this.topSuite);
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+        }
+      };
+    };
+  }
+
+  // Define loadSpecs function in global scope
+  window.loadSpecs = async function(srcFiles, specFiles) {
     // Wait for HMRClient
-    while (!window.HMRClient) {
+    let attempts = 0;
+    while (!window.HMRClient && attempts < 100) {
       await new Promise(resolve => setTimeout(resolve, 50));
+      attempts++;
+    }
+    
+    if (!window.HMRClient) {
+      console.error('❌ HMRClient not available after waiting');
+      return;
     }
     
     console.log('📦 Loading spec files dynamically...');
     
-    // Load source files first
-    for (const file of srcFiles) {
-      await import('/' + file);
-    }
-    
-    // Then load spec files with file path tracking
-    for (const file of specFiles) {
-      const module = await import('/' + file);
-      
-      // Attach file path to suites after import
-      if (window.HMRClient && window.HMRClient.attachFilePathToSuites) {
-        await window.HMRClient.attachFilePathToSuites(file, module);
+    try {
+      // Load source files first
+      for (const file of srcFiles) {
+        await import('/' + file);
       }
+      
+      // Then load spec files with file path tracking
+      for (const file of specFiles) {
+        const module = await import('/' + file);
+        
+        if (window.HMRClient?.attachFilePathToSuites) {
+          await window.HMRClient.attachFilePathToSuites(file, module);
+        }
+      }
+      
+      console.log('✅ All specs loaded and tagged with file paths');
+    } catch (err) {
+      console.error('❌ Failed to load specs:', err);
     }
-    
-    console.log('✅ All specs loaded and tagged with file paths');
-  }
-
-  const script = document.createElement('script');
-  script.src = '/node_modules/jasmine-core/lib/jasmine-core/boot0.js';
-
-  // Add the WebSocket forwarder as a reporter after Jasmine is ready
-  const forwarder = new WebSocketEventForwarder();
-  forwarder.connect();
-  waitForJasmine()
-    .then(env => env.addReporter(forwarder))
-    .catch(err => console.error('Failed to attach Jasmine reporter:', err));
-  
-  script.onload = () => {
-    ${this.getHmrClientScript()}
-    ${this.getRuntimeHelpersScript()}
   };
-  document.head.appendChild(script);
 })();
-})();
-</script>
-</head>
-<body>
-
-  <div class="jasmine_html-reporter"></div>
-</body>
-</html>`;
+`;
   }
 
   private getWebSocketEventForwarderScript(): string {
+    const seed = (this.config.jasmineConfig?.env as any)?.seed ?? 0;
+    const random = (this.config.jasmineConfig?.env as any)?.random ?? false;
+    
     return `
 function WebSocketEventForwarder() {
   this.ws = null;
@@ -299,7 +272,6 @@ function WebSocketEventForwarder() {
 
   const self = this;
 
-  // Establish WebSocket connection
   this.connect = function () {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = protocol + '//' + window.location.host;
@@ -309,8 +281,6 @@ function WebSocketEventForwarder() {
     self.ws.onopen = () => {
       self.connected = true;
       console.log('WebSocket connected to', wsUrl);
-      const seed = ${(this.config.jasmineConfig?.env as any)?.seed ?? 0};
-      const random = ${(this.config.jasmineConfig?.env as any)?.random ?? false};
 
       self.send({
         type: 'userAgent',
@@ -322,12 +292,12 @@ function WebSocketEventForwarder() {
           vendor: navigator.vendor,
           language: navigator.language,
           languages: navigator.languages,
-          orderedSuites: self.getOrderedSuites(seed, random).map(suite => ({
+          orderedSuites: self.getOrderedSuites(${seed}, ${random}).map(suite => ({
             id: suite.id,
             description: suite.description,
             fullName: suite.getFullName ? suite.getFullName() : suite.description
           })),
-          orderedSpecs: self.getOrderedSpecs(seed, random).map(spec => ({
+          orderedSpecs: self.getOrderedSpecs(${seed}, ${random}).map(spec => ({
             id: spec.id,
             description: spec.description,
             fullName: spec.getFullName ? spec.getFullName() : spec.description
@@ -365,7 +335,6 @@ function WebSocketEventForwarder() {
     };
   };
 
-  // Send message immediately or queue if not connected
   this.send = function (msg) {
     if (self.connected && self.ws && self.ws.readyState === WebSocket.OPEN) {
       try {
@@ -378,12 +347,7 @@ function WebSocketEventForwarder() {
     }
   };
 
-  // Collect all specs recursively
   this.getAllSpecs = function () {
-    const env = globalThis.jasmine && typeof globalThis.jasmine.getEnv === 'function'
-      ? globalThis.jasmine.getEnv()
-      : null;
-    if (!env || !env.topSuite) return [];
     const allSpecs = [];
     function collect(suite) {
       suite.children.forEach((child) => {
@@ -394,16 +358,13 @@ function WebSocketEventForwarder() {
         }
       });
     }
-    collect(env.topSuite());
+    
+    const env = jasmine?.getEnv?.();
+    if (env) collect(env.topSuite());
     return allSpecs;
   };
 
-  // Collect suites recursively
   this.getAllSuites = function () {
-    const env = globalThis.jasmine && typeof globalThis.jasmine.getEnv === 'function'
-      ? globalThis.jasmine.getEnv()
-      : null;
-    if (!env || !env.topSuite) return [];
     const allSuites = [];
     function collect(suite) {
       allSuites.push(suite);
@@ -413,16 +374,17 @@ function WebSocketEventForwarder() {
         }
       });
     }
-    collect(env.topSuite());
+    
+    const env = jasmine?.getEnv?.();
+    if (env) collect(env.topSuite());
     return allSuites;
   };
 
-  // Get ordered specs using seed and random flag
   this.getOrderedSpecs = function (seed, random) {
     const allSpecs = self.getAllSpecs();
     if (!random) return allSpecs;
 
-    const OrderCtor = globalThis.jasmine ? globalThis.jasmine.Order : null;
+    const OrderCtor = jasmine.Order;
     if (typeof OrderCtor === 'function') {
       try {
         const order = new OrderCtor({ random, seed });
@@ -436,12 +398,11 @@ function WebSocketEventForwarder() {
     return allSpecs;
   };
 
-  // Get ordered suites using seed and random flag
   this.getOrderedSuites = function (seed, random) {
     const allSuites = self.getAllSuites();
     if (!random) return allSuites;
 
-    const OrderCtor = globalThis.jasmine ? globalThis.jasmine.Order : null;
+    const OrderCtor = jasmine.Order;
     if (typeof OrderCtor === 'function') {
       try {
         const order = new OrderCtor({ random, seed });
@@ -530,7 +491,7 @@ function WebSocketEventForwarder() {
     }
   };
 }
-  `;
+`;
   }
 
   private getHmrClientScript(): string {
@@ -538,15 +499,11 @@ function WebSocketEventForwarder() {
 // HMR Client Runtime
 window.HMRClient = (function() {
   const moduleRegistry = new Map();
-  const j$ = window.jasmine;
-  if (!j$ || !j$.getEnv) {
-    console.error('❌ Jasmine not found. HMR will not work.');
-    return { handleMessage: async () => {} };
+  
+  function getEnv() {
+    return window.jasmine?.getEnv?.();
   }
 
-  const env = j$.getEnv();
-
-  // Helper: set non-enumerable _filePath
   function setFilePath(obj, filePath) {
     if (!obj) return;
     try {
@@ -561,46 +518,47 @@ window.HMRClient = (function() {
     }
   }
 
-  // Attach file path to newly created suites recursively
   async function attachFilePathToSuites(filePath, moduleExports) {
-    const topSuite = env.topSuite().__suite;
+    const env = getEnv();
+    if (!env) return;
+    
+    const topSuite = env.topSuite().__suite || env.topSuite();
     if (!topSuite) return;
 
-
-    // Walk all suites recursively and attach _filePath if missing
     function tagSuites(suite) {
-        if (!suite) return;
+      if (!suite) return;
 
-        // Attach _filePath if not set
-        if (!suite._filePath) {
-            setFilePath(suite, filePath);
-        }
+      if (!suite._filePath) {
+        setFilePath(suite, filePath);
+      }
 
-        // Ensure metadata backref
-        if (suite.metadata && !suite.metadata.__suite) {
-            try {
-                Object.defineProperty(suite.metadata, '__suite', {
-                    value: suite,
-                    enumerable: false,
-                    configurable: true,
-                    writable: false
-                });
-            } catch {}
+      if (suite.metadata && !suite.metadata.__suite) {
+        try {
+          Object.defineProperty(suite.metadata, '__suite', {
+            value: suite,
+            enumerable: false,
+            configurable: true,
+            writable: false
+          });
+        } catch (e) {
+          // Ignore
         }
+      }
 
-        // Recurse children
-        const children = suite.children || [];
-        for (const ch of children) {
-            const real = ch;
-            tagSuites(real);
-        }
+      const children = suite.children || [];
+      for (const ch of children) {
+        tagSuites(ch);
+      }
     }
 
     tagSuites(topSuite);
   }
 
   function detachFilePathSuites(filePath) {
-    const topSuite = env.topSuite().__suite;
+    const env = getEnv();
+    if (!env) return;
+    
+    const topSuite = env.topSuite().__suite || env.topSuite();
     if (!topSuite) return;
 
     function cleanSuite(suite) {
@@ -613,55 +571,45 @@ window.HMRClient = (function() {
 
         const child = childWrapper;
 
-        // If this child matches the filePath, skip it entirely
         if (child._filePath === filePath) {
-          // Don't recursively clean - we're removing this entire branch
           continue;
         }
 
-        // If this child is a suite, recursively clean its children
         if (child.children && Array.isArray(child.children)) {
           cleanSuite(child);
         }
 
-        // Keep this child (it doesn't match the filePath)
         keep.push(childWrapper);
       }
 
-      // Replace children array
       if (suite.removeChildren && suite.addChild) {
-        // Use Jasmine's API if available
         suite.removeChildren();
         keep.forEach(item => suite.addChild(item));
       } else {
-        // Fallback: direct array replacement
         suite.children = keep;
       }
 
-      // Also clean specs array if it exists
       if (Array.isArray(suite.specs)) {
         suite.specs = suite.specs.filter(spec => spec._filePath !== filePath);
       }
     }
 
-    // Clean starting from top suite's real instance
     cleanSuite(topSuite);
-    
     console.log(\`🧹 Detached all suites/specs with _filePath: \${filePath}\`);
   }
 
-  // Hot update a single module
   async function hotUpdateSpec(filePath, moduleExports) {
     detachFilePathSuites(filePath);
     await attachFilePathToSuites(filePath, moduleExports);
     console.log('✅ Hot updated Jasmine suites from:', filePath);
   }
 
-  // Handle HMR messages
   async function handleMessage(message) {
     if (message.type === 'hmr:connected') {
       console.log('🔥 HMR enabled on server');
-      await loadSpecs(message.srcFiles, message.specFiles);
+      if (window.loadSpecs) {
+        await window.loadSpecs(message.srcFiles, message.specFiles);
+      }
       return;
     }
 
@@ -707,15 +655,18 @@ window.HMRClient = (function() {
   }
 
   private getRuntimeHelpersScript(): string {
+    const stopOnSpecFailure = this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false;
+    const initialSeed = (this.config.jasmineConfig?.env as any)?.seed ?? 0;
+    const initialRandom = this.config.jasmineConfig?.env?.random ?? false;
+    
     return `
-(function (globalThis) {
-  // Wait for Jasmine to be available
-  function waitForJasmine(maxAttempts = 50, interval = 100) {
+(function(globalThis) {
+  async function waitForJasmine(maxAttempts = 50, interval = 100) {
     return new Promise((resolve, reject) => {
       let attempts = 0;
       
       function check() {
-        if (globalThis.jasmine && globalThis.jasmine.getEnv) {
+        if (globalThis.jasmine?.getEnv) {
           resolve(globalThis.jasmine.getEnv());
         } else if (attempts >= maxAttempts) {
           reject(new Error('Jasmine environment not found after waiting'));
@@ -729,7 +680,7 @@ window.HMRClient = (function() {
     });
   }
 
-  async function initializeRunner() {
+  async function init() {
     let env;
     try {
       env = await waitForJasmine();
@@ -739,18 +690,15 @@ window.HMRClient = (function() {
       return;
     }
 
-    const initialSeed = ${(this.config.jasmineConfig?.env as any)?.seed ?? 0};
-    let random = ${this.config.jasmineConfig?.env?.random ?? false};
-    let seed = initialSeed;
-    const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
+    let random = ${initialRandom};
+    let seed = ${initialSeed};
 
     env.configure({
       random,
-      stopOnSpecFailure,
+      stopOnSpecFailure: ${stopOnSpecFailure},
       seed,
       autoCleanClosures: false
     });
-
 
     function isSpec(child) {
       return child && typeof child.id === 'string' && !child.children;
@@ -788,10 +736,9 @@ window.HMRClient = (function() {
       const all = getAllSpecs();
       if (!random) return all;
 
-      const OrderCtor = globalThis.jasmine.Order;
       try {
-        const order = new OrderCtor({ random, seed });
-        return typeof order.sort === "function" ? order.sort(all) : all;
+        const order = new globalThis.jasmine.Order({ random, seed });
+        return order.sort?.(all) ?? all;
       } catch {
         return all;
       }
@@ -801,74 +748,52 @@ window.HMRClient = (function() {
       const all = getAllSuites();
       if (!random) return all;
 
-      const OrderCtor = globalThis.jasmine.Order;
       try {
-        const order = new OrderCtor({ random, seed });
-        return typeof order.sort === "function" ? order.sort(all) : all;
+        const order = new globalThis.jasmine.Order({ random, seed });
+        return order.sort?.(all) ?? all;
       } catch {
         return all;
       }
     }
 
-    // Add utils to globalThis.jasmine
-    const utils = {
+    globalThis.jasmine = {
+      ...globalThis.jasmine,
       getAllSpecs,
       getAllSuites,
       getOrderedSpecs,
       getOrderedSuites
     };
 
-    globalThis.jasmine = {
-      ...globalThis.jasmine,
-      ...utils
-    };
-
-    console.log('🔧 Utils attached to globalThis.jasmine:', Object.keys(utils));
-
-    // Store original filter to restore later
     let originalSpecFilter = null;
     let isExecuting = false;
 
     const inBrowserReporter = {
-      results: [],  // Per-run results storage
-      currentSpecIdSet: null,  // Current filter set for this run
+      results: [],
+      currentSpecIdSet: null,
 
-      // Reset state at the start of each run
-      jasmineStarted: function (config) {
+      jasmineStarted: function () {
         this.results = [];
       },
 
       specStarted: function (config) {
-        if (this.currentSpecIdSet && this.currentSpecIdSet.has(config.id)) {
+        if (this.currentSpecIdSet?.has(config.id)) {
           console.log(\`▶️ Running [\${config.id}]: \${config.description}\`);
         }
       },
 
       specDone: function (result) {
-        if (this.currentSpecIdSet && this.currentSpecIdSet.has(result.id)) {
+        if (this.currentSpecIdSet?.has(result.id)) {
           this.results.push(result);
           const status = result.status.toUpperCase();
           console.log(\`[\${status}] \${result.description}\`);
           
-          if (result.failedExpectations && result.failedExpectations.length > 0) {
-            result.failedExpectations.forEach(f => 
-              console.error('❌', f.message, f.stack ? '\\n' + f.stack : '')
-            );
-          }
+          result.failedExpectations?.forEach(f => 
+            console.error('❌', f.message, f.stack ? '\\n' + f.stack : '')
+          );
         }
       },
 
-      jasmineDone: (result) => {
-        // Always restore filter, even on errors
-        if (originalSpecFilter !== null) {
-          env.configure({ specFilter: originalSpecFilter });
-        }
-        isExecuting = false;
-      },
-
-      // Fallback for unhandled errors (ensures cleanup)
-      jasmineErrored: (error) => {
-        console.error(\`❌ Jasmine execution errored: \${error}\`);
+      jasmineDone: () => {
         if (originalSpecFilter !== null) {
           env.configure({ specFilter: originalSpecFilter });
         }
@@ -876,13 +801,9 @@ window.HMRClient = (function() {
       }
     };
 
-    // Add the reporter ONCE after setup
     env.addReporter(inBrowserReporter);
-    console.log('📊 In-browser reporter attached.');
 
-    // Reset the environment to allow re-execution
     function resetEnvironment() {
-      // Reset all specs and suites
       const resetNode = (node) => {
         if (node.result) {
           node.result = {
@@ -891,16 +812,13 @@ window.HMRClient = (function() {
             passedExpectations: []
           };
         }
-        if (node.children) {
-          node.children.forEach(resetNode);
-        }
+        node.children?.forEach(resetNode);
       };
       
       resetNode(env.topSuite());
     }
 
     async function executeSpecsByIds(specIds) {
-      // Prevent concurrent executions
       if (isExecuting) {
         console.warn('⚠️  Execution already in progress. Please wait...');
         return [];
@@ -908,19 +826,16 @@ window.HMRClient = (function() {
 
       return new Promise((resolve) => {
         isExecuting = true;
-        inBrowserReporter.results = [];  // Reset results here too
+        inBrowserReporter.results = [];
         const specIdSet = new Set(specIds);
-        inBrowserReporter.currentSpecIdSet = specIdSet;  // Set for this run
+        inBrowserReporter.currentSpecIdSet = specIdSet;
         
-        // Store original filter if not already stored
         if (originalSpecFilter === null) {
           originalSpecFilter = env.specFilter;
         }
 
-        // Reset environment before execution
         resetEnvironment();
 
-        // Set filter to only run our target specs
         env.configure({
           random,
           seed,
@@ -928,16 +843,13 @@ window.HMRClient = (function() {
           autoCleanClosures: false
         });
 
-        // Create a one-time resolver for this execution
-        const originalJasmineDone = inBrowserReporter.jasmineDone;
+        const originalDone = inBrowserReporter.jasmineDone;
         inBrowserReporter.jasmineDone = () => {
-          originalJasmineDone.call(inBrowserReporter);
+          originalDone.call(inBrowserReporter);
           resolve(inBrowserReporter.results);
-          // Restore original jasmineDone
-          inBrowserReporter.jasmineDone = originalJasmineDone;
+          inBrowserReporter.jasmineDone = originalDone;
         };
 
-        // Execute with the filter in place
         env.execute();
       });
     }
@@ -956,12 +868,8 @@ window.HMRClient = (function() {
         return [];
       }
 
-      const specIds = matching.map(s => s.id).sort();
-      console.log(\`🎯 Executing \${matching.length} spec(s):\`, 
-        matching.map(s => s.description)
-      );
-
-      return await executeSpecsByIds(specIds);
+      console.log(\`🎯 Executing \${matching.length} spec(s)\`);
+      return await executeSpecsByIds(matching.map(s => s.id).sort());
     }
 
     async function runTest(filter) {
@@ -994,20 +902,15 @@ window.HMRClient = (function() {
         return specs;
       });
 
-      console.log(\`🎯 Executing \${allSpecs.length} spec(s) from suite:\`, 
-        matching.map(s => s.description)
-      );
-
-      const specIds = allSpecs.map(s => s.id).sort();
-      return await executeSpecsByIds(specIds);
+      console.log(\`🎯 Executing \${allSpecs.length} spec(s) from suite\`);
+      return await executeSpecsByIds(allSpecs.map(s => s.id).sort());
     }
 
     function listTests() {
       const specs = getOrderedSpecs(seed, random);
       console.table(specs.map(s => ({
         id: s.id,
-        name: s.description,
-        suite: findSuiteName(s)
+        name: s.description
       })));
     }
 
@@ -1019,35 +922,17 @@ window.HMRClient = (function() {
       }
       random = true;
       seed = parsed;
-      console.log('Seed updated to:', seed, 'Random enabled:', random);
+      env.configure({ random, seed });
+      console.log('✅ Seed updated to:', seed, '| Random enabled:', random);
       return seed;
     }
 
     function resetSeed() {
       random = false;
-      seed = initialSeed;
-      console.log('Seed reset to:', seed, 'Random reset to:', random);
+      seed = ${initialSeed};
+      env.configure({ random, seed });
+      console.log('✅ Seed reset to:', seed, '| Random reset to:', random);
       return seed;
-    }
-
-    function findSuiteName(spec) {
-      if (typeof spec.getPath !== 'function') return '(root)';
-      const path = spec.getPath();
-      if (!Array.isArray(path) || path.length < 2) return '(root)';
-
-      const suiteParts = path.slice(0, -1).map(p => {
-        if (!p) return '';
-        if (typeof p === 'string') return p;
-        if (typeof p.description === 'string' && p.description.trim()) return p.description.trim();
-        if (typeof p.getFullName === 'function') {
-          // some Jasmine nodes provide getFullName()
-          try { return p.getFullName(); } catch (e) { /* ignore */ }
-        }
-        // as a last resort stringify
-        return String(p);
-      }).filter(Boolean);
-
-      return suiteParts.length ? suiteParts.join(' > ') : '(root)';
     }
 
     globalThis.runner = {
@@ -1060,15 +945,18 @@ window.HMRClient = (function() {
       reload: () => location.reload(),
     };
 
-    console.log('%c✅ Jasmine 5 runner loaded with reusable reporter!', 'color: green; font-weight: bold;');
-    console.log('Usage: await runner.runTest("spec0") or await runner.runTest(/pattern/)');
-    console.log('       await runner.runTests(["spec0", "spec1"])');
-    console.log('       await runner.runSuite("Observable")');
+    console.log('%c✅ Jasmine runner ready!', 'color: green; font-weight: bold;');
+    console.log('Usage:');
+    console.log('  await runner.runTest("spec-name") or await runner.runTest(/pattern/)');
+    console.log('  await runner.runTests(["spec1", "spec2"])');
+    console.log('  await runner.runSuite("Suite Name")');
+    console.log('  runner.setSeed(12345) - Enable random order with seed');
+    console.log('  runner.resetSeed() - Back to sequential order');
+    console.log('  runner.listTests() - Show all tests');
   }
 
-  // Start initialization
-  initializeRunner().catch(error => {
-    console.error(\`Failed to initialize Jasmine runner: \${error}\`);
+  init().catch(error => {
+    console.error('Failed to initialize runner:', error);
   });
 })(window);
 `;
