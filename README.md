@@ -174,6 +174,12 @@ After running `init`, you'll have a `ts-test-runner.json`:
   "suppressConsoleLogs": false,    // Hide console.log/info/debug/trace in Node mode
   "htmlOptions": {
     "title": "My Project Tests"    // Browser page title
+  },
+  "jasmineConfig": {
+    "env": {
+      "random": true,
+      "seed": 0
+    }
   }
 }
 ```
@@ -256,6 +262,7 @@ describe('Universal Code', () => {
 | `npx ts-test-runner --headless --browser node` | Run in Node.js (fastest); add `--silent`/`--quiet` or `suppressConsoleLogs` to hide `console.*` noise. |
 | `npx ts-test-runner init` | Create configuration file |
 | `npx ts-test-runner --config custom.json` | Use custom config file |
+| `npx ts-test-runner --seed 123` | Use a fixed seed for deterministic random ordering |
 
 ## ts-jasmine-cli (Single Spec Runner)
 

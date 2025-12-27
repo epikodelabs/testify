@@ -22,9 +22,21 @@ export class CLIHandler {
     const headless = args.includes('--headless');
     const coverage = args.includes('--coverage');
     const browserIndex = args.findIndex(a => a === '--browser');
+    const seedIndex = args.findIndex(a => a === '--seed');
     const silentLogs = args.includes('--silent') || args.includes('--quiet');
     const hasBrowserArg = browserIndex !== -1;
     let browserName: string = 'chrome';
+    let seedValue: number | undefined;
+
+    if (seedIndex !== -1) {
+      const raw = args[seedIndex + 1];
+      const parsed = raw !== undefined ? Number(raw) : NaN;
+      if (!Number.isFinite(parsed)) {
+        logger.error('¢?? Invalid --seed value (expected a number).');
+        process.exit(1);
+      }
+      seedValue = parsed;
+    }
     
     if (hasBrowserArg && browserIndex + 1 < args.length) {
       browserName = args[browserIndex + 1];
@@ -79,6 +91,17 @@ export class CLIHandler {
         preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,
       };
 
+      if (seedValue !== undefined) {
+        const env = config.jasmineConfig?.env ?? {};
+        config.jasmineConfig = {
+          ...config.jasmineConfig,
+          env: {
+            ...env,
+            seed: seedValue,
+          },
+        };
+      }
+
       if (config.preserveOutputs) {
         logger.println(`🛑 Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).`);
       }
@@ -108,6 +131,7 @@ export class CLIHandler {
     logger.println('  --browser <name>     Target browser (chrome|chromium|firefox|webkit)');
     logger.println('  --watch              Launch browser mode + HMR for rapid feedback (cannot be headless)');
     logger.println('  --coverage           Generate Istanbul coverage reports after the run');
+    logger.println('  --seed <number>      Seed used for randomization order');
     logger.println('  --silent / --quiet    Suppress console logs when running in Node.js mode');
     logger.println('  --preserve           Skip regenerating index.html and test-runner.js when outputs exist');
     logger.println('  --help, -h           Show this help message');

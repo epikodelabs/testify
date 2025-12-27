@@ -280,6 +280,7 @@ export class ViteJasmineRunner extends EventEmitter {
   private async runHeadedBrowserMode(): Promise<void> {
     const server = await this.httpServerManager.startServer();
     let testsCompleted = false;
+    let testSuccess = false;
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     logger.println('📡 WebSocket server ready for real-time test reporting');
@@ -293,11 +294,12 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.browserManager.closeBrowser();
     };
 
-    this.webSocketManager.on('testsCompleted', ({ coverage }) => {
+    this.webSocketManager.on('testsCompleted', ({ success, coverage }) => {
       if (testsCompleted) {
         return;
       }
       testsCompleted = true;
+      testSuccess = success;
       finishHeadedRun(coverage).catch((error) => {
         logger.error(`❌ Failed to finish headed browser run: ${error}`);
         process.exit(1);
@@ -324,6 +326,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
       await promise;
       await this.cleanup();
+      process.exit(testsCompleted ? (testSuccess ? 0 : 1) : 1);
     };
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
@@ -338,7 +341,12 @@ export class ViteJasmineRunner extends EventEmitter {
         });
       }
       await this.cleanup();
-      process.exit(0);
+      process.exit(testsCompleted ? (testSuccess ? 0 : 1) : 1);
     });
   }
 }
+
+
+
+
+

@@ -691,9 +691,14 @@ window.HMRClient = (function() {
       return;
     }
 
+    const random = ${this.config.jasmineConfig?.env?.random ?? false};
+    let seed = ${(this.config.jasmineConfig?.env as any)?.seed ?? 0};
+    const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
+
     env.configure({
-      random: ${this.config.jasmineConfig?.env?.random ?? false},
-      stopOnSpecFailure: ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false},
+      random,
+      stopOnSpecFailure,
+      seed,
       autoCleanClosures: false
     });
 
@@ -868,7 +873,8 @@ window.HMRClient = (function() {
 
         // Set filter to only run our target specs
         env.configure({
-          random: ${this.config.jasmineConfig?.env?.random ?? false},
+          random,
+          seed,
           specFilter: (spec) => specIdSet.has(spec.id),
           autoCleanClosures: false
         });
@@ -948,12 +954,23 @@ window.HMRClient = (function() {
     }
 
     function listTests() {
-      const specs = getAllSpecs();
+      const specs = getOrderedSpecs(seed, random);
       console.table(specs.map(s => ({
         id: s.id,
         name: s.description,
         suite: findSuiteName(s)
       })));
+    }
+
+    function setSeed(nextSeed) {
+      const parsed = Number(nextSeed);
+      if (!Number.isFinite(parsed)) {
+        console.warn('Invalid seed (expected a number).');
+        return seed;
+      }
+      seed = parsed;
+      console.log('Seed updated to:', seed);
+      return seed;
     }
 
     function findSuiteName(spec) {
@@ -981,6 +998,7 @@ window.HMRClient = (function() {
       runTest,
       runSuite,
       listTests,
+      setSeed,
       reload: () => location.reload(),
     };
 

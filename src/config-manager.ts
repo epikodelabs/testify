@@ -63,7 +63,7 @@ export class ConfigManager {
       },
 
       jasmineConfig: {
-        env: { stopSpecOnExpectationFailure: false, random: true, timeout: 120000 }
+        env: { stopSpecOnExpectationFailure: false, random: true, seed: 0, timeout: 120000 }
       },
 
       htmlOptions: {

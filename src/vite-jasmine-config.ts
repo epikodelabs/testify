@@ -32,6 +32,7 @@ export interface ViteJasmineConfig {
     env?: { 
       stopSpecOnExpectationFailure?: boolean; 
       random?: boolean; 
+      seed?: number;
       timeout?: number; 
     };
   };

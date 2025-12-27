@@ -60,8 +60,25 @@ export class BrowserManager {
     page.setDefaultTimeout(0);
 
     let interrupted = false;
-    const sigintHandler = () => { interrupted = true; };
+    const interruptError = new Error('Interrupted');
+    let interruptReject: ((error: Error) => void) | null = null;
+    const interruptPromise = new Promise<never>((_, reject) => {
+      interruptReject = reject;
+    });
+
+    const abortRun = () => {
+      interrupted = true;
+      if (interruptReject) interruptReject(interruptError);
+      if (!page.isClosed()) {
+        void page.close().catch(() => {});
+      }
+      void browser.close().catch(() => {});
+    };
+
+    const sigintHandler = () => abortRun();
+    const sigtermHandler = () => abortRun();
     process.once('SIGINT', sigintHandler);
+    process.once('SIGTERM', sigtermHandler);
 
     // Unified console and error logging
     page.on('console', (msg: any) => {
@@ -80,16 +97,19 @@ export class BrowserManager {
     await page.goto(`http://localhost:${port}/index.html`, { waitUntil: 'networkidle0', timeout: 120000 });
 
     try {
-      await page.waitForFunction(() => (window as any).jasmineFinished === true, {
-        timeout: this.config.jasmineConfig?.env?.timeout ?? 120000
-      });
+      await Promise.race([
+        page.waitForFunction(() => (window as any).jasmineFinished === true, {
+          timeout: this.config.jasmineConfig?.env?.timeout ?? 120000
+        }),
+        interruptPromise
+      ]);
 
       await new Promise(resolve => setTimeout(resolve, 500));
       await browser.close();
       
       return true; // Success determined by WebSocket messages
     } catch (error) {
-      if (interrupted) {
+      if (interrupted || error === interruptError) {
         logger.printRaw('\n\n');
         logger.println('🛑 Tests aborted by user (Ctrl+C)');
         await browser.close();
@@ -100,6 +120,7 @@ export class BrowserManager {
       throw error;
     } finally {
       process.removeListener('SIGINT', sigintHandler);
+      process.removeListener('SIGTERM', sigtermHandler);
     }
   }
 
