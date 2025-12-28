@@ -266,7 +266,7 @@ async function respawnWithLoader(args: RunnerArgs): Promise<never> {
 }
 
 async function loadJasmine() {
-  const jasmineCorePath = packageRequire.resolve('jasmine-core/lib/jasmine-core/jasmine.js');
+  const jasmineCorePath = norm(packageRequire.resolve('jasmine-core/lib/jasmine-core/jasmine.js'));
   const jasmineCore = await import(pathToFileURL(jasmineCorePath).href);
   const jasmineRequire = jasmineCore.default;
   const jasmineInstance = jasmineRequire.core(jasmineRequire);
