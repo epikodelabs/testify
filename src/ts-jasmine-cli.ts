@@ -4,8 +4,9 @@ import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 import { logger } from './console-repl';
 import JSONCleaner from './json-cleaner';
+import { norm } from './utils';
 
-const packageRoot = path.resolve(__dirname, '..');
+const packageRoot = norm(path.resolve(__dirname, '..'));
 const packageRequire = createRequire(path.join(packageRoot, 'package.json'));
 
 interface RunnerArgs {
@@ -75,7 +76,7 @@ function parseArgs(argv: string[]): RunnerArgs {
 
   if (help) {
     return {
-      spec: specRaw ? path.resolve(process.cwd(), specRaw) : '',
+      spec: specRaw ? norm(path.resolve(process.cwd(), specRaw)) : '',
       random: args.includes('--random'),
       stopOnFail: args.includes('--stop-on-fail'),
       seed: get('--seed') ? Number(get('--seed')) : undefined,
@@ -93,7 +94,7 @@ function parseArgs(argv: string[]): RunnerArgs {
 
   if (initLaunchConfig) {
     return {
-      spec: specRaw ? path.resolve(process.cwd(), specRaw) : '',
+      spec: specRaw ? norm(path.resolve(process.cwd(), specRaw)) : '',
       random: args.includes('--random'),
       stopOnFail: args.includes('--stop-on-fail'),
       seed: get('--seed') ? Number(get('--seed')) : undefined,
@@ -109,7 +110,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     process.exit(1);
   }
 
-  const spec = path.resolve(process.cwd(), specRaw);
+  const spec = norm(path.resolve(process.cwd(), specRaw));
   if (!fs.existsSync(spec)) {
     logger.error(`ERROR: Spec file not found: ${spec}`);
     process.exit(1);
@@ -126,6 +127,17 @@ function parseArgs(argv: string[]): RunnerArgs {
   };
 }
 
+function normalizeCliArgs(args: string[]): string[] {
+  const normalized = [...args];
+  for (let i = 0; i < normalized.length; i += 1) {
+    if (normalized[i] === '--spec' && typeof normalized[i + 1] === 'string') {
+      normalized[i + 1] = norm(normalized[i + 1]);
+      i += 1;
+    }
+  }
+  return normalized;
+}
+
 function isTypeScriptLike(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return ext === '.ts' || ext === '.tsx' || ext === '.mts' || ext === '.cts';
@@ -138,9 +150,9 @@ function hasEsmLoader(): boolean {
 }
 
 function findNearestTsconfig(startDir: string): string | null {
-  let current = path.resolve(startDir);
+  let current = norm(path.resolve(startDir));
   while (true) {
-    const candidate = path.join(current, 'tsconfig.json');
+    const candidate = norm(path.join(current, 'tsconfig.json'));
     if (fs.existsSync(candidate)) return candidate;
     const parent = path.dirname(current);
     if (parent === current) return null;
@@ -164,8 +176,8 @@ function getDefaultVsCodeLaunchConfiguration(): Record<string, unknown> {
 }
 
 function initVsCodeLaunchConfig(): void {
-  const vscodeDir = path.resolve(process.cwd(), '.vscode');
-  const launchJsonPath = path.join(vscodeDir, 'launch.json');
+  const vscodeDir = norm(path.resolve(process.cwd(), '.vscode'));
+  const launchJsonPath = norm(path.join(vscodeDir, 'launch.json'));
   const config = getDefaultVsCodeLaunchConfiguration();
 
   fs.mkdirSync(vscodeDir, { recursive: true });
@@ -228,7 +240,7 @@ async function respawnWithLoader(args: RunnerArgs): Promise<never> {
   if (tsconfig) env.TS_NODE_PROJECT = tsconfig;
   env.TS_NODE_TRANSPILE_ONLY ??= 'true';
 
-  const loaderPath = path.join(packageRoot, 'esm-loader.mjs');
+  const loaderPath = norm(path.join(packageRoot, 'esm-loader.mjs'));
   const loaderSpecifier = fs.existsSync(loaderPath)
     ? pathToFileURL(loaderPath).href
     : '@actioncrew/ts-test-runner/esm-loader.mjs';
@@ -240,7 +252,7 @@ async function respawnWithLoader(args: RunnerArgs): Promise<never> {
       loaderSpecifier,
       '--enable-source-maps',
       process.argv[1],
-      ...process.argv.slice(2),
+      ...normalizeCliArgs(process.argv.slice(2)),
     ],
     { stdio: 'inherit', env, cwd: process.cwd() },
   );
