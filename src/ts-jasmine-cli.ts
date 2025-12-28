@@ -6,6 +6,7 @@ import { inspect as utilInspect } from 'util';
 import { logger } from './console-repl';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
+import ConsoleReporter from './jasmine-console-reporter';
 
 const packageRoot = norm(path.resolve(__dirname, '..'));
 const packageRequire = createRequire(path.join(packageRoot, 'package.json'));
@@ -280,124 +281,12 @@ async function loadJasmine() {
   };
 
   jasmineEnv.clearReporters();
-  jasmineEnv.addReporter(createStandardConsoleReporter());
+  jasmineEnv.addReporter(new ConsoleReporter());
   return { jasmineEnv, jasmineInstance };
 }
 
 function formatValue(value: unknown): string {
   return utilInspect(value, { depth: 6, maxArrayLength: 50, breakLength: 80, colors: false });
-}
-
-function formatExpectation(ex: any): string[] {
-  const parts: string[] = [];
-  if (ex?.matcherName) parts.push(`Matcher: ${ex.matcherName}`);
-  if ('actual' in ex) parts.push(`Actual: ${formatValue(ex.actual)}`);
-  if ('expected' in ex) parts.push(`Expected: ${formatValue(ex.expected)}`);
-  return parts;
-}
-
-function createStandardConsoleReporter(): Record<string, unknown> {
-  const write = (text: string) => process.stdout.write(text);
-
-  let startedAt = 0;
-  let specCount = 0;
-  let failedCount = 0;
-  let pendingCount = 0;
-
-  const failedSpecs: Array<{
-    fullName: string;
-    failedExpectations?: Array<{
-      message: string;
-      stack?: string;
-      matcherName?: string;
-      actual?: unknown;
-      expected?: unknown;
-    }>;
-  }> = [];
-
-  const pendingSpecs: Array<{
-    fullName: string;
-    pendingReason?: string;
-  }> = [];
-
-  return {
-    jasmineStarted() {
-      startedAt = Date.now();
-      write('Started\n');
-    },
-    specDone(result: any) {
-      specCount += 1;
-
-      switch (result?.status) {
-        case 'passed':
-          write('.');
-          break;
-        case 'failed':
-          failedCount += 1;
-          failedSpecs.push({
-            fullName: String(result?.fullName ?? result?.description ?? 'Unknown spec'),
-            failedExpectations: Array.isArray(result?.failedExpectations)
-              ? result.failedExpectations.map((e: any) => ({
-                  message: String(e?.message ?? ''),
-                  stack: e?.stack ? String(e.stack) : undefined,
-                  matcherName: e?.matcherName,
-                  actual: e?.actual,
-                  expected: e?.expected,
-                }))
-              : undefined,
-          });
-          write('F');
-          break;
-        case 'pending':
-          pendingCount += 1;
-          pendingSpecs.push({
-            fullName: String(result?.fullName ?? result?.description ?? 'Unknown spec'),
-            pendingReason: result?.pendingReason ? String(result.pendingReason) : undefined,
-          });
-          write('*');
-          break;
-        default:
-          // 'excluded'/'disabled' or unknown statuses
-          write('-');
-          break;
-      }
-    },
-    jasmineDone() {
-      const elapsedMs = startedAt ? Date.now() - startedAt : 0;
-      const elapsedSec = (elapsedMs / 1000).toFixed(3);
-
-      write('\n');
-      write(`Finished in ${elapsedSec}s\n`);
-
-      const parts = [`${specCount} spec${specCount === 1 ? '' : 's'}`];
-      if (failedCount) parts.push(`${failedCount} failure${failedCount === 1 ? '' : 's'}`);
-      if (pendingCount) parts.push(`${pendingCount} pending`);
-      write(parts.join(', ') + '\n');
-
-      if (failedSpecs.length) {
-        failedSpecs.forEach((spec, i) => {
-          write(`\n${i + 1}) ${spec.fullName}\n`);
-          const expectations = spec.failedExpectations ?? [];
-          for (const ex of expectations) {
-            if (ex.message) write(`${ex.message}\n`);
-            const details = formatExpectation(ex);
-            for (const line of details) {
-              write(`${line}\n`);
-            }
-            if (ex.stack) write(`${ex.stack}\n`);
-          }
-        });
-      }
-
-      if (pendingSpecs.length) {
-        write('\nPending:\n');
-        pendingSpecs.forEach((spec, i) => {
-          write(`${i + 1}) ${spec.fullName}\n`);
-          if (spec.pendingReason) write(`${spec.pendingReason}\n`);
-        });
-      }
-    },
-  };
 }
 
 async function main() {
