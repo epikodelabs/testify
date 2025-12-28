@@ -15,7 +15,7 @@ type FailureResult = {
  * A reporter that prints spec and suite results to the console.
  * A ConsoleReporter is installed by default.
  */
-export class ConsoleReporter implements jasmine.CustomReporter {
+export class JasmineConsoleReporter implements jasmine.CustomReporter {
   private print: (message: string) => void = () => {};
   private showColors = false;
   private specCount = 0;
@@ -194,7 +194,7 @@ export class ConsoleReporter implements jasmine.CustomReporter {
     this.print('\n');
   }
 
-  private colored(color: keyof ConsoleReporter['ansi'], str: string) {
+  private colored(color: keyof JasmineConsoleReporter['ansi'], str: string) {
     return this.showColors ? this.ansi[color] + str + this.ansi.none : str;
   }
 
@@ -284,4 +284,4 @@ export class ConsoleReporter implements jasmine.CustomReporter {
   }
 }
 
-export default ConsoleReporter;
+export default JasmineConsoleReporter;
