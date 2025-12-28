@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
+import { inspect as utilInspect } from 'util';
 import { logger } from './console-repl';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
@@ -283,6 +284,18 @@ async function loadJasmine() {
   return { jasmineEnv, jasmineInstance };
 }
 
+function formatValue(value: unknown): string {
+  return utilInspect(value, { depth: 6, maxArrayLength: 50, breakLength: 80, colors: false });
+}
+
+function formatExpectation(ex: any): string[] {
+  const parts: string[] = [];
+  if (ex?.matcherName) parts.push(`Matcher: ${ex.matcherName}`);
+  if ('actual' in ex) parts.push(`Actual: ${formatValue(ex.actual)}`);
+  if ('expected' in ex) parts.push(`Expected: ${formatValue(ex.expected)}`);
+  return parts;
+}
+
 function createStandardConsoleReporter(): Record<string, unknown> {
   const write = (text: string) => process.stdout.write(text);
 
@@ -293,7 +306,13 @@ function createStandardConsoleReporter(): Record<string, unknown> {
 
   const failedSpecs: Array<{
     fullName: string;
-    failedExpectations?: Array<{ message: string; stack?: string }>;
+    failedExpectations?: Array<{
+      message: string;
+      stack?: string;
+      matcherName?: string;
+      actual?: unknown;
+      expected?: unknown;
+    }>;
   }> = [];
 
   const pendingSpecs: Array<{
@@ -321,6 +340,9 @@ function createStandardConsoleReporter(): Record<string, unknown> {
               ? result.failedExpectations.map((e: any) => ({
                   message: String(e?.message ?? ''),
                   stack: e?.stack ? String(e.stack) : undefined,
+                  matcherName: e?.matcherName,
+                  actual: e?.actual,
+                  expected: e?.expected,
                 }))
               : undefined,
           });
@@ -358,6 +380,10 @@ function createStandardConsoleReporter(): Record<string, unknown> {
           const expectations = spec.failedExpectations ?? [];
           for (const ex of expectations) {
             if (ex.message) write(`${ex.message}\n`);
+            const details = formatExpectation(ex);
+            for (const line of details) {
+              write(`${line}\n`);
+            }
             if (ex.stack) write(`${ex.stack}\n`);
           }
         });
