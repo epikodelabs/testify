@@ -3,6 +3,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 import { logger } from './console-repl';
+import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
 
@@ -278,100 +279,7 @@ async function loadJasmine() {
     ...jasmineInstance,
   };
 
-  jasmineEnv.clearReporters();
-  jasmineEnv.addReporter(createStandardConsoleReporter());
   return { jasmineEnv, jasmineInstance };
-}
-
-function createStandardConsoleReporter(): Record<string, unknown> {
-  const write = (text: string) => process.stdout.write(text);
-
-  let startedAt = 0;
-  let specCount = 0;
-  let failedCount = 0;
-  let pendingCount = 0;
-
-  const failedSpecs: Array<{
-    fullName: string;
-    failedExpectations?: Array<{ message: string; stack?: string }>;
-  }> = [];
-
-  const pendingSpecs: Array<{
-    fullName: string;
-    pendingReason?: string;
-  }> = [];
-
-  return {
-    jasmineStarted() {
-      startedAt = Date.now();
-      write('Started\n');
-    },
-    specDone(result: any) {
-      specCount += 1;
-
-      switch (result?.status) {
-        case 'passed':
-          write('.');
-          break;
-        case 'failed':
-          failedCount += 1;
-          failedSpecs.push({
-            fullName: String(result?.fullName ?? result?.description ?? 'Unknown spec'),
-            failedExpectations: Array.isArray(result?.failedExpectations)
-              ? result.failedExpectations.map((e: any) => ({
-                  message: String(e?.message ?? ''),
-                  stack: e?.stack ? String(e.stack) : undefined,
-                }))
-              : undefined,
-          });
-          write('F');
-          break;
-        case 'pending':
-          pendingCount += 1;
-          pendingSpecs.push({
-            fullName: String(result?.fullName ?? result?.description ?? 'Unknown spec'),
-            pendingReason: result?.pendingReason ? String(result.pendingReason) : undefined,
-          });
-          write('*');
-          break;
-        default:
-          // 'excluded'/'disabled' or unknown statuses
-          write('-');
-          break;
-      }
-    },
-    jasmineDone() {
-      const elapsedMs = startedAt ? Date.now() - startedAt : 0;
-      const elapsedSec = (elapsedMs / 1000).toFixed(3);
-
-      write('\n');
-      write(`Finished in ${elapsedSec}s\n`);
-
-      const parts = [`${specCount} spec${specCount === 1 ? '' : 's'}`];
-      if (failedCount) parts.push(`${failedCount} failure${failedCount === 1 ? '' : 's'}`);
-      if (pendingCount) parts.push(`${pendingCount} pending`);
-      write(parts.join(', ') + '\n');
-
-      if (failedSpecs.length) {
-        failedSpecs.forEach((spec, i) => {
-          write(`\n${i + 1}) ${spec.fullName}\n`);
-          const expectations = spec.failedExpectations ?? [];
-          for (const ex of expectations) {
-            if (ex.message) write(`${ex.message}\n`);
-            if (ex.stack) write(`${ex.stack}\n`);
-          }
-        });
-      }
-
-      if (pendingSpecs.length) {
-        write('\nPending:\n');
-        pendingSpecs.forEach((spec, i) => {
-          write(`${i + 1}) ${spec.fullName}\n`);
-          if (spec.pendingReason) write(`${spec.pendingReason}\n`);
-        });
-      }
-    },
-  };
 }
 
 async function main() {
@@ -410,30 +318,20 @@ async function main() {
     process.exit(1);
   });
 
-  await import(pathToFileURL(args.spec).href);
-
   jasmineEnv.configure({
     random: args.random,
     stopSpecOnExpectationFailure: args.stopOnFail,
     seed: args.seed,
   });
 
-  let failureCount = 0;
-  const completion = new Promise<void>((resolve) => {
-    jasmineEnv.addReporter({
-      specDone(result: any) {
-        if (result.status === 'failed') failureCount += 1;
-      },
-      jasmineDone() {
-        resolve();
-      },
-    });
-  });
+  const reporter = new AwaitableJasmineConsoleReporter();
+  jasmineEnv.addReporter(reporter);
 
-  jasmineEnv.execute();
-  await completion;
-
-  process.exit(failureCount === 0 ? 0 : 1);
+  await import(pathToFileURL(args.spec).href);
+  await jasmineEnv.execute();
+  
+  const exitCode = (await reporter.complete)?.overallStatus === 'passed' ? 0 : 1;
+  process.exit(exitCode);
 }
 
 main().catch((error) => {

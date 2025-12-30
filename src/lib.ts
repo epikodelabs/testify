@@ -1,2 +1,1 @@
-export { CompoundReporter } from './compound-reporter';
-export { ConsoleReporter } from './console-reporter';
+export { JasmineConsoleReporter, AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';

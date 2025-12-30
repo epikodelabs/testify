@@ -15,9 +15,13 @@ type FailureResult = {
  * A reporter that prints spec and suite results to the console.
  * A ConsoleReporter is installed by default.
  */
+/**
+ * A reporter that prints spec and suite results to the console.
+ * A ConsoleReporter is installed by default.
+ */
 export class JasmineConsoleReporter implements jasmine.CustomReporter {
-  private print: (message: string) => void = () => {};
-  private showColors = false;
+  private print: (message: string) => void = (message) => process.stdout.write(message);
+  private showColors = true;
   private specCount = 0;
   private executableSpecCount = 0;
   private failureCount = 0;
@@ -58,7 +62,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     }
   }
 
-  jasmineStarted(options: jasmine.JasmineStartedInfo, _done?: () => void) {
+  jasmineStarted(options: jasmine.JasmineStartedInfo) {
     this.specCount = 0;
     this.executableSpecCount = 0;
     this.failureCount = 0;
@@ -70,7 +74,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     this.printNewline();
   }
 
-  jasmineDone(result: jasmine.JasmineDoneInfo, _done?: () => void) {
+  jasmineDone(result: jasmine.JasmineDoneInfo) {
     if (result.failedExpectations) {
       this.failureCount += result.failedExpectations.length;
     }
@@ -157,7 +161,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     }
   }
 
-  specDone(result: jasmine.SpecResult, _done?: () => void) {
+  specDone(result: jasmine.SpecResult) {
     this.specCount++;
 
     if (result.status == 'pending') {
@@ -181,7 +185,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     }
   }
 
-  suiteDone(result: jasmine.SuiteResult, _done?: () => void) {
+  suiteDone(result: jasmine.SuiteResult) {
     if (result.failedExpectations && result.failedExpectations.length > 0) {
       this.failureCount++;
       this.failedSuites.push(result);
@@ -284,4 +288,19 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   }
 }
 
-export default JasmineConsoleReporter;
+export class AwaitableJasmineConsoleReporter extends JasmineConsoleReporter {
+  private resolveComplete?: (result: jasmine.JasmineDoneInfo) => void;
+  readonly complete: Promise<jasmine.JasmineDoneInfo>;
+
+  constructor() {
+    super();
+    this.complete = new Promise<jasmine.JasmineDoneInfo>((resolve) => {
+      this.resolveComplete = resolve;
+    });
+  }
+
+  jasmineDone(result: jasmine.JasmineDoneInfo) {
+    super.jasmineDone(result);
+    this.resolveComplete?.(result);
+  }
+}
