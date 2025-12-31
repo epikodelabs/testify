@@ -167,7 +167,7 @@ export async function runTests(reporter) {
         // Load jasmine-core from ts-test-runner's own node_modules
         const jasmineCorePath = join(
           __cwd,
-          './node_modules/@actioncrew/ts-test-runner/node_modules/jasmine-core/lib/jasmine-core/jasmine.js',
+          './node_modules/@epikodelabs/ts-test-runner/node_modules/jasmine-core/lib/jasmine-core/jasmine.js',
         );
 
         const jasmineCore = await import(pathToFileURL(jasmineCorePath).href);
