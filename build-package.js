@@ -15,8 +15,8 @@ const distPackage = {
   description: mainPackage.description,
   type: "module",
   bin: {
-    "ts-jasmine-cli": "bin/ts-jasmine-cli",
-    "ts-test-runner": "bin/ts-test-runner"
+    "jasmine": "bin/jasmine",
+    "testify": "bin/testify"
   },
   files: [
     'README.md',
@@ -42,6 +42,6 @@ const distPackage = {
 };
 
 fs.writeFileSync(
-  path.join(__dirname, 'dist/ts-test-runner/package.json'),
+  path.join(__dirname, 'dist/testify/package.json'),
   JSON.stringify(distPackage, null, 2)
 );

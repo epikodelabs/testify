@@ -39,7 +39,7 @@ export default defineConfig({
       entry: path.resolve(__dirname, './src/lib.ts'),
       name: 'TsTestRunner',
       formats: ['es'],
-      fileName: () => `ts-test-runner/lib/index.js`
+      fileName: () => `testify/lib/index.js`
     },
     minify: false,
     sourcemap: false,

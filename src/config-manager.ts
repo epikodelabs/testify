@@ -7,13 +7,13 @@ import { logger } from './console-repl';
 
 export class ConfigManager {
   static ensureConfigExists(configPath?: string): ViteJasmineConfig {
-    const jsonPath = norm(configPath || path.resolve(process.cwd(), 'ts-test-runner.json'));
+    const jsonPath = norm(configPath || path.resolve(process.cwd(), 'testify.json'));
     const cleaner = new JSONCleaner()
     if (fs.existsSync(jsonPath)) {
       try {
         return cleaner.parse(fs.readFileSync(jsonPath, 'utf-8'));
       } catch (error) {
-        logger.error(`❌ Failed to parse existing ts-test-runner.json ${error}`);
+        logger.error(`❌ Failed to parse existing testify.json ${error}`);
         return {} as ViteJasmineConfig;
       }
     }
@@ -25,14 +25,14 @@ export class ConfigManager {
       fs.writeFileSync(jsonPath, JSON.stringify(defaultConfig, null, 2));
       logger.println(`🆕 Created default test runner config at ${jsonPath}`);
     } catch (error) {
-      logger.error(`❌ Failed to create default ts-test-runner.json ${error}`);
+      logger.error(`❌ Failed to create default testify.json ${error}`);
     }
 
     return defaultConfig;
   }
 
   static createDefaultConfig(): ViteJasmineConfig {
-    const configDir = norm(process.cwd()); // folder where ts-test-runner.json will be located
+    const configDir = norm(process.cwd()); // folder where testify.json will be located
 
     const rel = (p: string) => {
       const r = path.relative(configDir, p);
@@ -74,7 +74,7 @@ export class ConfigManager {
   }
 
   static initViteJasmineConfig(configPath?: string): void {
-    const jsonPath = norm(configPath || path.resolve(process.cwd(), 'ts-test-runner.json'));
+    const jsonPath = norm(configPath || path.resolve(process.cwd(), 'testify.json'));
 
     if (fs.existsSync(jsonPath)) {
       logger.println(`⚠️  Config already exists at ${jsonPath}`);

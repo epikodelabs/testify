@@ -164,7 +164,7 @@ export async function runTests(reporter) {
 
     (async function () {
       try {
-        // Load jasmine-core from ts-test-runner's own node_modules
+        // Load jasmine-core from testify's own node_modules
         const jasmineCorePath = join(
           __cwd,
           './node_modules/@epikodelabs/testify/node_modules/jasmine-core/lib/jasmine-core/jasmine.js',

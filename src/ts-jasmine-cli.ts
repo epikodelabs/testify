@@ -19,7 +19,7 @@ interface RunnerArgs {
   initLaunchConfig: boolean;
 }
 
-const vscodeLaunchConfigName = 'Debug current spec (ts-jasmine-cli)';
+const vscodeLaunchConfigName = 'Debug current spec (jasmine)';
 
 function getRuntimeEnv(): NodeJS.ProcessEnv {
   const runtimeProcess = (globalThis as any).process as NodeJS.Process | undefined;
@@ -37,11 +37,11 @@ function isRunningInVsCode(): boolean {
 }
 
 function printHelp(): void {
-  logger.println('ts-jasmine-cli: run a single Jasmine spec in Node');
+  logger.println('jasmine: run a single Jasmine spec in Node');
   logger.println('');
   logger.println('Usage:');
-  logger.println('  npx ts-jasmine-cli --spec <path-to-spec>');
-  logger.println('  npx ts-jasmine-cli init');
+  logger.println('  npx jasmine --spec <path-to-spec>');
+  logger.println('  npx jasmine init');
   logger.println('');
   logger.println('Commands:');
   logger.println('  init                Create/update .vscode/launch.json (VS Code debug; requires VS Code)');
@@ -55,7 +55,7 @@ function printHelp(): void {
   logger.println('');
   logger.println('TypeScript + tsconfig paths (recommended):');
   logger.println(
-    '  node --loader @epikodelabs/testify/esm-loader.mjs ./node_modules/@epikodelabs/testify/bin/ts-jasmine-cli --spec <file>',
+    '  node --loader @epikodelabs/testify/esm-loader.mjs ./node_modules/@epikodelabs/testify/bin/jasmine --spec <file>',
   );
   logger.println('');
   logger.println('VS Code debug config name:');
@@ -168,7 +168,7 @@ function getDefaultVsCodeLaunchConfiguration(): Record<string, unknown> {
     name: vscodeLaunchConfigName,
     runtimeExecutable: 'node',
     runtimeArgs: ['--loader', '@epikodelabs/testify/esm-loader.mjs', '--enable-source-maps'],
-    program: '${workspaceFolder}/node_modules/@epikodelabs/testify/bin/ts-jasmine-cli',
+    program: '${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine',
     args: ['--spec', '${file}'],
     cwd: '${workspaceFolder}',
     console: 'integratedTerminal',
@@ -211,7 +211,7 @@ function initVsCodeLaunchConfig(): void {
   if (!parsed || typeof parsed !== 'object') parsed = {};
   if (!Array.isArray(parsed.configurations)) parsed.configurations = [];
 
-  const programSuffix = '/bin/ts-jasmine-cli';
+  const programSuffix = '/bin/jasmine';
   const alreadyHasConfig = parsed.configurations.some((c: any) => {
     if (!c || typeof c !== 'object') return false;
     if (c.name === vscodeLaunchConfigName) return true;
@@ -291,7 +291,7 @@ async function main() {
 
   if (args.initLaunchConfig) {
     if (!isRunningInVsCode()) {
-      logger.error('ERROR: `npx ts-jasmine-cli init` is only supported when run from VS Code.');
+      logger.error('ERROR: `npx jasmine init` is only supported when run from VS Code.');
       logger.println('');
       logger.println('Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).');
       process.exit(1);
@@ -300,7 +300,7 @@ async function main() {
     process.exit(0);
   }
 
-  // `npx ts-jasmine-cli --spec test.spec.ts` starts Node without an ESM loader, so TS (and tsconfig paths)
+  // `npx jasmine --spec test.spec.ts` starts Node without an ESM loader, so TS (and tsconfig paths)
   // won't resolve. For normal CLI runs, transparently re-spawn with the packaged loader.
   // For debugging, launch Node with the loader explicitly so breakpoints stay in one process.
   if (isTypeScriptLike(args.spec) && !hasEsmLoader() && !process.execArgv.join(' ').includes('--inspect')) {
@@ -335,6 +335,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error(`ERROR: Failed to run ts-jasmine-cli: ${error.stack ?? error}`);
+  logger.error(`ERROR: Failed to run jasmine: ${error.stack ?? error}`);
   process.exit(1);
 });

@@ -39,10 +39,10 @@ npx playwright install
 ### 1. Initialize Configuration
 
 ```bash
-npx ts-test-runner init
+npx testify init
 ```
 
-This creates `ts-test-runner.json` with sensible defaults:
+This creates `testify.json` with sensible defaults:
 
 ```json
 {
@@ -87,19 +87,19 @@ describe('Calculator', () => {
 
 ```bash
 # Development: Interactive browser mode
-npx ts-test-runner
+npx testify
 
 # CI/CD: Headless Chrome
-npx ts-test-runner --headless
+npx testify --headless
 
 # Fastest: Direct Node.js execution
-npx ts-test-runner --headless --browser node
+npx testify --headless --browser node
 
 # With code coverage
-npx ts-test-runner --coverage
+npx testify --coverage
 
 # Watch mode with HMR
-npx ts-test-runner --watch
+npx testify --watch
 ```
 
 ---
@@ -111,7 +111,7 @@ npx ts-test-runner --watch
 **Best for:** Development and debugging
 
 ```bash
-npx ts-test-runner
+npx testify
 ```
 
 - Opens `http://localhost:8888` in your default browser
@@ -125,13 +125,13 @@ npx ts-test-runner
 
 ```bash
 # Chrome (default)
-npx ts-test-runner --headless
+npx testify --headless
 
 # Firefox
-npx ts-test-runner --headless --browser firefox
+npx testify --headless --browser firefox
 
 # Safari/WebKit
-npx ts-test-runner --headless --browser webkit
+npx testify --headless --browser webkit
 ```
 
 - Runs real browser without UI
@@ -144,7 +144,7 @@ npx ts-test-runner --headless --browser webkit
 **Best for:** Fast unit testing
 
 ```bash
-npx ts-test-runner --headless --browser node
+npx testify --headless --browser node
 ```
 
 - Fastest execution (no browser startup overhead)
@@ -155,16 +155,16 @@ npx ts-test-runner --headless --browser node
 **Suppress console output:**
 ```bash
 # Using CLI flags
-npx ts-test-runner --headless --browser node --silent
-npx ts-test-runner --headless --browser node --quiet
+npx testify --headless --browser node --silent
+npx testify --headless --browser node --quiet
 
-# Or in ts-test-runner.json
+# Or in testify.json
 {
   "suppressConsoleLogs": true
 }
 
 # Or via environment variable
-TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS=1 npx ts-test-runner --headless --browser node
+TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS=1 npx testify --headless --browser node
 ```
 
 ### Watch Mode
@@ -172,7 +172,7 @@ TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS=1 npx ts-test-runner --headless --browser n
 **Best for:** Rapid development iteration
 
 ```bash
-npx ts-test-runner --watch
+npx testify --watch
 ```
 
 - Hot Module Reload for instant feedback
@@ -190,7 +190,7 @@ npx ts-test-runner --watch
 Enable Istanbul code coverage with the `--coverage` flag:
 
 ```bash
-npx ts-test-runner --coverage
+npx testify --coverage
 ```
 
 **How it works:**
@@ -209,7 +209,7 @@ npx ts-test-runner --coverage
 
 ## Configuration Reference
 
-### Configuration File: `ts-test-runner.json`
+### Configuration File: `testify.json`
 
 ```json
 {
@@ -281,9 +281,9 @@ npx ts-test-runner --coverage
 
 | Command | Description |
 |---------|-------------|
-| `npx ts-test-runner` | Run in browser (development mode) |
-| `npx ts-test-runner init` | Create configuration file |
-| `npx ts-test-runner --help` | Show help message |
+| `npx testify` | Run in browser (development mode) |
+| `npx testify init` | Create configuration file |
+| `npx testify --help` | Show help message |
 
 ### Execution Flags
 
@@ -302,20 +302,20 @@ npx ts-test-runner --coverage
 
 ```bash
 # Development workflow
-npx ts-test-runner --watch
+npx testify --watch
 
 # CI/CD pipeline
-npx ts-test-runner --headless --coverage
+npx testify --headless --coverage
 
 # Cross-browser testing
-npx ts-test-runner --headless --browser firefox
-npx ts-test-runner --headless --browser webkit
+npx testify --headless --browser firefox
+npx testify --headless --browser webkit
 
 # Deterministic test order
-npx ts-test-runner --seed 12345
+npx testify --seed 12345
 
 # Fast unit tests with clean console
-npx ts-test-runner --headless --browser node --silent
+npx testify --headless --browser node --silent
 ```
 
 ---
@@ -393,17 +393,17 @@ describe('Universal Code', () => {
 
 ---
 
-## Single Spec Runner (ts-jasmine-cli)
+## Single Spec Runner (jasmine)
 
 Run a single spec file in Node.js using `jasmine-core`:
 
 ```bash
 # JavaScript specs
-npx ts-jasmine-cli --spec ./tests/example.spec.js
+npx jasmine --spec ./tests/example.spec.js
 
 # TypeScript specs (recommended)
 node --loader @epikodelabs/testify/esm-loader.mjs \
-  ./node_modules/@epikodelabs/testify/bin/ts-jasmine-cli \
+  ./node_modules/@epikodelabs/testify/bin/jasmine \
   --spec ./tests/example.spec.ts
 ```
 
@@ -412,7 +412,7 @@ node --loader @epikodelabs/testify/esm-loader.mjs \
 Create or update `.vscode/launch.json`:
 
 ```bash
-npx ts-jasmine-cli init
+npx jasmine init
 ```
 
 Or manually add this configuration:
@@ -421,14 +421,14 @@ Or manually add this configuration:
 {
   "type": "node",
   "request": "launch",
-  "name": "Debug current spec (ts-jasmine-cli)",
+  "name": "Debug current spec (jasmine)",
   "runtimeExecutable": "node",
   "runtimeArgs": [
     "--loader",
     "@epikodelabs/testify/esm-loader.mjs",
     "--enable-source-maps"
   ],
-  "program": "${workspaceFolder}/node_modules/@epikodelabs/testify/bin/ts-jasmine-cli",
+  "program": "${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine",
   "args": ["--spec", "${file}"],
   "cwd": "${workspaceFolder}",
   "console": "integratedTerminal",
@@ -436,17 +436,17 @@ Or manually add this configuration:
 }
 ```
 
-**Important:** Do not point at `node_modules/.bin/ts-jasmine-cli` (shell shim). Always use the full path to the actual JS file.
+**Important:** Do not point at `node_modules/.bin/jasmine` (shell shim). Always use the full path to the actual JS file.
 
-### ts-jasmine-cli Options
+### jasmine Options
 
 ```bash
-npx ts-jasmine-cli --spec <path>        # Path to spec file
-npx ts-jasmine-cli --random             # Randomize test order
-npx ts-jasmine-cli --seed <number>      # Set random seed
-npx ts-jasmine-cli --stop-on-fail       # Stop on first failure
-npx ts-jasmine-cli --help               # Show help
-npx ts-jasmine-cli init                 # Create VS Code debug config
+npx jasmine --spec <path>        # Path to spec file
+npx jasmine --random             # Randomize test order
+npx jasmine --seed <number>      # Set random seed
+npx jasmine --stop-on-fail       # Stop on first failure
+npx jasmine --help               # Show help
+npx jasmine init                 # Create VS Code debug config
 ```
 
 ---
@@ -476,13 +476,13 @@ jobs:
         run: npx playwright install --with-deps
       
       - name: Run Node.js tests (fast)
-        run: npx ts-test-runner --headless --browser node
+        run: npx testify --headless --browser node
       
       - name: Run Chrome tests with coverage
-        run: npx ts-test-runner --headless --browser chrome --coverage
+        run: npx testify --headless --browser chrome --coverage
       
       - name: Run Firefox tests
-        run: npx ts-test-runner --headless --browser firefox
+        run: npx testify --headless --browser firefox
       
       - name: Upload coverage
         uses: codecov/codecov-action@v3
@@ -522,7 +522,7 @@ your-project/
 ├── coverage/                         # Coverage reports (auto-generated)
 │   ├── index.html
 │   └── lcov.info
-├── ts-test-runner.json              # Configuration file
+├── testify.json              # Configuration file
 └── tsconfig.json                    # TypeScript configuration
 ```
 
@@ -544,7 +544,7 @@ npx playwright install webkit
 
 ### Port Already in Use
 
-Change the port in `ts-test-runner.json`:
+Change the port in `testify.json`:
 
 ```json
 {
@@ -570,7 +570,7 @@ Verify:
 ### TypeScript Compilation Errors
 
 1. Check your `tsconfig.json` matches your project structure
-2. Ensure `tsconfig` path in `ts-test-runner.json` is correct
+2. Ensure `tsconfig` path in `testify.json` is correct
 3. Verify path aliases are properly configured
 4. Check that all dependencies are installed
 
@@ -594,7 +594,7 @@ Ensure:
 
 ## Comparison with Other Test Runners
 
-| Feature | ts-test-runner | Jest | Vitest | Karma |
+| Feature | testify | Jest | Vitest | Karma |
 |---------|---------------|------|--------|-------|
 | Real browser testing | ✅ | ❌ | ❌ | ✅ |
 | Node.js execution | ✅ | ✅ | ✅ | ❌ |
@@ -605,7 +605,7 @@ Ensure:
 | Jasmine framework | ✅ | ❌ | ❌ | ✅ |
 | Active maintenance | ✅ | ✅ | ✅ | ⚠️ Limited |
 
-**Why choose ts-test-runner:**
+**Why choose testify:**
 - **vs Jest:** Better real browser testing support, actual browser environments
 - **vs Vitest:** Established Jasmine ecosystem, simpler for existing Jasmine users
 - **vs Karma:** Modern tooling, TypeScript-first, simpler setup, active development
@@ -616,7 +616,7 @@ Ensure:
 
 ### Custom Vite Configuration
 
-You can extend the Vite configuration in `ts-test-runner.json`:
+You can extend the Vite configuration in `testify.json`:
 
 ```json
 {
@@ -681,6 +681,6 @@ MIT © 2025
 
 ## Support
 
-- **Issues:** [GitHub Issues](https://github.com/actioncrew/ts-test-runner/issues)
-- **Documentation:** [GitHub Wiki](https://github.com/actioncrew/ts-test-runner/wiki)
+- **Issues:** [GitHub Issues](https://github.com/actioncrew/testify/issues)
+- **Documentation:** [GitHub Wiki](https://github.com/actioncrew/testify/wiki)
 - **Changelog:** [CHANGELOG.md](./CHANGELOG.md)

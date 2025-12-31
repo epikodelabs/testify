@@ -35,8 +35,8 @@ export default defineConfig({
   plugins: [
     copy({
       targets: [
-        { src: 'postinstall.script', dest: 'dist/ts-test-runner/', rename: 'postinstall.mjs' },
-        { src: 'assets/favicon.ico', dest: 'dist/ts-test-runner/assets/' },
+        { src: 'postinstall.script', dest: 'dist/testify/', rename: 'postinstall.mjs' },
+        { src: 'assets/favicon.ico', dest: 'dist/testify/assets/' },
       ],
       hook: 'writeBundle',
       flatten: false
@@ -44,7 +44,7 @@ export default defineConfig({
   ],
   build: {
     target: 'node22',
-    outDir: 'dist/ts-test-runner/',
+    outDir: 'dist/testify/',
     emptyOutDir: false,
     lib: {
       entry: path.resolve('index.ts'),
@@ -56,7 +56,7 @@ export default defineConfig({
     rollupOptions: {
       input: path.resolve(__dirname, './src/index.ts'),
       output: {
-        entryFileNames: 'bin/ts-test-runner',
+        entryFileNames: 'bin/testify',
         format: 'es',
         banner: `#!/usr/bin/env node
 import { createRequire as ___createRequire } from 'module';

@@ -5,7 +5,7 @@
 // Works on Windows by converting absolute `C:\...` specifiers to `file://` URLs.
 //
 // Usage example:
-//   node --loader @epikodelabs/testify/esm-loader.mjs ./node_modules/@epikodelabs/testify/bin/ts-jasmine-cli --spec ./path/to/test.spec.ts
+//   node --loader @epikodelabs/testify/esm-loader.mjs ./node_modules/@epikodelabs/testify/bin/jasmine --spec ./path/to/test.spec.ts
 //
 import fs from 'fs';
 import path from 'path';
@@ -318,7 +318,7 @@ export async function load(url, context, defaultLoad) {
 
     if (
       parent === 'bin' &&
-      (base === 'ts-jasmine-cli') &&
+      (base === 'jasmine') &&
       path.extname(filePath) === '' &&
       fs.existsSync(filePath)
     ) {

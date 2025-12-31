@@ -76,7 +76,7 @@ export class CLIHandler {
         return [dirConfig];
       };
 
-      let config = ConfigManager.loadViteJasmineBrowserConfig('ts-test-runner.json') as RunnerConfig;
+      let config = ConfigManager.loadViteJasmineBrowserConfig('testify.json') as RunnerConfig;
       
       // Merge CLI args with config file, CLI takes precedence
       config = {
@@ -120,11 +120,11 @@ export class CLIHandler {
   }
 
   private static printHelp(): void {
-    logger.println('ts-test-runner — run your Jasmine tests across browsers, headless, or Node.js.');
+    logger.println('testify — run your Jasmine tests across browsers, headless, or Node.js.');
     logger.println('');
     logger.println('Usage:');
-    logger.println('  npx ts-test-runner [options]');
-    logger.println('  npx ts-test-runner init               # scaffold ts-test-runner.json');
+    logger.println('  npx testify [options]');
+    logger.println('  npx testify init               # scaffold testify.json');
     logger.println('');
     logger.println('Options:');
     logger.println('  --headless           Run tests in the default Playwright browser without UI');
@@ -137,12 +137,12 @@ export class CLIHandler {
     logger.println('  --help, -h           Show this help message');
     logger.println('');
     logger.println('Configuration:');
-    logger.println('  ts-test-runner.json keeps your src/test dirs, browser, port, coverage, and HTML options.');
+    logger.println('  testify.json keeps your src/test dirs, browser, port, coverage, and HTML options.');
     logger.println('  Use --preserve after the first run if you need to debug manually generated assets.');
     logger.println('');
     logger.println('Tip:');
-    logger.println('  npx ts-test-runner --headless --browser node   # fastest Node.js test execution');
-    logger.println('  npx ts-test-runner --headless                  # run headless Chrome for browser APIs');
+    logger.println('  npx testify --headless --browser node   # fastest Node.js test execution');
+    logger.println('  npx testify --headless                  # run headless Chrome for browser APIs');
     logger.println('');
     logger.println('Playwright Browsers:');
     logger.println('  npx playwright install                         # install all supported browsers');

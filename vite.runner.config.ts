@@ -33,14 +33,14 @@ const isExternal = (id: string) => {
 export default defineConfig({
   build: {
     target: 'node22',
-    outDir: 'dist/ts-test-runner/',
+    outDir: 'dist/testify/',
     emptyOutDir: false,
     minify: false,
     chunkSizeWarningLimit: 5000,
     rollupOptions: {
-      input: path.resolve(__dirname, './src/ts-jasmine-cli.ts'),
+      input: path.resolve(__dirname, './src/jasmine.ts'),
       output: {
-        entryFileNames: 'bin/ts-jasmine-cli',
+        entryFileNames: 'bin/jasmine',
         format: 'es',
         banner: `#!/usr/bin/env node
 import { createRequire as ___createRequire } from 'module';

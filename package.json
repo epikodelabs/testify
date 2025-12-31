@@ -3,9 +3,9 @@
   "version": "1.0.16",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
-    "ts-jasmine-cli": "bin/ts-jasmine-cli",
-    "ts-cli": "bin/ts-jasmine-cli",
-    "ts-test-runner": "bin/ts-test-runner"
+    "jasmine": "bin/jasmine",
+    "ts-cli": "bin/jasmine",
+    "testify": "bin/testify"
   },
   "type": "module",
   "files": [
@@ -26,11 +26,11 @@
     "build:runner": "vite build --config vite.runner.config.ts",
     "build": "npm run clean && npm run build:cli && npm run build:lib && npm run build:runner",
     "start": "node --import tsx ./src/index.ts",
-    "copyfiles": "copyfiles README.md LICENSE esm-loader.mjs ./dist/ts-test-runner"
+    "copyfiles": "copyfiles README.md LICENSE esm-loader.mjs ./dist/testify"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/actioncrew/ts-test-runner.git"
+    "url": "git+https://github.com/actioncrew/testify.git"
   },
   "keywords": [
     "Jasmine",
@@ -44,9 +44,9 @@
   "author": "Oleksii Shepel",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/actioncrew/ts-test-runner/issues"
+    "url": "https://github.com/actioncrew/testify/issues"
   },
-  "homepage": "https://github.com/actioncrew/ts-test-runner#readme",
+  "homepage": "https://github.com/actioncrew/testify#readme",
   "dependencies": {
     "chokidar": "4.0.3",
     "chromium-bidi": "9.1.0",
