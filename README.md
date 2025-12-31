@@ -681,6 +681,6 @@ MIT © 2025
 
 ## Support
 
-- **Issues:** [GitHub Issues](https://github.com/actioncrew/testify/issues)
-- **Documentation:** [GitHub Wiki](https://github.com/actioncrew/testify/wiki)
+- **Issues:** [GitHub Issues](https://github.com/epikodelabs/testify/issues)
+- **Documentation:** [GitHub Wiki](https://github.com/epikodelabs/testify/wiki)
 - **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
