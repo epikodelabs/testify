@@ -55,7 +55,7 @@ function printHelp(): void {
   logger.println('');
   logger.println('TypeScript + tsconfig paths (recommended):');
   logger.println(
-    '  node --loader @epikodelabs/ts-test-runner/esm-loader.mjs ./node_modules/@epikodelabs/ts-test-runner/bin/ts-jasmine-cli --spec <file>',
+    '  node --loader @epikodelabs/testify/esm-loader.mjs ./node_modules/@epikodelabs/testify/bin/ts-jasmine-cli --spec <file>',
   );
   logger.println('');
   logger.println('VS Code debug config name:');
@@ -167,8 +167,8 @@ function getDefaultVsCodeLaunchConfiguration(): Record<string, unknown> {
     request: 'launch',
     name: vscodeLaunchConfigName,
     runtimeExecutable: 'node',
-    runtimeArgs: ['--loader', '@epikodelabs/ts-test-runner/esm-loader.mjs', '--enable-source-maps'],
-    program: '${workspaceFolder}/node_modules/@epikodelabs/ts-test-runner/bin/ts-jasmine-cli',
+    runtimeArgs: ['--loader', '@epikodelabs/testify/esm-loader.mjs', '--enable-source-maps'],
+    program: '${workspaceFolder}/node_modules/@epikodelabs/testify/bin/ts-jasmine-cli',
     args: ['--spec', '${file}'],
     cwd: '${workspaceFolder}',
     console: 'integratedTerminal',
@@ -244,7 +244,7 @@ async function respawnWithLoader(args: RunnerArgs): Promise<never> {
   const loaderPath = norm(path.join(packageRoot, 'esm-loader.mjs'));
   const loaderSpecifier = fs.existsSync(loaderPath)
     ? pathToFileURL(loaderPath).href
-    : '@epikodelabs/ts-test-runner/esm-loader.mjs';
+    : '@epikodelabs/testify/esm-loader.mjs';
 
   const child = spawn(
     process.execPath,

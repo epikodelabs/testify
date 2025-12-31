@@ -1,4 +1,4 @@
-# TypeScript Test Runner
+# Testify
 
 A flexible test runner for Jasmine that supports multiple execution environments with built-in TypeScript compilation, hot module reloading, and code coverage.
 
@@ -26,7 +26,7 @@ A flexible test runner for Jasmine that supports multiple execution environments
 
 ```bash
 # Install the test runner
-npm install --save-dev @epikodelabs/ts-test-runner
+npm install --save-dev @epikodelabs/testify
 
 # Optional: Install Playwright for browser testing
 npx playwright install
@@ -402,8 +402,8 @@ Run a single spec file in Node.js using `jasmine-core`:
 npx ts-jasmine-cli --spec ./tests/example.spec.js
 
 # TypeScript specs (recommended)
-node --loader @epikodelabs/ts-test-runner/esm-loader.mjs \
-  ./node_modules/@epikodelabs/ts-test-runner/bin/ts-jasmine-cli \
+node --loader @epikodelabs/testify/esm-loader.mjs \
+  ./node_modules/@epikodelabs/testify/bin/ts-jasmine-cli \
   --spec ./tests/example.spec.ts
 ```
 
@@ -425,10 +425,10 @@ Or manually add this configuration:
   "runtimeExecutable": "node",
   "runtimeArgs": [
     "--loader",
-    "@epikodelabs/ts-test-runner/esm-loader.mjs",
+    "@epikodelabs/testify/esm-loader.mjs",
     "--enable-source-maps"
   ],
-  "program": "${workspaceFolder}/node_modules/@epikodelabs/ts-test-runner/bin/ts-jasmine-cli",
+  "program": "${workspaceFolder}/node_modules/@epikodelabs/testify/bin/ts-jasmine-cli",
   "args": ["--spec", "${file}"],
   "cwd": "${workspaceFolder}",
   "console": "integratedTerminal",

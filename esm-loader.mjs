@@ -5,7 +5,7 @@
 // Works on Windows by converting absolute `C:\...` specifiers to `file://` URLs.
 //
 // Usage example:
-//   node --loader @epikodelabs/ts-test-runner/esm-loader.mjs ./node_modules/@epikodelabs/ts-test-runner/bin/ts-jasmine-cli --spec ./path/to/test.spec.ts
+//   node --loader @epikodelabs/testify/esm-loader.mjs ./node_modules/@epikodelabs/testify/bin/ts-jasmine-cli --spec ./path/to/test.spec.ts
 //
 import fs from 'fs';
 import path from 'path';

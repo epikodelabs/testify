@@ -1,5 +1,5 @@
 {
-  "name": "@epikodelabs/ts-test-runner",
+  "name": "@epikodelabs/testify",
   "version": "1.0.16",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
