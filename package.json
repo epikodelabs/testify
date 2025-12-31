@@ -66,9 +66,9 @@
     "picomatch": "4.0.3",
     "playwright": "1.55.0",
     "rollup": "4.52.3",
+    "tinyglobby": "0.2.15",
     "ts-node": "^10.9.1",
     "tsconfig-paths": "^4.2.0",
-    "tinyglobby": "0.2.15",
     "vite": "7.1.7",
     "word-wrap": "1.2.5",
     "ws": "8.18.3"
@@ -97,7 +97,7 @@
     "minimatch": "^10.1.1",
     "module-alias": "2.2.3",
     "prettier": "3.6.2",
-    "rimraf": "6.0.1",
+    "rimraf": "^6.0.1",
     "rollup-plugin-copy": "3.5.0",
     "typescript": "5.9.2",
     "vite": "7.1.7"
