@@ -1,4 +1,4 @@
-# Testify
+# testify
 
 A flexible test runner for Jasmine that supports multiple execution environments with built-in TypeScript compilation, hot module reloading, and code coverage.
 
