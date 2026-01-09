@@ -112,10 +112,16 @@ export class ViteJasmineRunner extends EventEmitter {
         .filter((f) => !/\.spec\.js$/i.test(f));
 
       for (const jsFile of jsFiles) {
-        const instrumentedCode = await this.instrumenter.instrumentFile(jsFile);
+        const result = await this.instrumenter.instrumentFile(jsFile);
         const outFile = path.join(this.config.outDir, path.relative(this.config.outDir, jsFile));
         fs.mkdirSync(path.dirname(outFile), { recursive: true });
-        fs.writeFileSync(outFile, instrumentedCode, 'utf-8');
+        fs.writeFileSync(outFile, result.code, 'utf-8');
+        
+        // Update source map if it was modified during instrumentation
+        if (result.sourceMap) {
+          const mapFile = outFile + '.map';
+          fs.writeFileSync(mapFile, JSON.stringify(result.sourceMap, null, 2), 'utf-8');
+        }
       }
 
       const htmlPath = path.join(this.config.outDir, 'index.html');
