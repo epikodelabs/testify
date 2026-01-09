@@ -170,6 +170,9 @@ function getDefaultVsCodeLaunchConfiguration(): Record<string, unknown> {
     runtimeArgs: ['--loader', '@epikodelabs/testify/esm-loader.mjs', '--enable-source-maps'],
     program: '${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine',
     args: ['--spec', '${file}'],
+    env: {
+      TS_NODE_PROJECT: '${workspaceFolder}/tsconfig.json',
+    },
     cwd: '${workspaceFolder}',
     console: 'integratedTerminal',
     skipFiles: ['<node_internals>/**'],
