@@ -39,17 +39,27 @@ export class CoverageReportGenerator {
     const remapper = libSourceMaps.createSourceMapStore();
     const remappedCoverage = await remapper.transformCoverage(coverageMap);
 
-    // 3️⃣ Create report context
+    // 3️⃣ Filter out test/spec files from coverage (e.g., env.spec.ts, test helpers)
+    const filteredCoverage = libCoverage.createCoverageMap();
+    const filePaths = remappedCoverage.files();
+    for (const filePath of filePaths) {
+      // Skip files matching spec patterns (*.spec.ts, *.spec.js, etc.)
+      if (!/\.spec\.(ts|tsx|js|jsx|mts|cts|mjs)$/i.test(filePath)) {
+        filteredCoverage.addFileCoverage(remappedCoverage.fileCoverageFor(filePath));
+      }
+    }
+
+    // 4️⃣ Create report context
     const context = libReport.createContext({
       dir: this.reportDir,
-      coverageMap: remappedCoverage
+      coverageMap: filteredCoverage
     });
 
-    // 4️⃣ Generate reports
+    // 5️⃣ Generate reports
     const reporter = libIstanbulApi.createReporter();
     reporter.dir = this.reportDir;
     reporter.addAll(['html', 'lcov', 'text']);
-    reporter.write(remappedCoverage, true);
+    reporter.write(filteredCoverage, true);
 
     logger.println(`✅ Coverage reports generated successfully`);
   }
