@@ -266,9 +266,9 @@ export class ViteJasmineRunner extends EventEmitter {
     if (!browserType) {
       logger.println('⚠️  Headless browser not available. Falling back to Node.js runner.');
       this.nodeTestRunner.generateTestRunner();
-      const success = await this.nodeTestRunner.start();
+      const exitCode = await this.nodeTestRunner.start();
       await this.cleanup();
-      process.exit(success ? 0 : 1);
+      process.exit(exitCode);
     }
 
     try {
@@ -283,13 +283,13 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   private async runHeadlessNodeMode(): Promise<void> {
-    const success = await this.nodeTestRunner.start();
+    const exitCode = await this.nodeTestRunner.start();
     if (this.config.coverage) {
       const coverage = (globalThis as any).__coverage__;
       const cov = new CoverageReportGenerator();
       cov.generate(coverage);
     }
-    process.exit(success ? 0 : 1);
+    process.exit(exitCode);
   }
 
   private async runHeadedBrowserMode(): Promise<void> {
