@@ -2,7 +2,7 @@
 
 A flexible test runner for Jasmine that supports multiple execution environments with built-in TypeScript compilation, hot module reloading, and code coverage.
 
-> “**testify** doesn’t mock the browser. It invites the browser into the courtroom and asks it to testify under oath.”
+> ⚖️ “*testify doesn't mock the browser. It invites the browser into the courtroom and asks it to testify under oath.*”
 
 <p align="center">
   <a href="https://github.com/epikodelabs/testify/actions/workflows/build.yml">
@@ -35,24 +35,6 @@ If testify helps you, please give it a star: https://github.com/epikodelabs/test
 - 📊 Istanbul code coverage with beautiful HTML reports
 - 🎯 Interactive browser-based test reporter
 - 🔧 VS Code debug integration for single-spec debugging
-
-### Why "testify"?
-
-Look, we'll be honest. Coming up with a testing library name in 2025 is like trying to find a good username on Twitter in 2010. Everything's taken. We considered:
-
-- `test-runner` - Too generic (also taken)
-- `jasmine-tester` - Too obvious (also taken)
-- `vite-jasmine-runner` - Too long (and, you guessed it, taken)
-- `super-mega-awesome-test-framework` - Too humble
-
-So we landed on `testify` because:
-1. Your tests should be able to testify about your code in court 🧑‍⚖️
-2. It sounds vaguely spiritual, which you'll need when debugging flaky tests 🙏
-3. The npm package name was actually available 🎉
-4. It has the word "test" in it (we're nothing if not literal)
-
-> **⚖️ The testify Promise**  
-> *testify doesn't mock the browser. It invites the browser into the courtroom and asks it to testify under oath.*
 
 ---
 
@@ -719,7 +701,7 @@ Coverage reports playing hide and seek? Make sure:
 
 ## 📜 License
 
-MIT © 2025
+MIT © 2026
 
 ---
 
@@ -727,13 +709,11 @@ MIT © 2025
 
 - **Issues:** [GitHub Issues](https://github.com/epikodelabs/testify/issues)
 - **Documentation:** [GitHub Wiki](https://github.com/epikodelabs/testify/wiki)
-- **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
 <p align="center">
   <strong>Get started</strong><br>
   <a href="https://www.npmjs.com/package/@epikodelabs/testify">Install from NPM</a> •
-  <a href="https://github.com/epikodelabs/testify">View on GitHub</a> •
-  <a href="https://forms.gle/YOUR_FEEDBACK_FORM_ID">Give Feedback</a>
+  <a href="https://github.com/epikodelabs/testify">View on GitHub</a>
 </p>
