@@ -17,8 +17,9 @@ export function wrapLine(
   indentation = 0,
   mode: WrapMode = "char"
 ): string[] {
-  text = text
-    .replace(/\r?\n/g, " ")
+  // Remove all newlines (do not replace with space), then normalize whitespace
+  const normalized = text
+    .replace(/\r?\n/g, "")
     .replace(/[\uFEFF\xA0\t]/g, " ")
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -26,12 +27,10 @@ export function wrapLine(
   const indent = " ".repeat(indentation);
   const indentWidth = indent.length;
   if (width <= indentWidth) width = indentWidth + 1;
-
   const availableWidth = width - indentWidth;
-
   return mode === "char"
-    ? wrapByChar(text, availableWidth, indent)
-    : wrapByWord(text, availableWidth, indent);
+    ? wrapByChar(normalized, availableWidth, indent)
+    : wrapByWord(normalized, availableWidth, indent);
 }
 
 function wrapByChar(text: string, available: number, indent: string): string[] {
@@ -195,44 +194,37 @@ export class Logger {
 
   reformat(text: string, opts: ReformatOptions): string[] {
     const { width, align = "left", padChar = " " } = opts;
-
+    // Remove all newlines (do not replace with space), then normalize whitespace
     const normalized = text
-      .replace(/\r?\n/g, " ")
+      .replace(/\r?\n/g, "")
       .replace(/[\uFEFF\xA0\t]/g, " ")
       .replace(/\s{2,}/g, " ")
       .trim();
-
-    const lines: string[] = [];
+    let result: string[] = [];
     let buf = "";
     let vis = 0;
-
     const tokens = normalized.split(
       /(\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)))/g
     );
-
     for (const token of tokens) {
       if (ANSI_FULL_REGEX.test(token)) {
         buf += token;
         continue;
       }
-
       for (const ch of [...token]) {
         if (vis >= width) {
-          lines.push(this.applyPadding(buf, vis, width, align, padChar));
+          result.push(this.applyPadding(buf, vis, width, align, padChar));
           buf = "";
           vis = 0;
         }
-
         buf += ch;
         vis++;
       }
     }
-
     if (buf) {
-      lines.push(this.applyPadding(buf, vis, width, align, padChar));
+      result.push(this.applyPadding(buf, vis, width, align, padChar));
     }
-
-    return lines;
+    return result;
   }
 
   private applyPadding(
