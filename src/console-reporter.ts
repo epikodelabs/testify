@@ -576,17 +576,75 @@ export class ConsoleReporter {
     let displayDots = this.getSpecDots(suite); // current dots
 
     const prefix = '  ';
-    const availableWidth = this.lineWidth - prefix.length;
+    const maxWidth = this.lineWidth;
+    const rawSuiteName = suiteName.replace(/\x1b\[[0-9;]*m/g, '');
+    let visibleNameLength = rawSuiteName.length;
+    let dotsLength = this.countVisualDots(displayDots);
 
-    let displayName = suiteName;
+    // First, try to fit both name and dots
+    let availableWidth = maxWidth - prefix.length;
+    let displayName = rawSuiteName;
 
-    const suiteNameLength = displayName.replace(/\.\.\.$/, '').length + (displayName.includes('...') ? 3 : 0);
-    const dotsLength = this.countVisualDots(displayDots);
+    // If name + dots too long, truncate name (add ellipsis if needed)
+    if (visibleNameLength + dotsLength > availableWidth) {
+      let maxNameLen = Math.max(0, availableWidth - dotsLength);
+      if (maxNameLen > 0) {
+        // Truncate and add ellipsis if needed
+        if (visibleNameLength > maxNameLen) {
+          displayName = rawSuiteName.slice(0, Math.max(0, maxNameLen - 1)) + '…';
+          visibleNameLength = displayName.length;
+        }
+      } else {
+        displayName = '';
+        visibleNameLength = 0;
+      }
+    }
 
-    // Make the line 1 character longer by not subtracting the -1
-    let padding = ' '.repeat(Math.max(0, availableWidth - suiteNameLength - dotsLength));
+    // If still too long, truncate dots from the left
+    if (visibleNameLength + dotsLength > availableWidth) {
+      let maxDotsLen = Math.max(0, availableWidth - visibleNameLength);
+      // Remove leftmost visible dots (handle ANSI)
+      let plainDots = displayDots.replace(/\x1b\[[0-9;]*m/g, '');
+      let ansiMatches = [...displayDots.matchAll(/\x1b\[[0-9;]*m/g)];
+      // To preserve color, we need to slice the string by visible chars
+      let resultDots = '';
+      let visCount = 0;
+      let i = plainDots.length - maxDotsLen;
+      if (i < 0) i = 0;
+      let skip = i;
+      // Rebuild colored dots string, skipping leftmost
+      let vis = 0;
+      let inAnsi = false;
+      for (let j = 0, k = 0; j < displayDots.length && vis < maxDotsLen; ) {
+        if (displayDots[j] === '\x1b') {
+          // Copy ANSI sequence
+          let ansiSeq = displayDots.slice(j).match(/^\x1b\[[0-9;]*m/);
+          if (ansiSeq) {
+            resultDots += ansiSeq[0];
+            j += ansiSeq[0].length;
+            continue;
+          }
+        }
+        if (skip > 0) {
+          // Skip visible chars
+          if (displayDots[j] !== '\x1b') {
+            skip--;
+          }
+          j++;
+          continue;
+        }
+        // Copy visible char
+        resultDots += displayDots[j];
+        vis++;
+        j++;
+      }
+      displayDots = resultDots;
+      dotsLength = this.countVisualDots(displayDots);
+    }
 
-    this.print(prefix + this.colored('brightBlue', displayName) + padding + displayDots);
+    // Fill with spaces so dots are right-aligned
+    const spaces = ' '.repeat(Math.max(0, maxWidth - prefix.length - visibleNameLength - dotsLength));
+    this.print(prefix + this.colored('brightBlue', displayName) + spaces + displayDots);
 
     if (!isFinal) {
       this.print('\r'); // carriage return
