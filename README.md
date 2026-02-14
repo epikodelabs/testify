@@ -1,6 +1,6 @@
 # testify
 
-A flexible test runner for Jasmine that supports multiple execution environments with built-in TypeScript compilation, hot module reloading, and code coverage.
+A flexible test runner for the Jasmine testing framework that supports multiple execution environments with built-in TypeScript compilation, hot module reloading, and code coverage.
 
 > ⚖️ “*testify doesn't mock the browser. It invites the browser into the courtroom and asks it to testify under oath.*”
 
@@ -337,6 +337,9 @@ Or manually add this configuration:
   ],
   "program": "${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine",
   "args": ["--spec", "${file}"],
+  "env": {
+    "TS_NODE_PROJECT": "${workspaceFolder}/tsconfig.json"
+  },
   "cwd": "${workspaceFolder}",
   "console": "integratedTerminal",
   "skipFiles": ["<node_internals>/**"]
