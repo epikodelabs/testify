@@ -643,8 +643,10 @@ export class ConsoleReporter {
     }
 
     // Fill with spaces so dots are right-aligned
+    // Ensure at least one space between suite name and dots
+    let minSpace = ' ';
     const spaces = ' '.repeat(Math.max(0, maxWidth - prefix.length - visibleNameLength - dotsLength));
-    this.print(prefix + this.colored('brightBlue', displayName) + spaces + displayDots);
+    this.print(prefix + this.colored('brightBlue', displayName) + minSpace + spaces + displayDots);
 
     if (!isFinal) {
       this.print('\r'); // carriage return
