@@ -1,10 +1,9 @@
 {
   "name": "@epikodelabs/testify",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
     "jasmine": "bin/jasmine",
-    "ts-cli": "bin/jasmine",
     "testify": "bin/testify"
   },
   "type": "module",
