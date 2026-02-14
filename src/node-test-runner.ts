@@ -162,6 +162,16 @@ export async function runTests(reporter) {
       process.exit(1);
     });
 
+    // Only attach SIGINT/SIGTERM handlers if running as CLI entry
+    if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+      function onExit(signal) {
+        console.log(\`\n⚙️  Caught \${signal}. Cleaning up...\`);
+        process.exit(0);
+      }
+      process.on('SIGINT', onExit);
+      process.on('SIGTERM', onExit);
+    }
+
     (async function () {
       try {
         // Load jasmine-core from testify's own node_modules
