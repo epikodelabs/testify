@@ -49,7 +49,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
       this.print = options.print;
     }
 
-    this.showColors = options.showColors || false;
+    this.showColors = options.showColors ?? this.showColors;
     if (options.stackFilter) {
       this.stackFilter = options.stackFilter;
     }

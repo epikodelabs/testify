@@ -399,7 +399,7 @@ export class HmrManager extends EventEmitter {
   async start(): Promise<void> {
     const watchDirs = [...(this.config.srcDirs || []), ...(this.config.testDirs || [])].filter(Boolean);
     const watchTargets = watchDirs.length > 0 ? watchDirs : [this.primarySrcDir, this.primaryTestDir];
-    this.initializeTrackedFiles(watchTargets);
+    await this.initializeTrackedFiles(watchTargets);
     this.watcher = watch(watchTargets, {
       ignored: /(^|[\/\\])\../,
       persistent: true,
@@ -430,14 +430,14 @@ export class HmrManager extends EventEmitter {
     });
   }
 
-  private initializeTrackedFiles(watchTargets: string[]): void {
+  private async initializeTrackedFiles(watchTargets: string[]): Promise<void> {
     const defaultExtensions = this.fileFilter.extensions!.join(',');
     for (const target of watchTargets) {
       const normalizedTarget = norm(target);
       if (!fs.existsSync(normalizedTarget)) continue;
 
       const pattern = norm(path.join(normalizedTarget, `**/*{${defaultExtensions}}`));
-      const files = glob.sync(pattern, { absolute: true, ignore: ['**/node_modules/**'] })
+      const files = (await glob(pattern, { absolute: true, ignore: ['**/node_modules/**'] }))
         .filter(f => this.matchesFilter(norm(f)));
 
       for (const file of files) {
@@ -538,7 +538,7 @@ export class HmrManager extends EventEmitter {
       
       const defaultExtensions = this.fileFilter.extensions!.join(',');
       const pattern = norm(path.join(dirPath, `**/*{${defaultExtensions}}`));
-      const newFiles = glob.sync(pattern, { absolute: true, ignore: ['**/node_modules/**'] })
+      const newFiles = (await glob(pattern, { absolute: true, ignore: ['**/node_modules/**'] }))
         .filter(f => this.matchesFilter(norm(f)));
 
       const filesToProcess: string[] = [];
@@ -649,7 +649,7 @@ export class HmrManager extends EventEmitter {
       this.isRebuilding = true;
       this.rebuildPromise = this.rebuildAll().catch(error => {
         logger.error(`❌ Rebuild failed: ${error}`);
-        this.emit(`hmr:error ${error}`);
+        this.emit('hmr:error', error);
       }).finally(() => {
         this.isRebuilding = false;
         this.rebuildPromise = null;
@@ -806,7 +806,7 @@ export class HmrManager extends EventEmitter {
       }
     } catch (error) {
       logger.error(`❌ Rebuild failed: ${error}`);
-      this.emit(`hmr:error ${error}`);
+      this.emit('hmr:error', error);
       throw error;
     }
   }

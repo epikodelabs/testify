@@ -16,16 +16,20 @@ export interface InstrumentationResult {
 
 export class IstanbulInstrumenter {
   private config: ViteJasmineConfig;
-  private instrumenter: ReturnType<typeof createInstrumenter>;
+  private instrumenter: ReturnType<typeof createInstrumenter> | null = null;
 
   constructor(config: ViteJasmineConfig) {
     this.config = config;
+  }
 
-    // Create Istanbul instrumenter if coverage is enabled
-    this.instrumenter = createInstrumenter({
-      coverageVariable: "__coverage__",
-      produceSourceMap: true, // generate instrumented map
-    });
+  private getInstrumenter(): ReturnType<typeof createInstrumenter> {
+    if (!this.instrumenter) {
+      this.instrumenter = createInstrumenter({
+        coverageVariable: "__coverage__",
+        produceSourceMap: true,
+      });
+    }
+    return this.instrumenter;
   }
 
   async instrument({ filename, source, sourceMap }: InstrumenterOptions): Promise<InstrumentationResult> {
@@ -39,20 +43,9 @@ export class IstanbulInstrumenter {
     if (!filename.endsWith(".js")) return { code: source };
 
     // Instrument with Istanbul, preserving original source map if provided
-    const instrumentedCode = this.instrumenter.instrumentSync(source, filename, sourceMap);
-    
-    // Extract the source map from the instrumented code if one was generated
-    let generatedSourceMap = undefined;
-    if (this.config.coverage && instrumentedCode) {
-      // istanbul-lib-instrument doesn't directly return the source map via instrumentSync
-      // However, we can create one if needed. For now, return the instrumented code.
-      // The source map reference in the code will be handled separately.
-    }
+    const instrumentedCode = this.getInstrumenter().instrumentSync(source, filename, sourceMap);
 
-    return { 
-      code: instrumentedCode,
-      sourceMap: generatedSourceMap 
-    };
+    return { code: instrumentedCode };
   }
 
   /**

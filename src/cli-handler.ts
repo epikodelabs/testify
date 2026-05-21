@@ -55,6 +55,7 @@ export class CLIHandler {
       const invalidFlags: string[] = [];
       if (headless) invalidFlags.push('--headless');
       if (coverage) invalidFlags.push('--coverage');
+      if (browserName === 'node') invalidFlags.push('--browser node');
 
       if (invalidFlags.length > 0) {
         logger.error(`ERROR: The --watch flag cannot be used with: ${invalidFlags.join(', ')}`);

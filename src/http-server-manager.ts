@@ -59,17 +59,19 @@ export class HttpServerManager {
         return;
       }
 
-      if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
+      const stream = fs.createReadStream(resolvedPath);
+      stream.on('error', () => {
+        res.writeHead(404);
+        res.end('Not found');
+      });
+      stream.on('open', () => {
         const ext = extname(resolvedPath);
         res.writeHead(200, {
           'Content-Type': this.getContentType(ext),
           'Access-Control-Allow-Origin': '*'
         });
-        res.end(fs.readFileSync(resolvedPath));
-      } else {
-        res.writeHead(404);
-        res.end('Not found');
-      }
+        stream.pipe(res);
+      });
     });
 
     return new Promise((resolve, reject) => {

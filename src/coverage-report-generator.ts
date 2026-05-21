@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import libCoverage from 'istanbul-lib-coverage';
 import libReport from 'istanbul-lib-report';
@@ -15,9 +16,6 @@ export class CoverageReportGenerator {
 
   saveCoverageToFile(coverage: any): void {
     try {
-      const fs = require("fs");
-      const path = require("path");
-
       const outDir = path.resolve(process.cwd(), ".nyc_output");
       const outFile = path.join(outDir, "out.json");
 

@@ -15,6 +15,7 @@ export class WebSocketManager extends EventEmitter {
   private wsClients: WebSocket[] = [];
   private hmrManager: HmrManager | null = null;
   private hmrEnabled: boolean = false;
+  private jsonCleaner = new JSONCleaner();
 
   constructor(private fileDiscovery: FileDiscoveryService, private config: ViteJasmineConfig, private server: http.Server, private reporter: Reporter) {
     super();
@@ -39,11 +40,9 @@ export class WebSocketManager extends EventEmitter {
       }
       
       
-      const cleaner = new JSONCleaner();
-      
       ws.on('message', (data: Buffer) => {
         try {
-          const message = cleaner.parse(data.toString());
+          const message = this.jsonCleaner.parse(data.toString());
           this.handleWebSocketMessage(message);
         } catch (error) {
           logger.error(`❌ Failed to parse WebSocket message: ${error}`);
@@ -91,7 +90,7 @@ export class WebSocketManager extends EventEmitter {
         case 'jasmineDone':
           this.reporter?.jasmineDone(message);
           
-          const coverage = message.coverage ? new JSONCleaner().parse(message.coverage) : null;
+          const coverage = message.coverage ? this.jsonCleaner.parse(message.coverage) : null;
           const success = message.overallStatus === 'passed' && message.failedSpecsCount === 0;
           this.emit('testsCompleted', { success, coverage });
           break;

@@ -3,7 +3,9 @@ import { logger, wrapLine } from './console-repl';
 import { EXIT_CODES } from './exit-codes';
 
 // ─── Constants ──────────────────────────────────────────────
-export const MAX_WIDTH = 63;
+export const MAX_WIDTH = typeof process !== 'undefined' && process.stdout?.columns
+  ? Math.max(40, process.stdout.columns)
+  : 80;
 
 export interface EnvironmentInfo {
   node: string;
@@ -514,7 +516,7 @@ export class ConsoleReporter {
     this.printBox('✕ TESTS INTERRUPTED', 'yellow');
     this.print('\n');
 
-    process.exit(message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT);
+    return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
   }
 
   /** Determine suite status based on its specs and children */
@@ -552,8 +554,8 @@ export class ConsoleReporter {
 
   private setupInterruptHandler() {
     if (this.interruptHandlersRegistered) return;
-    process.once('SIGINT', () => this.testsAborted('SIGINT'));
-    process.once('SIGTERM', () => this.testsAborted('SIGTERM'));
+    process.once('SIGINT', () => process.exit(this.testsAborted('SIGINT')));
+    process.once('SIGTERM', () => process.exit(this.testsAborted('SIGTERM')));
     this.interruptHandlersRegistered = true;
   }
 

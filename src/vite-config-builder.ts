@@ -285,10 +285,9 @@ export class ViteConfigBuilder {
       },
 
       resolve: { alias: this.createPathAliases() },
-      esbuild: { 
-        target: 'es2022', 
+      esbuild: {
+        target: 'es2022',
         keepNames: false,
-        treeShaking: true // Enable tree shaking for type imports
       },
       define: { 'process.env.NODE_ENV': '"test"' },
       logLevel: 'warn'
@@ -373,6 +372,14 @@ export class ViteConfigBuilder {
         rollupOptions: {
           ...base.build?.rollupOptions,
           ...user.build?.rollupOptions
+        }
+      },
+      resolve: {
+        ...base.resolve,
+        ...user.resolve,
+        alias: {
+          ...base.resolve?.alias,
+          ...user.resolve?.alias
         }
       }
     };

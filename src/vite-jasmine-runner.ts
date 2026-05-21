@@ -33,8 +33,8 @@ export class ViteJasmineRunner extends EventEmitter {
   private consoleReporter: ConsoleReporter;
   private instrumenter: IstanbulInstrumenter;
   private hmrManager: HmrManager | null = null;
-  private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
   private completePromiseResolve: (() => void) | null = null;
+  private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
   private primarySrcDir: string;
   private primaryTestDir: string;
   private shouldPreserve(): boolean {
@@ -108,8 +108,7 @@ export class ViteJasmineRunner extends EventEmitter {
       logger.println(`📦 Building ${Object.keys(input).length} files...`);
       this.viteCache = await viteBuild(viteConfig);
 
-      const jsFiles = glob
-        .sync(path.join(this.config.outDir, '**/*.js').replace(/\\/g, '/'))
+      const jsFiles = (await glob(path.join(this.config.outDir, '**/*.js').replace(/\\/g, '/')))
         .filter((f) => !/\.spec\.js$/i.test(f));
 
       for (const jsFile of jsFiles) {
@@ -254,11 +253,12 @@ export class ViteJasmineRunner extends EventEmitter {
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     let testSuccess = false;
+    let coveragePromise: Promise<void> | undefined;
     this.webSocketManager.on('testsCompleted', ({ success, coverage }) => {
       testSuccess = success;
       if (this.config.coverage) {
         const cov = new CoverageReportGenerator();
-        cov.generate(coverage);
+        coveragePromise = cov.generate(coverage);
       }
     });
 
@@ -274,10 +274,12 @@ export class ViteJasmineRunner extends EventEmitter {
 
     try {
       await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
+      if (coveragePromise) await coveragePromise;
       await this.cleanup();
       process.exit(testSuccess ? EXIT_CODES.SUCCESS : EXIT_CODES.TEST_FAILURES);
     } catch (error) {
       logger.error(`❌ Browser test execution failed. Need to install playwright?`);
+      if (coveragePromise) await coveragePromise.catch(() => {});
       await this.cleanup();
       process.exit(EXIT_CODES.INTERNAL_ERROR);
     }
@@ -288,7 +290,7 @@ export class ViteJasmineRunner extends EventEmitter {
     if (this.config.coverage) {
       const coverage = (globalThis as any).__coverage__;
       const cov = new CoverageReportGenerator();
-      cov.generate(coverage);
+      await cov.generate(coverage);
     }
     process.exit(exitCode);
   }

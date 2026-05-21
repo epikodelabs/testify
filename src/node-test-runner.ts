@@ -208,14 +208,6 @@ export async function runTests(reporter) {
         Object.assign(globalThis, jasmineRequire.interface(jasmineInstance, jasmineEnv));
         globalThis.jasmine = { ...globalThis.jasmine, ...jasmineInstance, ...utils };
 
-        // Clean shutdown
-        function onExit(signal) {
-          console.log(\`\\n⚙️  Caught \${signal}. Cleaning up...\`);
-          process.exit(signal === 'SIGTERM' ? ${EXIT_CODES.SIGTERM} : ${EXIT_CODES.SIGINT});
-        }
-        process.on('SIGINT', onExit);
-        process.on('SIGTERM', onExit);
-
         jasmineEnv.clearReporters();
         jasmineEnv.addReporter(reporter);
 
@@ -246,11 +238,10 @@ ${imports}
         }));
 
         // Execute tests - this will populate spec results
-        await new Promise((resolve) => setTimeout(() => resolve(), 300));
         reporter.userAgent(undefined, orderedSuites, orderedSpecs);
         await jasmineEnv.execute();
 
-        const failures = reporter.failureCount || 0;
+        const failures = (reporter as any).failureCount || 0;
         resolve(failures === 0 ? ${EXIT_CODES.SUCCESS} : ${EXIT_CODES.TEST_FAILURES});
       } catch (error) {
         console.error(\`❌ Error during test execution: \${error}\`);
@@ -355,6 +346,6 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 
   async restart(): Promise<void> {
     await this.stop();
-    setTimeout(() => this.start(), 300);
+    await this.start();
   }
 }

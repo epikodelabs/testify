@@ -1,13 +1,16 @@
+import { once } from 'events';
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
-import { pathToFileURL } from 'url';
+import { pathToFileURL, fileURLToPath } from 'url';
 import { logger } from './console-repl';
 import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
 import { EXIT_CODES, getSignalExitCode } from './exit-codes';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const packageRoot = norm(path.resolve(__dirname, '..'));
 const packageRequire = createRequire(path.join(packageRoot, 'package.json'));
 
@@ -242,7 +245,7 @@ function initVsCodeLaunchConfig(): void {
   logger.println(`Added configuration: ${vscodeLaunchConfigName}`);
 }
 
-async function respawnWithLoader(args: RunnerArgs): Promise<never> {
+async function respawnWithLoader(args: RunnerArgs): Promise<void> {
   const { spawn } = await import('child_process');
 
   const tsconfig = findNearestTsconfig(path.dirname(args.spec));
@@ -269,10 +272,7 @@ async function respawnWithLoader(args: RunnerArgs): Promise<never> {
 
   child.on('exit', (code, signal) => process.exit(code ?? getSignalExitCode(signal)));
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    await new Promise((r) => setTimeout(r, 1_000_000));
-  }
+  await once(child, 'exit');
 }
 
 async function loadJasmine() {

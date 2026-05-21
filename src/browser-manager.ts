@@ -10,16 +10,16 @@ export class BrowserManager {
 
   constructor(private config: ViteJasmineConfig) {}
 
-  private getPlaywright(): typeof PlayWright {
+  private async getPlaywright(): Promise<typeof PlayWright> {
     if (!this.playwright) {
-      this.playwright = require('playwright');
+      this.playwright = await import('playwright');
     }
     return this.playwright!;
   }
 
   async checkBrowser(browserName: string): Promise<any | null> {
     try {
-      const playwright = this.getPlaywright();
+      const playwright = await this.getPlaywright();
       
       let browser: any = null;
       switch (browserName.toLowerCase()) {
@@ -136,7 +136,7 @@ export class BrowserManager {
     const url = `http://localhost:${port}/index.html`;
     
     try {
-      const playwright = this.getPlaywright();
+      const playwright = await this.getPlaywright();
       let browserType: any;
       
       switch (browserName.toLowerCase()) {
@@ -179,11 +179,10 @@ export class BrowserManager {
       page.on('close', async () => {
         if (onBrowserClose) {
           await onBrowserClose();
-        }
-        this.clearBrowserState();
-        if (exitOnClose) {
+        } else if (exitOnClose) {
           process.exit(EXIT_CODES.SUCCESS);
         }
+        this.clearBrowserState();
       });
       
     } catch (error: any) {
