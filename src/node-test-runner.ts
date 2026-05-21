@@ -7,6 +7,7 @@ import { norm } from './utils';
 import { logger } from './console-repl';
 import { ConsoleReporter } from './console-reporter';
 import { CoverageReportGenerator } from './coverage-report-generator';
+import { EXIT_CODES } from './exit-codes';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -154,19 +155,19 @@ export async function runTests(reporter) {
     // Global error handlers
     process.on('unhandledRejection', (error) => {
       console.error(\`❌ Unhandled Rejection: \${error}\`);
-      process.exit(1);
+      process.exit(${EXIT_CODES.INTERNAL_ERROR});
     });
 
     process.on('uncaughtException', (error) => {
       console.error(\`❌ Uncaught Exception: \${error}\`);
-      process.exit(1);
+      process.exit(${EXIT_CODES.INTERNAL_ERROR});
     });
 
     // Only attach SIGINT/SIGTERM handlers if running as CLI entry
     if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       function onExit(signal) {
         console.log(\`\n⚙️  Caught \${signal}. Cleaning up...\`);
-        process.exit(0);
+        process.exit(signal === 'SIGTERM' ? ${EXIT_CODES.SIGTERM} : ${EXIT_CODES.SIGINT});
       }
       process.on('SIGINT', onExit);
       process.on('SIGTERM', onExit);
@@ -200,7 +201,7 @@ export async function runTests(reporter) {
         // Clean shutdown
         function onExit(signal) {
           console.log(\`\\n⚙️  Caught \${signal}. Cleaning up...\`);
-          process.exit(0);
+          process.exit(signal === 'SIGTERM' ? ${EXIT_CODES.SIGTERM} : ${EXIT_CODES.SIGINT});
         }
         process.on('SIGINT', onExit);
         process.on('SIGTERM', onExit);
@@ -240,11 +241,11 @@ ${imports}
         await jasmineEnv.execute();
 
         const failures = reporter.failureCount || 0;
-        resolve(failures);
+        resolve(failures === 0 ? ${EXIT_CODES.SUCCESS} : ${EXIT_CODES.TEST_FAILURES});
       } catch (error) {
         console.error(\`❌ Error during test execution: \${error}\`);
         console.error(error.stack);
-        resolve(1);
+        resolve(${EXIT_CODES.INTERNAL_ERROR});
       }
     })();
   });
@@ -261,10 +262,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       const ConsoleReporter = consoleReporterModule.ConsoleReporter;
 
       const failures = await runTests(new ConsoleReporter());
-      process.exit(failures === 0 ? 0 : 1);
+      process.exit(failures);
     } catch (error) {
       console.error(\`❌ Failed to run tests: \${error}\`);
-      process.exit(1);
+      process.exit(${EXIT_CODES.INTERNAL_ERROR});
     }
   })();
 }
@@ -276,8 +277,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
    */
   async start(): Promise<number> {
     if (this.isRunning) {
-      (this.reporter as any).testsAborted?.('Test process already running');
-      return Promise.reject('Test process already running');
+      const message = 'Test process already running';
+      (this.reporter as any).jasmineFailed?.(message);
+      return Promise.reject(new Error(message));
     }
 
     this.isRunning = true;
@@ -309,16 +311,16 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       this.runnerModule = await import(fileUrl);
 
       if (typeof this.runnerModule.runTests === 'function') {
-        const failures: number = await this.runnerModule.runTests(this.reporter);
+        const exitCode: number = await this.runnerModule.runTests(this.reporter);
         const coverage = (globalThis as any).__coverage__;
         if (coverage) {
           const cov = new CoverageReportGenerator();
           await cov.generate(coverage);
         }
-        return failures === 0 ? 0 : 1;
+        return exitCode;
       } else {
         logger.error('⚠️  Test runner does not export runTests function');
-        return 1;
+        return EXIT_CODES.INTERNAL_ERROR;
       }
     } catch (error: any) {
       (this.reporter as any).jasmineFailed?.(`Test execution error: ${error.message}`);

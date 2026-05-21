@@ -1,5 +1,6 @@
 import util from 'util';
 import { logger, wrapLine } from './console-repl';
+import { EXIT_CODES } from './exit-codes';
 
 // ─── Constants ──────────────────────────────────────────────
 export const MAX_WIDTH = 63;
@@ -513,7 +514,7 @@ export class ConsoleReporter {
     this.printBox('✕ TESTS INTERRUPTED', 'yellow');
     this.print('\n');
 
-    process.exit(1);
+    process.exit(message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT);
   }
 
   /** Determine suite status based on its specs and children */
@@ -551,8 +552,8 @@ export class ConsoleReporter {
 
   private setupInterruptHandler() {
     if (this.interruptHandlersRegistered) return;
-    process.once('SIGINT', this.testsAborted.bind(this));
-    process.once('SIGTERM', this.testsAborted.bind(this));
+    process.once('SIGINT', () => this.testsAborted('SIGINT'));
+    process.once('SIGTERM', () => this.testsAborted('SIGTERM'));
     this.interruptHandlersRegistered = true;
   }
 

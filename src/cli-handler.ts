@@ -1,8 +1,8 @@
 import { ConfigManager } from "./config-manager";
-import * as path from "path";
 import { logger } from "./console-repl";
-import { ImportEntry, ViteJasmineConfig } from "./vite-jasmine-config";
+import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { ViteJasmineRunner } from "./vite-jasmine-runner";
+import { EXIT_CODES, getExitCode } from "./exit-codes";
 
 export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineRunner {
   return new ViteJasmineRunner(config);
@@ -17,27 +17,28 @@ export class CLIHandler {
       this.printHelp();
       return;
     }
+
     const initOnly = args.includes('init');
     const watch = args.includes('--watch');
     const headless = args.includes('--headless');
     const coverage = args.includes('--coverage');
-    const browserIndex = args.findIndex(a => a === '--browser');
-    const seedIndex = args.findIndex(a => a === '--seed');
+    const browserIndex = args.findIndex((a) => a === '--browser');
+    const seedIndex = args.findIndex((a) => a === '--seed');
     const silentLogs = args.includes('--silent') || args.includes('--quiet');
     const hasBrowserArg = browserIndex !== -1;
-    let browserName: string = 'chrome';
+    let browserName = 'chrome';
     let seedValue: number | undefined;
 
     if (seedIndex !== -1) {
       const raw = args[seedIndex + 1];
       const parsed = raw !== undefined ? Number(raw) : NaN;
       if (!Number.isFinite(parsed)) {
-        logger.error('¢?? Invalid --seed value (expected a number).');
-        process.exit(1);
+        logger.error('ERROR: Invalid --seed value (expected a number).');
+        process.exit(EXIT_CODES.INVALID_USAGE);
       }
       seedValue = parsed;
     }
-    
+
     if (hasBrowserArg && browserIndex + 1 < args.length) {
       browserName = args[browserIndex + 1];
     }
@@ -45,29 +46,26 @@ export class CLIHandler {
     const preserveOutputsFlag = args.includes('--preserve');
     const preserveOutputsArg = preserveOutputsFlag ? true : undefined;
 
-    // Handle init
     if (initOnly) {
       ConfigManager.initViteJasmineConfig();
       return;
     }
 
-    // Enforce exclusivity of --watch
     if (watch) {
       const invalidFlags: string[] = [];
       if (headless) invalidFlags.push('--headless');
       if (coverage) invalidFlags.push('--coverage');
-      
+
       if (invalidFlags.length > 0) {
-        logger.error(`❌ The --watch flag cannot be used with: ${invalidFlags.join(', ')}`);
-        process.exit(1);
+        logger.error(`ERROR: The --watch flag cannot be used with: ${invalidFlags.join(', ')}`);
+        process.exit(EXIT_CODES.INVALID_USAGE);
       }
     }
 
     try {
-      type RunnerConfig = ViteJasmineConfig;
       const normalizeDirConfig = (
         dirConfig: string | string[] | undefined,
-        fallback: string
+        fallback: string,
       ): string[] => {
         if (!dirConfig) return [fallback];
         if (Array.isArray(dirConfig)) {
@@ -76,9 +74,8 @@ export class CLIHandler {
         return [dirConfig];
       };
 
-      let config = ConfigManager.loadViteJasmineBrowserConfig('testify.json') as RunnerConfig;
-      
-      // Merge CLI args with config file, CLI takes precedence
+      let config = ConfigManager.loadViteJasmineBrowserConfig('testify.json');
+
       config = {
         ...config,
         headless: headless ? true : (config.headless || false),
@@ -103,7 +100,7 @@ export class CLIHandler {
       }
 
       if (config.preserveOutputs) {
-        logger.println(`🛑 Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).`);
+        logger.println('Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).');
       }
 
       const runner = createViteJasmineRunner(config);
@@ -114,13 +111,13 @@ export class CLIHandler {
         await runner.start();
       }
     } catch (error) {
-      logger.error(`❌ Failed to start test runner: ${error}`);
-      process.exit(1);
+      logger.error(`ERROR: Failed to start test runner: ${error}`);
+      process.exit(getExitCode(error));
     }
   }
 
   private static printHelp(): void {
-    logger.println('testify — run your Jasmine tests across browsers, headless, or Node.js.');
+    logger.println('testify - run your Jasmine tests across browsers, headless, or Node.js.');
     logger.println('');
     logger.println('Usage:');
     logger.println('  npx testify [options]');

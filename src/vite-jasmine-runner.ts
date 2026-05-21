@@ -16,6 +16,7 @@ import { WebSocketManager } from './websocket-manager';
 import { CoverageReportGenerator } from './coverage-report-generator';
 import { HmrManager } from './hmr-manager';
 import { logger } from './console-repl';
+import { ExitCodeError, EXIT_CODES } from './exit-codes';
 
 const { build: viteBuild } = await import('vite');
 
@@ -84,7 +85,7 @@ export class ViteJasmineRunner extends EventEmitter {
     try {
       const { srcFiles, specFiles } = await this.fileDiscovery.discoverSources();
       if (specFiles.length === 0) {
-        throw new Error('No test files found');
+        throw new ExitCodeError(EXIT_CODES.CONFIG_ERROR, 'No test files found');
       }
 
       const entryFiles = [...srcFiles, ...specFiles];
@@ -175,7 +176,7 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.preprocess();
     } catch (error) {
       logger.error(`❌ Build failed: ${error}`);
-      process.exit(1);
+      process.exit(error instanceof ExitCodeError ? error.exitCode : EXIT_CODES.INTERNAL_ERROR);
     }
 
     if (this.config.headless && this.config.browser !== 'node') {
@@ -184,7 +185,7 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.runHeadlessNodeMode();
     } else if (!this.config.headless && this.config.browser === 'node') {
       logger.error(`❌ Invalid configuration: Node.js runner cannot run in headed mode.`);
-      process.exit(1);
+      process.exit(EXIT_CODES.CONFIG_ERROR);
     } else {
       await this.runHeadedBrowserMode();
     }
@@ -193,7 +194,7 @@ export class ViteJasmineRunner extends EventEmitter {
   async watch(): Promise<void> {
     if (this.config.headless || this.config.browser === 'node') {
       logger.error('❌ --watch mode is only supported in headed browser environments.');
-      process.exit(1);
+      process.exit(EXIT_CODES.CONFIG_ERROR);
     }
 
     this.config.watch = true;
@@ -221,7 +222,7 @@ export class ViteJasmineRunner extends EventEmitter {
       if (shuttingDown) return;
       logger.println('🔄 Browser window closed');
       await this.cleanup();
-      process.exit(0);
+      process.exit(EXIT_CODES.SUCCESS);
     };
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose, { exitOnClose: false });
@@ -233,7 +234,7 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.browserManager.closeBrowser();
       logger.println('🔄 Browser window closed');
       await this.cleanup();
-      process.exit(0);
+      process.exit(EXIT_CODES.SIGINT);
     });
 
     process.once('SIGTERM', async () => {
@@ -243,7 +244,7 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.browserManager.closeBrowser();
       logger.println('🔄 Browser window closed');
       await this.cleanup();
-      process.exit(0);
+      process.exit(EXIT_CODES.SIGTERM);
     });
   }
 
@@ -274,11 +275,11 @@ export class ViteJasmineRunner extends EventEmitter {
     try {
       await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
       await this.cleanup();
-      process.exit(testSuccess ? 0 : 1);
+      process.exit(testSuccess ? EXIT_CODES.SUCCESS : EXIT_CODES.TEST_FAILURES);
     } catch (error) {
       logger.error(`❌ Browser test execution failed. Need to install playwright?`);
       await this.cleanup();
-      process.exit(1);
+      process.exit(EXIT_CODES.INTERNAL_ERROR);
     }
   }
 
@@ -317,7 +318,7 @@ export class ViteJasmineRunner extends EventEmitter {
       testSuccess = success;
       finishHeadedRun(coverage).catch((error) => {
         logger.error(`❌ Failed to finish headed browser run: ${error}`);
-        process.exit(1);
+        process.exit(EXIT_CODES.INTERNAL_ERROR);
       });
     });
 
@@ -341,7 +342,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
       await promise;
       await this.cleanup();
-      process.exit(testsCompleted ? (testSuccess ? 0 : 1) : 1);
+      process.exit(testsCompleted ? (testSuccess ? EXIT_CODES.SUCCESS : EXIT_CODES.TEST_FAILURES) : EXIT_CODES.SIGINT);
     };
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
@@ -357,7 +358,7 @@ export class ViteJasmineRunner extends EventEmitter {
       }
       await this.browserManager.closeBrowser();
       await this.cleanup();
-      process.exit(testsCompleted ? (testSuccess ? 0 : 1) : 1);
+      process.exit(testsCompleted ? (testSuccess ? EXIT_CODES.SUCCESS : EXIT_CODES.TEST_FAILURES) : EXIT_CODES.SIGINT);
     });
   }
 }

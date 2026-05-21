@@ -543,6 +543,20 @@ npx testify --seed 12345
 npx testify --headless --browser node --silent
 ```
 
+### Exit codes
+
+Both `testify` and the bundled `jasmine` CLI use the same return codes:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Tests passed or the command completed successfully |
+| `1` | Test failures or incomplete test run |
+| `2` | Invalid CLI usage |
+| `3` | Config or input error (for example, missing spec file or invalid `testify.json`) |
+| `4` | Internal/runtime error |
+| `130` | Interrupted with `SIGINT` (`Ctrl+C`) |
+| `143` | Terminated with `SIGTERM` |
+
 ---
 
 ## 📁 Project structure

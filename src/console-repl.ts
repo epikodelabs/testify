@@ -9,6 +9,7 @@ export function visibleWidth(text: string): number {
 }
 
 export type WrapMode = "word" | "char";
+const MIN_LONG_WORD_REMAINDER = 4;
 
 // ─── Line wrapping ─────────────────────────────────────────
 export function wrapLine(
@@ -72,11 +73,19 @@ function wrapByWord(text: string, available: number, indent: string): string[] {
     if (!word) return;
 
     if (wordVis > available) {
+      if (vis > 0 && available - vis < MIN_LONG_WORD_REMAINDER) {
+        lines.push(indent + buf.trimEnd());
+        buf = "";
+        vis = 0;
+      }
+
+      const hangingIndent = " ".repeat(vis);
+
       for (const ch of [...word]) {
         if (vis >= available) {
           lines.push(indent + buf.trimEnd());
-          buf = "";
-          vis = 0;
+          buf = hangingIndent;
+          vis = hangingIndent.length;
         }
         buf += ch;
         vis++;

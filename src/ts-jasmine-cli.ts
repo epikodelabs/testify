@@ -6,6 +6,7 @@ import { logger } from './console-repl';
 import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
+import { EXIT_CODES, getSignalExitCode } from './exit-codes';
 
 const packageRoot = norm(path.resolve(__dirname, '..'));
 const packageRequire = createRequire(path.join(packageRoot, 'package.json'));
@@ -90,7 +91,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     logger.error(`ERROR: Unknown command: ${command}`);
     logger.println('');
     printHelp();
-    process.exit(1);
+    process.exit(EXIT_CODES.INVALID_USAGE);
   }
 
   if (initLaunchConfig) {
@@ -108,16 +109,21 @@ function parseArgs(argv: string[]): RunnerArgs {
     logger.error('ERROR: Missing required --spec <path>');
     logger.println('');
     printHelp();
-    process.exit(1);
+    process.exit(EXIT_CODES.INVALID_USAGE);
   }
 
   const spec = norm(path.resolve(process.cwd(), specRaw));
   if (!fs.existsSync(spec)) {
     logger.error(`ERROR: Spec file not found: ${spec}`);
-    process.exit(1);
+    process.exit(EXIT_CODES.CONFIG_ERROR);
   }
 
   const seedRaw = get('--seed');
+  if (seedRaw !== undefined && !Number.isFinite(Number(seedRaw))) {
+    logger.error(`ERROR: Invalid --seed value: ${seedRaw}`);
+    process.exit(EXIT_CODES.INVALID_USAGE);
+  }
+
   return {
     spec,
     random: args.includes('--random'),
@@ -207,7 +213,7 @@ function initVsCodeLaunchConfig(): void {
       logger.println('');
       logger.println('Add this configuration manually:');
       logger.println(`${JSON.stringify(getDefaultVsCodeLaunchConfiguration(), null, 2)}`);
-      process.exit(1);
+      process.exit(EXIT_CODES.CONFIG_ERROR);
     }
   }
 
@@ -261,7 +267,7 @@ async function respawnWithLoader(args: RunnerArgs): Promise<never> {
     { stdio: 'inherit', env, cwd: process.cwd() },
   );
 
-  child.on('exit', (code) => process.exit(code ?? 1));
+  child.on('exit', (code, signal) => process.exit(code ?? getSignalExitCode(signal)));
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -289,7 +295,7 @@ async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
     printHelp();
-    process.exit(0);
+    process.exit(EXIT_CODES.SUCCESS);
   }
 
   if (args.initLaunchConfig) {
@@ -297,10 +303,10 @@ async function main() {
       logger.error('ERROR: `npx jasmine init` is only supported when run from VS Code.');
       logger.println('');
       logger.println('Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).');
-      process.exit(1);
+      process.exit(EXIT_CODES.INVALID_USAGE);
     }
     initVsCodeLaunchConfig();
-    process.exit(0);
+    process.exit(EXIT_CODES.SUCCESS);
   }
 
   // `npx jasmine --spec test.spec.ts` starts Node without an ESM loader, so TS (and tsconfig paths)
@@ -314,11 +320,11 @@ async function main() {
 
   process.on('unhandledRejection', (error) => {
     logger.error(`ERROR: Unhandled rejection: ${error}`);
-    process.exit(1);
+    process.exit(EXIT_CODES.INTERNAL_ERROR);
   });
   process.on('uncaughtException', (error) => {
     logger.error(`ERROR: Uncaught exception: ${error}`);
-    process.exit(1);
+    process.exit(EXIT_CODES.INTERNAL_ERROR);
   });
 
   jasmineEnv.configure({
@@ -333,11 +339,13 @@ async function main() {
   await import(pathToFileURL(args.spec).href);
   await jasmineEnv.execute();
   
-  const exitCode = (await reporter.complete)?.overallStatus === 'passed' ? 0 : 1;
+  const exitCode = (await reporter.complete)?.overallStatus === 'passed'
+    ? EXIT_CODES.SUCCESS
+    : EXIT_CODES.TEST_FAILURES;
   process.exit(exitCode);
 }
 
 main().catch((error) => {
   logger.error(`ERROR: Failed to run jasmine: ${error.stack ?? error}`);
-  process.exit(1);
+  process.exit(EXIT_CODES.INTERNAL_ERROR);
 });

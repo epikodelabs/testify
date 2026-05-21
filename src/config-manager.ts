@@ -4,28 +4,34 @@ import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
 import { logger } from './console-repl';
+import { ExitCodeError, EXIT_CODES } from './exit-codes';
 
 export class ConfigManager {
   static ensureConfigExists(configPath?: string): ViteJasmineConfig {
     const jsonPath = norm(configPath || path.resolve(process.cwd(), 'testify.json'));
-    const cleaner = new JSONCleaner()
+    const cleaner = new JSONCleaner();
+
     if (fs.existsSync(jsonPath)) {
       try {
         return cleaner.parse(fs.readFileSync(jsonPath, 'utf-8'));
       } catch (error) {
-        logger.error(`❌ Failed to parse existing testify.json ${error}`);
-        return {} as ViteJasmineConfig;
+        throw new ExitCodeError(
+          EXIT_CODES.CONFIG_ERROR,
+          `Failed to parse existing testify.json: ${error}`,
+        );
       }
     }
 
-    // Create default config if it does not exist
     const defaultConfig = this.createDefaultConfig();
-    
+
     try {
       fs.writeFileSync(jsonPath, JSON.stringify(defaultConfig, null, 2));
-      logger.println(`🆕 Created default test runner config at ${jsonPath}`);
+      logger.println(`Created default test runner config at ${jsonPath}`);
     } catch (error) {
-      logger.error(`❌ Failed to create default testify.json ${error}`);
+      throw new ExitCodeError(
+        EXIT_CODES.CONFIG_ERROR,
+        `Failed to create default testify.json: ${error}`,
+      );
     }
 
     return defaultConfig;
@@ -77,13 +83,20 @@ export class ConfigManager {
     const jsonPath = norm(configPath || path.resolve(process.cwd(), 'testify.json'));
 
     if (fs.existsSync(jsonPath)) {
-      logger.println(`⚠️  Config already exists at ${jsonPath}`);
+      logger.println(`Config already exists at ${jsonPath}`);
       return;
     }
 
     const defaultConfig = this.createDefaultConfig();
-    fs.writeFileSync(jsonPath, JSON.stringify(defaultConfig, null, 2));
-    logger.println(`✅ Generated default Vite Jasmine config at ${jsonPath}`);
+    try {
+      fs.writeFileSync(jsonPath, JSON.stringify(defaultConfig, null, 2));
+    } catch (error) {
+      throw new ExitCodeError(
+        EXIT_CODES.CONFIG_ERROR,
+        `Failed to write testify.json: ${error}`,
+      );
+    }
+    logger.println(`Generated default Vite Jasmine config at ${jsonPath}`);
   }
 
   static loadViteJasmineBrowserConfig(configPath?: string): ViteJasmineConfig {

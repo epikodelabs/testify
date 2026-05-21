@@ -14,6 +14,7 @@ export { NodeTestRunner } from './node-test-runner';
 export { WebSocketManager } from './websocket-manager';
 export { IstanbulInstrumenter } from './istanbul-instrumenter'
 export { HmrManager } from './hmr-manager';
+export { EXIT_CODES, ExitCodeError, getExitCode, getSignalExitCode } from './exit-codes';
 export { norm } from './utils';
 export { ViteConfigBuilder } from './vite-config-builder';
 export type { ViteJasmineConfig } from './vite-jasmine-config';

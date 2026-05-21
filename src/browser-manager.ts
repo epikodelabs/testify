@@ -1,6 +1,7 @@
 import { logger } from "./console-repl";
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import type * as PlayWright from 'playwright';
+import { EXIT_CODES, getSignalExitCode } from './exit-codes';
 
 export class BrowserManager {
   private playwright: typeof PlayWright | null = null;
@@ -66,19 +67,19 @@ export class BrowserManager {
       interruptReject = reject;
     });
 
-    const abortRun = () => {
+    const abortRun = (signal: NodeJS.Signals) => {
       interrupted = true;
       if (interruptReject) interruptReject(interruptError);
       if (!page.isClosed()) {
         void page.close().catch(() => {});
       }
       void browser.close().catch(() => {}).finally(() => {
-        process.exit(0);
+        process.exit(getSignalExitCode(signal));
       });
     };
 
-    const sigintHandler = () => abortRun();
-    const sigtermHandler = () => abortRun();
+    const sigintHandler = () => abortRun('SIGINT');
+    const sigtermHandler = () => abortRun('SIGTERM');
     process.once('SIGINT', sigintHandler);
     process.once('SIGTERM', sigtermHandler);
 
@@ -181,7 +182,7 @@ export class BrowserManager {
         }
         this.clearBrowserState();
         if (exitOnClose) {
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
       });
       
