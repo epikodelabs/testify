@@ -241,7 +241,9 @@ ${imports}
         reporter.userAgent(undefined, orderedSuites, orderedSpecs);
         await jasmineEnv.execute();
 
-        const failures = (reporter as any).failureCount || 0;
+        const failures = reporter && typeof reporter === 'object'
+          ? reporter.failureCount || 0
+          : 0;
         resolve(failures === 0 ? ${EXIT_CODES.SUCCESS} : ${EXIT_CODES.TEST_FAILURES});
       } catch (error) {
         console.error(\`❌ Error during test execution: \${error}\`);

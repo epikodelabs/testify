@@ -112,7 +112,7 @@ export class ViteConfigBuilder {
   }
 
   /* -------------------------------------------------- */
-  /* Input map (flattened, collision-safe)              */
+  /* Input map (flattened, deterministic)               */
   /* -------------------------------------------------- */
 
   private buildInputMap(files: string[]): Record<string, string> {
@@ -161,20 +161,23 @@ export class ViteConfigBuilder {
       return segment;
     };
 
-    const segments = stemPath.split('/').filter(Boolean);
-    const sanitized =
-      segments.length > 0
-        ? segments.map(sanitizeSegment).join('_')
-        : sanitizeSegment(path.basename(stemPath) || 'index');
+    const segments = stemPath.split('/').filter(Boolean).map(sanitizeSegment);
+    const fileName = segments.pop() ?? sanitizeSegment(path.basename(stemPath) || 'index');
 
+    if (isSpecFile) {
+      const prefix = segments.join('_');
+      const flattened = prefix ? `${prefix}__${fileName}` : fileName;
+      return `${flattened}.spec.js`;
+    }
+
+    const sanitized =
+      segments.length > 0 ? [...segments, fileName].join('_') : fileName;
     const hash = createHash('sha1')
       .update(normalizedPath)
       .digest('hex')
       .slice(0, 8);
 
-    return isSpecFile
-      ? `${sanitized}__${hash}.spec.js`
-      : `${sanitized}__${hash}.js`;
+    return `${sanitized}__${hash}.js`;
   }
 
   private isTypeOnlyModule(filePath: string): boolean {
