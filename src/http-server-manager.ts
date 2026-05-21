@@ -14,11 +14,11 @@ export class HttpServerManager {
 
   async startServer(): Promise<http.Server> {
     const port = this.config.port!;
-    const outDir = this.config.outDir;
+    const outDir = path.resolve(this.config.outDir);
 
     const __filename = norm(fileURLToPath(import.meta.url));
     const __dirname = norm(path.dirname(__filename));
-    const vendorDir = norm(path.join(__dirname, '../node_modules'));
+    const vendorDir = path.resolve(path.join(__dirname, '../node_modules'));
     
     this.server = createServer((req, res) => {
       let { pathname } = parse(req.url === '/' ? '/index.html' : req.url!, true);
@@ -40,15 +40,24 @@ export class HttpServerManager {
       }
 
       let resolvedPath: string;
+      let rootDir: string;
 
       if (filePath.startsWith('/node_modules/')) {
         const relativePath = filePath.replace(/^\/node_modules\//, '');
-        resolvedPath = norm(path.join(vendorDir, relativePath));
+        rootDir = vendorDir;
+        resolvedPath = path.resolve(vendorDir, relativePath);
       } else {
-        resolvedPath = norm(path.join(outDir, filePath));
+        rootDir = outDir;
+        resolvedPath = path.resolve(outDir, `.${filePath}`);
       }
 
-      resolvedPath = norm(path.normalize(resolvedPath));
+      resolvedPath = path.normalize(resolvedPath);
+
+      if (!this.isPathInside(rootDir, resolvedPath)) {
+        res.writeHead(403);
+        res.end('Forbidden');
+        return;
+      }
 
       if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
         const ext = extname(resolvedPath);
@@ -89,6 +98,11 @@ export class HttpServerManager {
       '.ico': 'image/x-icon'
     };
     return types[ext] || 'application/octet-stream';
+  }
+
+  private isPathInside(root: string, candidate: string): boolean {
+    const relative = path.relative(path.resolve(root), path.resolve(candidate));
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
   }
 
   async waitForServerReady(url: string, timeout = 5000): Promise<void> {

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import { InlineConfig } from 'vite';
 import type { WarningHandlerWithDefault } from 'rollup';
 import { ViteJasmineConfig } from './vite-jasmine-config';
@@ -121,16 +122,59 @@ export class ViteConfigBuilder {
       if (this.isTypeOnlyModule(file)) {
         continue;
       }
-      const rel = path
-        .relative(this.preserveRoot(), file)
-        .replace(/\.(ts|js|mjs)$/, '');
-
-      // collision-safe flattened name
-      const flatName = Buffer.from(rel).toString('hex');
-      map[flatName] = norm(file);
+      const outputName = this.buildOutputName(file).replace(/\.js$/, '');
+      map[outputName] = norm(file);
     }
 
     return map;
+  }
+
+  private buildOutputName(filePath: string): string {
+    const srcDirs = this.srcDirs().map((dir) => norm(path.resolve(dir)));
+    const testDirs = this.testDirs().map((dir) => norm(path.resolve(dir)));
+    const normalizedPath = norm(path.resolve(filePath));
+
+    const matchDir = (dirs: string[]): string | null => {
+      for (const candidate of dirs) {
+        if (normalizedPath === candidate || normalizedPath.startsWith(`${candidate}/`)) {
+          return candidate;
+        }
+      }
+      return null;
+    };
+
+    const baseTest = matchDir(testDirs);
+    const baseSrc = matchDir(srcDirs) ?? srcDirs[0] ?? norm(path.resolve('./src'));
+    const base = baseTest ?? baseSrc;
+
+    const relativePath = path.relative(base, normalizedPath);
+    const relativeNormalized = norm(relativePath);
+    const relativeWithoutExt = relativeNormalized.replace(/\.(ts|js|mjs)$/, '');
+    const isSpecFile = relativeWithoutExt.endsWith('.spec');
+    const stemPath = isSpecFile
+      ? relativeWithoutExt.slice(0, -'.spec'.length)
+      : relativeWithoutExt;
+
+    const sanitizeSegment = (segment: string) => {
+      if (segment === '..') return 'up';
+      if (segment === '.') return 'dot';
+      return segment;
+    };
+
+    const segments = stemPath.split('/').filter(Boolean);
+    const sanitized =
+      segments.length > 0
+        ? segments.map(sanitizeSegment).join('_')
+        : sanitizeSegment(path.basename(stemPath) || 'index');
+
+    const hash = createHash('sha1')
+      .update(normalizedPath)
+      .digest('hex')
+      .slice(0, 8);
+
+    return isSpecFile
+      ? `${sanitized}__${hash}.spec.js`
+      : `${sanitized}__${hash}.js`;
   }
 
   private isTypeOnlyModule(filePath: string): boolean {

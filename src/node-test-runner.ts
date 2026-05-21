@@ -1,6 +1,7 @@
 // test-runner.ts
 import * as fs from 'fs';
 import * as path from 'path';
+import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
@@ -29,6 +30,12 @@ export class NodeTestRunner {
     this.config = config;
     this.options = options;
     this.reporter = options.reporter ?? new ConsoleReporter();
+  }
+
+  private resolveJasmineCoreUrl(): string {
+    const require = createRequire(import.meta.url);
+    const jasmineCorePath = require.resolve('jasmine-core/lib/jasmine-core/jasmine.js');
+    return pathToFileURL(jasmineCorePath).href;
   }
 
   /**
@@ -68,6 +75,7 @@ export class NodeTestRunner {
    * NOTE: This is emitted as JS, so keep syntax JS-friendly.
    */
   private generateRunnerTemplate(imports: string): string {   
+    const jasmineCoreUrl = this.resolveJasmineCoreUrl();
     return `// Auto-generated in-process Jasmine test runner
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -141,11 +149,19 @@ export async function runTests(reporter) {
   const envValue = process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;
   const shouldSilenceConsole =
     envValue === '1' || envValue?.toLowerCase() === 'true';
+  const originalConsole = {};
+
+  const restoreConsole = () => {
+    for (const [method, value] of Object.entries(originalConsole)) {
+      console[method] = value;
+    }
+  };
 
   if (shouldSilenceConsole) {
     const silentMethods = ['log', 'info', 'debug', 'trace', 'warn', 'table'];
     for (const method of silentMethods) {
       if (typeof console[method] === 'function') {
+        originalConsole[method] = console[method];
         console[method] = () => {};
       }
     }
@@ -175,13 +191,7 @@ export async function runTests(reporter) {
 
     (async function () {
       try {
-        // Load jasmine-core from testify's own node_modules
-        const jasmineCorePath = join(
-          __cwd,
-          './node_modules/@epikodelabs/testify/node_modules/jasmine-core/lib/jasmine-core/jasmine.js',
-        );
-
-        const jasmineCore = await import(pathToFileURL(jasmineCorePath).href);
+        const jasmineCore = await import(${JSON.stringify(jasmineCoreUrl)});
         const jasmineRequire = jasmineCore.default;
 
         jasmineInstance = jasmineRequire.core(jasmineRequire);
@@ -246,6 +256,8 @@ ${imports}
         console.error(\`❌ Error during test execution: \${error}\`);
         console.error(error.stack);
         resolve(${EXIT_CODES.INTERNAL_ERROR});
+      } finally {
+        restoreConsole();
       }
     })();
   });

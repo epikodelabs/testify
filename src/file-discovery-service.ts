@@ -3,6 +3,7 @@ import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { norm } from "./utils";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { createHash } from 'crypto';
 import { logger } from "./console-repl";
 
 export class FileDiscoveryService {
@@ -119,6 +120,10 @@ export class FileDiscoveryService {
     const relativePath = path.relative(base, normalizedPath);
     const relativeNormalized = norm(relativePath);
     const relativeWithoutExt = relativeNormalized.replace(/\.(ts|js|mjs)$/, '');
+    const isSpecFile = relativeWithoutExt.endsWith('.spec');
+    const stemPath = isSpecFile
+      ? relativeWithoutExt.slice(0, -'.spec'.length)
+      : relativeWithoutExt;
 
     const sanitizeSegment = (segment: string) => {
       if (segment === '..') return 'up';
@@ -126,12 +131,19 @@ export class FileDiscoveryService {
       return segment;
     };
 
-    const segments = relativeWithoutExt.split('/').filter(Boolean);
+    const segments = stemPath.split('/').filter(Boolean);
     const sanitized =
       segments.length > 0
         ? segments.map(sanitizeSegment).join('_')
-        : sanitizeSegment(path.basename(relativeWithoutExt) || 'index');
+        : sanitizeSegment(path.basename(stemPath) || 'index');
 
-    return `${sanitized}.js`;
+    const hash = createHash('sha1')
+      .update(normalizedPath)
+      .digest('hex')
+      .slice(0, 8);
+
+    return isSpecFile
+      ? `${sanitized}__${hash}.spec.js`
+      : `${sanitized}__${hash}.js`;
   }
 }

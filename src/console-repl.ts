@@ -11,6 +11,57 @@ export function visibleWidth(text: string): number {
 export type WrapMode = "word" | "char";
 const MIN_LONG_WORD_REMAINDER = 4;
 
+interface DisplayUnit {
+  value: string;
+  visible: number;
+  whitespace: boolean;
+}
+
+function splitAnsiTokens(text: string): string[] {
+  const tokens: string[] = [];
+  let lastIndex = 0;
+  ANSI_FULL_REGEX.lastIndex = 0;
+
+  for (let match = ANSI_FULL_REGEX.exec(text); match !== null; match = ANSI_FULL_REGEX.exec(text)) {
+    if (match.index > lastIndex) {
+      tokens.push(text.slice(lastIndex, match.index));
+    }
+    tokens.push(match[0]);
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    tokens.push(text.slice(lastIndex));
+  }
+
+  return tokens;
+}
+
+function isAnsiToken(token: string): boolean {
+  return token.startsWith('\x1b');
+}
+
+function toDisplayUnits(text: string): DisplayUnit[] {
+  const units: DisplayUnit[] = [];
+
+  for (const token of splitAnsiTokens(text)) {
+    if (isAnsiToken(token)) {
+      units.push({ value: token, visible: 0, whitespace: false });
+      continue;
+    }
+
+    for (const ch of [...token]) {
+      units.push({
+        value: ch,
+        visible: 1,
+        whitespace: /\s/.test(ch),
+      });
+    }
+  }
+
+  return units;
+}
+
 // ─── Line wrapping ─────────────────────────────────────────
 export function wrapLine(
   text: string,
@@ -39,23 +90,19 @@ function wrapByChar(text: string, available: number, indent: string): string[] {
   let buf = "";
   let vis = 0;
 
-  const tokens = text.split(ANSI_FULL_REGEX);
-
-  for (const token of tokens) {
-    if (ANSI_FULL_REGEX.test(token)) {
-      buf += token;
+  for (const unit of toDisplayUnits(text)) {
+    if (unit.visible === 0) {
+      buf += unit.value;
       continue;
     }
 
-    for (const ch of [...token]) {
-      if (vis >= available) {
-        lines.push(indent + buf);
-        buf = "";
-        vis = 0;
-      }
-      buf += ch;
-      vis++;
+    if (vis >= available) {
+      lines.push(indent + buf);
+      buf = "";
+      vis = 0;
     }
+    buf += unit.value;
+    vis += unit.visible;
   }
 
   if (buf) lines.push(indent + buf);
@@ -104,16 +151,25 @@ function wrapByWord(text: string, available: number, indent: string): string[] {
     wordVis = 0;
   };
 
-  for (const ch of [...text]) {
-    if (/\s/.test(ch)) {
+  for (const unit of toDisplayUnits(text)) {
+    if (unit.visible === 0) {
+      if (word) {
+        word += unit.value;
+      } else {
+        buf += unit.value;
+      }
+      continue;
+    }
+
+    if (unit.whitespace) {
       flushWord();
       if (vis < available && vis > 0) {
         buf += " ";
         vis++;
       }
     } else {
-      word += ch;
-      wordVis++;
+      word += unit.value;
+      wordVis += unit.visible;
     }
   }
 
@@ -212,23 +268,19 @@ export class Logger {
     let result: string[] = [];
     let buf = "";
     let vis = 0;
-    const tokens = normalized.split(
-      /(\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)))/g
-    );
-    for (const token of tokens) {
-      if (ANSI_FULL_REGEX.test(token)) {
-        buf += token;
+    for (const unit of toDisplayUnits(normalized)) {
+      if (unit.visible === 0) {
+        buf += unit.value;
         continue;
       }
-      for (const ch of [...token]) {
-        if (vis >= width) {
-          result.push(this.applyPadding(buf, vis, width, align, padChar));
-          buf = "";
-          vis = 0;
-        }
-        buf += ch;
-        vis++;
+
+      if (vis >= width) {
+        result.push(this.applyPadding(buf, vis, width, align, padChar));
+        buf = "";
+        vis = 0;
       }
+      buf += unit.value;
+      vis += unit.visible;
     }
     if (buf) {
       result.push(this.applyPadding(buf, vis, width, align, padChar));
