@@ -1,137 +1,93 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.22] — 2026-05-21
+## [1.0.22] - 2026-05-21
 
 ### Fixed
-- Resolved 30+ bugs, ESM incompatibilities, and optimizations across the codebase.
-- Fixed project-scoped runtime bugs.
+- Resolved a broad set of runtime bugs, ESM compatibility issues, and internal regressions across the package.
+- Fixed project-scoped runtime issues that could break test execution in local setups.
 
 ### Changed
-- Revised testify exit codes and console wrapping.
+- Revised `testify` exit codes to make CLI failures easier to interpret.
+- Improved console wrapping so long output stays readable.
 
-## [1.0.20] — 2026-02-14
+## [1.0.20] - 2026-02-14
 
 ### Fixed
-- Single `Ctrl+C` now aborts tests and exits the program.
-- Fixed double `Ctrl+C` press handling.
+- Single `Ctrl+C` now aborts the current run and exits cleanly.
+- Fixed double `Ctrl+C` handling during interrupted runs.
 - Corrected line merging in console output.
 
 ### Changed
-- Test dots and suite names now do not exceed `MAX_WIDTH` length.
-- One space is now mandatory between suite name and dots.
+- Suite labels now always use exactly one space before dot fill.
+- Suite names and dot leaders now respect `MAX_WIDTH`.
 
-## [1.0.14] — Synthetic tag: CLI & Configuration
+## [1.0.11] - 2025-10-03
 
 ### Added
-- Added `ts-jasmine-cli` utility with `init` param to update/create VS Code launch configuration.
-- Added VS Code environment check.
-- Added `--silent` mode for Node.js runner.
-- Added `--preserve` parameter.
-- Added small console reporter to CLI.
-- Added `setSeed` and `resetSeed()` methods to the runner.
+- Initial public release of `testify`.
+- Browser-based Jasmine runner.
+- CLI binaries with shebang support.
+
+### Changed
+- Improved package configuration and logging.
+
+## Historical Milestones
+
+The sections below summarize major work that landed between `1.0.11` and `1.0.20` but was not published as separately tagged releases.
+
+### Browser Runner and Watch Mode
+
+- Added watch mode with hot module reloading.
+- Added WebSocket-based event forwarding and hot test reload support.
+- Switched test discovery to dynamic retrieval instead of hardcoded HTML entries.
+- Added support for `js` and `mjs` sources and specs.
+- Disabled random order by default in watch mode.
+- Added cache-busting for dynamic imports and corrected browser runner HTML/script paths.
+- Made Node.js headless mode the default runner.
+
+### Reporting and Console UX
+
+- Added the compound reporter with `userAgent` and abort callbacks.
+- Added `console-repl` for interactive console access.
+- Added suite tree rendering plus `orderedSuites` and `orderedSpecs` config support.
+- Improved pending spec wrapping, status calculation, and first-line prompt behavior.
+- Expanded console reporter output and normalized control-sequence handling.
+
+### Coverage and Runtime Architecture
+
+- Added coverage support for headless browser modes.
+- Merged the Node runner and HTML generator so tests execute inside the host process.
+- Reworked coverage generation to run synchronously.
+- Removed the dedicated coverage reporter in favor of direct report generation.
+- Fixed child-process initialization.
+- Moved dependency and browser installation into the postinstall flow.
+
+### CLI and Configuration
+
+- Added `ts-jasmine-cli init` to create or update VS Code launch configuration.
+- Added a VS Code environment check.
+- Added `--silent` mode for the Node.js runner.
+- Added `--preserve` to reuse existing build outputs.
+- Simplified CLI config and reworked the config file structure.
+- Ensured testify config is loaded before project config.
+- Added path normalization and relative-path cleanup.
+- Replaced the custom console reporter with `jasmine-console-reporter`.
 - Added richer Jasmine failure output.
-- Added normalization step for path parameters.
+- Skipped types-only modules during build.
+- Updated the runner, build script, and HTML generator.
 
-### Changed
-- Modified config file structure.
-- Cleaned CLI config.
-- Our config added at the beginning of config array.
-- Replaced custom console reporter with `jasmine-console-reporter`.
-- Types-only modules are skipped during build.
-- Updated runner, build script, and HTML generator.
+### Rebrand and Package Refresh
 
-## [1.0.13] — Synthetic tag: Rebrand
-
-### Changed
-- Renamed project from `ts-test-runner` to `testify`.
-- Updated organisation name and package dependencies.
-- Updated README and build workflow.
-- Added GitHub workflows folder.
-- Added Open Collective funding.
-- Lowercased testify and updated utility names.
-
-## [1.0.12] — Synthetic tag: In-Process Execution & Coverage
-
-### Added
-- Added coverage step to headless browser modes.
-- Added introspection methods.
-- Added delay before test execution.
-
-### Changed
-- Merged node runner and generator; tests are executed within the host process.
-- Coverage report generator rewritten to be synchronous.
-- Removed coverage reporter in favor of direct use of coverage report generator.
-- Removed `playwright-core` dependency, corrected postinstall script.
-- Instead of copying dependencies, they are installed in the postinstall step.
-- Browser installation moved to postinstall script.
-- Postinstall script renamed to avoid postinstallation within the package.
-
-### Fixed
-- Corrected child process initialization.
-
-## [1.0.11] — 2025-10-03
-
-### Added
-- Initial version of the test runner.
-- Serve and run Jasmine specs in a browser.
-- Shebang support for CLI binaries.
-
-### Changed
-- Improved logging.
-- Updated package config and version.
-
-## Milestones
-
-### HMR & Browser Runner
-> `watch mode` → `dynamic test retrieval`
-
-- Added support for watch mode.
-- Added HMR support with hot test reload.
-- Enhanced HMR manager and HMR client.
-- Script runner retrieves test cases dynamically; they are not hardcoded in HTML.
-- By default, runner uses Node headless mode.
-- Added support for `js`/`mjs` sources and specs.
-- Enabled WebSocket forwarder.
-- Random order is disabled in watch mode by default.
-- Cache-busting for dynamic import calls.
-- Corrected HTML template for browser runner and path to test script.
-
-### Reporting & Console
-> `compound reporter` → `console-repl`
-
-- Added compound reporter supporting `userAgent` callback.
-- Added console-repl (interactive console).
-- Added suite tree rendering.
-- Added `orderedSuites` and `orderedSpecs` to config.
-- Added word wrapping for pending specs.
-- Implemented proper status calculation for test results.
-- Extended WebSocket event forwarder and console reporter.
-- Console reporter logs all callback parameters.
-- Added `testsAborted` callback to compound reporter.
-- Added `capitalize` method.
-- Added regex for control sequences.
-- Output shortened and prompt restricted to first line.
-- `undefined` userAgent fix returned by test runner.
-
-### Tooling & Linting
-> `eslint update` → `package lock renewal`
-
-- Updated ESLint with import plugin.
-- Downgraded and renewed package lock.
-- Corrected `ts-node` imports.
-- Absolute paths within config file replaced with relative ones.
-- Backslashes replaced with forward slashes.
-- Refactored `vite-config-builder`.
-- Removed logic related to imports.
+- Renamed the project from `ts-test-runner` to `testify`.
+- Updated organization metadata, package dependencies, and utility names.
+- Refreshed the README, build workflow, and GitHub workflows.
+- Added Open Collective funding metadata.
 
 [1.0.22]: https://github.com/epikodelabs/testify/compare/1.0.20...1.0.22
-[1.0.20]: https://github.com/epikodelabs/testify/compare/1.0.14...1.0.20
-[1.0.14]: https://github.com/epikodelabs/testify/compare/1.0.13...1.0.14
-[1.0.13]: https://github.com/epikodelabs/testify/compare/1.0.12...1.0.13
-[1.0.12]: https://github.com/epikodelabs/testify/compare/1.0.11...1.0.12
+[1.0.20]: https://github.com/epikodelabs/testify/compare/1.0.11...1.0.20
 [1.0.11]: https://github.com/epikodelabs/testify/releases/tag/1.0.11
