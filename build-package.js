@@ -20,6 +20,7 @@ const distPackage = {
   },
   files: [
     'README.md',
+    'CHANGELOG.md',
     'LICENSE',
     'esm-loader.mjs',
     'package.json',
