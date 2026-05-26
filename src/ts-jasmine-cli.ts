@@ -339,9 +339,15 @@ async function main() {
   await import(pathToFileURL(args.spec).href);
   await jasmineEnv.execute();
   
-  const exitCode = (await reporter.complete)?.overallStatus === 'passed'
-    ? EXIT_CODES.SUCCESS
-    : EXIT_CODES.TEST_FAILURES;
+  const result = await reporter.complete;
+  let exitCode: number;
+  if (result?.overallStatus === 'failed') {
+    exitCode = EXIT_CODES.TEST_FAILURES;
+  } else if (result?.overallStatus === 'incomplete') {
+    exitCode = EXIT_CODES.SUCCESS_WITH_PENDING;
+  } else {
+    exitCode = EXIT_CODES.SUCCESS;
+  }
   process.exit(exitCode);
 }
 

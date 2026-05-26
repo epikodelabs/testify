@@ -253,9 +253,11 @@ export class ViteJasmineRunner extends EventEmitter {
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     let testSuccess = false;
+    let testHasPending = false;
     let coveragePromise: Promise<void> | undefined;
-    this.webSocketManager.on('testsCompleted', ({ success, coverage }) => {
+    this.webSocketManager.on('testsCompleted', ({ success, hasPending, coverage }) => {
       testSuccess = success;
+      testHasPending = hasPending;
       if (this.config.coverage) {
         const cov = new CoverageReportGenerator();
         coveragePromise = cov.generate(coverage);
@@ -276,7 +278,10 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
       if (coveragePromise) await coveragePromise;
       await this.cleanup();
-      process.exit(testSuccess ? EXIT_CODES.SUCCESS : EXIT_CODES.TEST_FAILURES);
+      if (!testSuccess) {
+        process.exit(EXIT_CODES.TEST_FAILURES);
+      }
+      process.exit(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
     } catch (error) {
       logger.error(`❌ Browser test execution failed. Need to install playwright?`);
       if (coveragePromise) await coveragePromise.catch(() => {});
@@ -299,6 +304,7 @@ export class ViteJasmineRunner extends EventEmitter {
     const server = await this.httpServerManager.startServer();
     let testsCompleted = false;
     let testSuccess = false;
+    let testHasPending = false;
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     logger.println('📡 WebSocket server ready for real-time test reporting');
@@ -312,12 +318,13 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.browserManager.closeBrowser();
     };
 
-    this.webSocketManager.on('testsCompleted', ({ success, coverage }) => {
+    this.webSocketManager.on('testsCompleted', ({ success, hasPending, coverage }) => {
       if (testsCompleted) {
         return;
       }
       testsCompleted = true;
       testSuccess = success;
+      testHasPending = hasPending;
       finishHeadedRun(coverage).catch((error) => {
         logger.error(`❌ Failed to finish headed browser run: ${error}`);
         process.exit(EXIT_CODES.INTERNAL_ERROR);
@@ -344,7 +351,13 @@ export class ViteJasmineRunner extends EventEmitter {
 
       await promise;
       await this.cleanup();
-      process.exit(testsCompleted ? (testSuccess ? EXIT_CODES.SUCCESS : EXIT_CODES.TEST_FAILURES) : EXIT_CODES.SIGINT);
+      if (!testsCompleted) {
+        process.exit(EXIT_CODES.SIGINT);
+      }
+      if (!testSuccess) {
+        process.exit(EXIT_CODES.TEST_FAILURES);
+      }
+      process.exit(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
     };
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
@@ -360,7 +373,13 @@ export class ViteJasmineRunner extends EventEmitter {
       }
       await this.browserManager.closeBrowser();
       await this.cleanup();
-      process.exit(testsCompleted ? (testSuccess ? EXIT_CODES.SUCCESS : EXIT_CODES.TEST_FAILURES) : EXIT_CODES.SIGINT);
+      if (!testsCompleted) {
+        process.exit(EXIT_CODES.SIGINT);
+      }
+      if (!testSuccess) {
+        process.exit(EXIT_CODES.TEST_FAILURES);
+      }
+      process.exit(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
     });
   }
 }

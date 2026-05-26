@@ -244,7 +244,16 @@ ${imports}
         const failures = reporter && typeof reporter === 'object'
           ? reporter.failureCount || 0
           : 0;
-        resolve(failures === 0 ? ${EXIT_CODES.SUCCESS} : ${EXIT_CODES.TEST_FAILURES});
+        const pending = reporter && typeof reporter === 'object'
+          ? (reporter.pendingSpecs?.length || 0)
+          : 0;
+        if (failures > 0) {
+          resolve(${EXIT_CODES.TEST_FAILURES});
+        } else if (pending > 0) {
+          resolve(${EXIT_CODES.SUCCESS_WITH_PENDING});
+        } else {
+          resolve(${EXIT_CODES.SUCCESS});
+        }
       } catch (error) {
         console.error(\`❌ Error during test execution: \${error}\`);
         console.error(error.stack);

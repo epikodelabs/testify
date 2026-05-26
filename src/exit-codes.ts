@@ -4,6 +4,7 @@ export const EXIT_CODES = {
   INVALID_USAGE: 2,
   CONFIG_ERROR: 3,
   INTERNAL_ERROR: 4,
+  SUCCESS_WITH_PENDING: 5,
   SIGINT: 130,
   SIGTERM: 143,
 } as const;

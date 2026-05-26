@@ -92,7 +92,8 @@ export class WebSocketManager extends EventEmitter {
           
           const coverage = message.coverage ? this.jsonCleaner.parse(message.coverage) : null;
           const success = message.overallStatus === 'passed' && message.failedSpecsCount === 0;
-          this.emit('testsCompleted', { success, coverage });
+          const hasPending = message.overallStatus === 'incomplete' || (message.pendingSpecsCount > 0);
+          this.emit('testsCompleted', { success, hasPending, coverage });
           break;
 
         case 'hmr:ready':
