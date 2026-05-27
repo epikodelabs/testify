@@ -45,12 +45,28 @@ export class ViteJasmineRunner extends EventEmitter {
     super();
 
     const cwd = norm(process.cwd());
-    const normalizedSrcDirs = (Array.isArray(config.srcDirs) ? config.srcDirs : [config.srcDirs ?? './src'])
+    let normalizedSrcDirs = (Array.isArray(config.srcDirs) ? config.srcDirs : [config.srcDirs ?? './src'])
       .filter(Boolean)
       .map(norm);
-    const normalizedTestDirs = (Array.isArray(config.testDirs) ? config.testDirs : [config.testDirs ?? './tests'])
+    let normalizedTestDirs = (Array.isArray(config.testDirs) ? config.testDirs : [config.testDirs ?? './tests'])
       .filter(Boolean)
       .map(norm);
+
+    if (config.project) {
+      const projectPath = norm(path.resolve(config.project));
+      const scopeToProject = (dirs: string[]): string[] => {
+        return dirs.map((dir) => {
+          const resolved = norm(path.resolve(dir));
+          if (resolved.startsWith(projectPath + '/')) {
+            return resolved;
+          }
+          return norm(path.join(projectPath, dir));
+        });
+      };
+      normalizedSrcDirs = scopeToProject(normalizedSrcDirs);
+      normalizedTestDirs = scopeToProject(normalizedTestDirs);
+    }
+
     this.primarySrcDir = normalizedSrcDirs[0] ?? cwd;
     this.primaryTestDir = normalizedTestDirs[0] ?? cwd;
     

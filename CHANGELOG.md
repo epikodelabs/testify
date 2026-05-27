@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.23] - 2026-05-27
+
+### Added
+- `--project <name>` flag to run tests scoped to a specific package.
+  - Accepts an npm package name and resolves it automatically via `tsconfig.json` project references or workspace definitions (npm / pnpm).
+- `--exclusive` flag to terminate any previously running testify instance before starting a new one.
+  - Uses a PID file scoped to the working directory (and project, when `--project` is used).
+  - Sends `SIGTERM`, waits for graceful shutdown, then falls back to `SIGKILL` if necessary.
+
+### Changed
+- `srcDirs` and `testDirs` are now automatically scoped under the resolved `--project` directory when the flag is provided.
+
 ## [1.0.22] - 2026-05-21
 
 ### Fixed
@@ -88,6 +100,7 @@ The sections below summarize major work that landed between `1.0.11` and `1.0.20
 - Refreshed the README, build workflow, and GitHub workflows.
 - Added Open Collective funding metadata.
 
+[1.0.23]: https://github.com/epikodelabs/testify/compare/1.0.22...1.0.23
 [1.0.22]: https://github.com/epikodelabs/testify/compare/1.0.20...1.0.22
 [1.0.20]: https://github.com/epikodelabs/testify/compare/1.0.11...1.0.20
 [1.0.11]: https://github.com/epikodelabs/testify/releases/tag/1.0.11

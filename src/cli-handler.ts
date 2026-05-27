@@ -1,5 +1,8 @@
+import * as fs from "fs";
 import { ConfigManager } from "./config-manager";
 import { logger } from "./console-repl";
+import { PackageResolver } from "./package-resolver";
+import { ProcessLock } from "./process-lock";
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { ViteJasmineRunner } from "./vite-jasmine-runner";
 import { EXIT_CODES, getExitCode } from "./exit-codes";
@@ -22,12 +25,16 @@ export class CLIHandler {
     const watch = args.includes('--watch');
     const headless = args.includes('--headless');
     const coverage = args.includes('--coverage');
+    const exclusive = args.includes('--exclusive');
     const browserIndex = args.findIndex((a) => a === '--browser');
     const seedIndex = args.findIndex((a) => a === '--seed');
+    const projectIndex = args.findIndex((a) => a === '--project');
     const silentLogs = args.includes('--silent') || args.includes('--quiet');
     const hasBrowserArg = browserIndex !== -1;
+    const hasProjectArg = projectIndex !== -1;
     let browserName = 'chrome';
     let seedValue: number | undefined;
+    let projectValue: string | undefined;
 
     if (seedIndex !== -1) {
       const raw = args[seedIndex + 1];
@@ -41,6 +48,13 @@ export class CLIHandler {
 
     if (hasBrowserArg && browserIndex + 1 < args.length) {
       browserName = args[browserIndex + 1];
+    }
+
+    if (hasProjectArg && projectIndex + 1 < args.length) {
+      projectValue = args[projectIndex + 1];
+    } else if (hasProjectArg) {
+      logger.error('ERROR: --project requires a package name or path.');
+      process.exit(EXIT_CODES.INVALID_USAGE);
     }
 
     const preserveOutputsFlag = args.includes('--preserve');
@@ -77,6 +91,17 @@ export class CLIHandler {
 
       let config = ConfigManager.loadViteJasmineBrowserConfig('testify.json');
 
+      if (projectValue) {
+        const resolver = new PackageResolver();
+        const resolved = await resolver.resolve(projectValue, config.tsconfig);
+        if (resolved) {
+          projectValue = resolved;
+        } else {
+          logger.error(`ERROR: Could not resolve project "${projectValue}". It is not a directory and not a known package name.`);
+          process.exit(EXIT_CODES.INVALID_USAGE);
+        }
+      }
+
       config = {
         ...config,
         headless: headless ? true : (config.headless || false),
@@ -87,6 +112,7 @@ export class CLIHandler {
         srcDirs: normalizeDirConfig(config.srcDirs, './src'),
         testDirs: normalizeDirConfig(config.testDirs, './tests'),
         preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,
+        project: projectValue ?? config.project,
       };
 
       if (seedValue !== undefined) {
@@ -104,6 +130,12 @@ export class CLIHandler {
         logger.println('Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).');
       }
 
+      const lock = exclusive ? new ProcessLock(config.project) : null;
+      if (lock) {
+        await lock.acquire();
+        process.on('exit', () => lock.releaseSync());
+      }
+
       const runner = createViteJasmineRunner(config);
 
       if (watch) {
@@ -111,6 +143,8 @@ export class CLIHandler {
       } else {
         await runner.start();
       }
+
+      lock?.releaseSync();
     } catch (error) {
       logger.error(`ERROR: Failed to start test runner: ${error}`);
       process.exit(getExitCode(error));
@@ -132,6 +166,8 @@ export class CLIHandler {
     logger.println('  --seed <number>      Seed used for randomization order');
     logger.println('  --silent / --quiet    Suppress console logs when running in Node.js mode');
     logger.println('  --preserve           Skip regenerating index.html and test-runner.js when outputs exist');
+    logger.println('  --project <name>     Run tests only for the specified package or directory');
+    logger.println('  --exclusive          Close any previously running testify instance before starting');
     logger.println('  --help, -h           Show this help message');
     logger.println('');
     logger.println('Configuration:');

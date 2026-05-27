@@ -40,6 +40,7 @@ export interface ViteJasmineConfig {
   htmlOptions?: {
     title?: string;
   };
+  project?: string;
 }
 
 // Type-safe Rollup options with onwarn handler
