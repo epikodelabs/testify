@@ -54,7 +54,6 @@ export interface HmrManagerOptions {
 
 export class HmrManager extends EventEmitter {
   private watcher: FSWatcher | null = null;
-  private isRebuilding: boolean = false;
   private rebuildQueue: Set<string> = new Set();
   private directChanges: Set<string> = new Set();
   private allFiles: string[] = [];
@@ -268,13 +267,25 @@ export class HmrManager extends EventEmitter {
       }
 
       const newDeps = await this.extractDependencies(file);
-      this.dependencyGraph.set(normalizedFile, newDeps);
+      if (newDeps.size === 0 && !fs.existsSync(normalizedFile)) {
+        // File no longer exists: purge orphaned graph entries
+        this.dependencyGraph.delete(normalizedFile);
+      } else {
+        this.dependencyGraph.set(normalizedFile, newDeps);
+      }
 
       for (const newDep of newDeps) {
         if (!this.reverseDependencyGraph.has(newDep)) {
           this.reverseDependencyGraph.set(newDep, new Set());
         }
         this.reverseDependencyGraph.get(newDep)!.add(normalizedFile);
+      }
+    }
+
+    // Prune empty entries from reverse dependency graph to prevent memory leaks
+    for (const [key, set] of this.reverseDependencyGraph) {
+      if (set.size === 0) {
+        this.reverseDependencyGraph.delete(key);
       }
     }
   }
@@ -432,6 +443,7 @@ export class HmrManager extends EventEmitter {
 
   private async initializeTrackedFiles(watchTargets: string[]): Promise<void> {
     const defaultExtensions = this.fileFilter.extensions!.join(',');
+    const seen = new Set(this.allFiles);
     for (const target of watchTargets) {
       const normalizedTarget = norm(target);
       if (!fs.existsSync(normalizedTarget)) continue;
@@ -442,7 +454,8 @@ export class HmrManager extends EventEmitter {
 
       for (const file of files) {
         const normalized = norm(file);
-        if (!this.allFiles.includes(normalized)) {
+        if (!seen.has(normalized)) {
+          seen.add(normalized);
           this.allFiles.push(normalized);
         }
       }
@@ -640,23 +653,20 @@ export class HmrManager extends EventEmitter {
     this.directChanges.add(normalized);
     this.rebuildQueue.add(normalized);
 
-    // ✅ FIX: Wait for existing rebuild to complete before starting new one
+    // If a rebuild is already in progress, return the same promise.
+    // Multiple queued changes will be processed in the same rebuild loop.
     if (this.rebuildPromise) {
-      await this.rebuildPromise;
+      return this.rebuildPromise;
     }
 
-    if (!this.isRebuilding) {
-      this.isRebuilding = true;
-      this.rebuildPromise = this.rebuildAll().catch(error => {
-        logger.error(`❌ Rebuild failed: ${error}`);
-        this.emit('hmr:error', error);
-      }).finally(() => {
-        this.isRebuilding = false;
-        this.rebuildPromise = null;
-      });
-    }
+    this.rebuildPromise = this.rebuildAll().catch(error => {
+      logger.error(`❌ Rebuild failed: ${error}`);
+      this.emit('hmr:error', error);
+    }).finally(() => {
+      this.rebuildPromise = null;
+    });
     
-    await this.rebuildPromise;
+    return this.rebuildPromise;
   }
 
   private async rebuildAll() {

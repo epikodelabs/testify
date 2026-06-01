@@ -17,11 +17,11 @@ export class BrowserManager {
     return this.playwright!;
   }
 
-  async checkBrowser(browserName: string): Promise<any | null> {
+  async checkBrowser(browserName: string): Promise<PlayWright.BrowserType | null> {
     try {
       const playwright = await this.getPlaywright();
       
-      let browser: any = null;
+      let browser: PlayWright.BrowserType | null = null;
       switch (browserName.toLowerCase()) {
         case 'chromium':
         case 'chrome':
@@ -51,7 +51,7 @@ export class BrowserManager {
     }
   }
 
-  async runHeadlessBrowserTests(browserType: any, port: number): Promise<boolean> {
+  async runHeadlessBrowserTests(browserType: PlayWright.BrowserType, port: number): Promise<boolean> {
     const browser = await browserType.launch({ 
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -68,8 +68,12 @@ export class BrowserManager {
     });
 
     const abortRun = (signal: NodeJS.Signals) => {
+      if (interrupted) return;
       interrupted = true;
-      if (interruptReject) interruptReject(interruptError);
+      if (interruptReject) {
+        interruptReject(interruptError);
+        interruptReject = null;
+      }
       if (!page.isClosed()) {
         void page.close().catch(() => {});
       }
@@ -80,8 +84,8 @@ export class BrowserManager {
 
     const sigintHandler = () => abortRun('SIGINT');
     const sigtermHandler = () => abortRun('SIGTERM');
-    process.once('SIGINT', sigintHandler);
-    process.once('SIGTERM', sigtermHandler);
+    process.on('SIGINT', sigintHandler);
+    process.on('SIGTERM', sigtermHandler);
 
     // Unified console and error logging
     page.on('console', (msg: any) => {
@@ -97,7 +101,7 @@ export class BrowserManager {
     page.on('requestfailed', (request: any) => logger.error(`❌ Request failed: ${request.url()}, ${request.failure()?.errorText}`));
 
     logger.println('🌐 Navigating to test page...');
-    await page.goto(`http://localhost:${port}/index.html`, { waitUntil: 'networkidle0', timeout: 120000 });
+    await page.goto(`http://localhost:${port}/index.html`, { waitUntil: 'networkidle', timeout: 120000 });
 
     try {
       await Promise.race([

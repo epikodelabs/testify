@@ -3,7 +3,7 @@ import path from 'path';
 import libCoverage from 'istanbul-lib-coverage';
 import libReport from 'istanbul-lib-report';
 import libSourceMaps from 'istanbul-lib-source-maps';
-import libIstanbulApi from 'istanbul-api';
+import reports from 'istanbul-reports';
 import { logger } from './console-repl';
 import { norm } from './utils';
 
@@ -43,7 +43,12 @@ export class CoverageReportGenerator {
     for (const filePath of filePaths) {
       // Skip files matching spec patterns (*.spec.ts, *.spec.js, etc.)
       if (!/\.spec\.(ts|tsx|js|jsx|mts|cts|mjs)$/i.test(filePath)) {
-        filteredCoverage.addFileCoverage(remappedCoverage.fileCoverageFor(filePath));
+        try {
+          const fileCoverage = remappedCoverage.fileCoverageFor(filePath);
+          filteredCoverage.addFileCoverage(fileCoverage);
+        } catch {
+          // Skip files that don't have coverage data after remapping
+        }
       }
     }
 
@@ -53,11 +58,11 @@ export class CoverageReportGenerator {
       coverageMap: filteredCoverage
     });
 
-    // 5️⃣ Generate reports
-    const reporter = libIstanbulApi.createReporter();
-    reporter.dir = this.reportDir;
-    reporter.addAll(['html', 'lcov', 'text']);
-    reporter.write(filteredCoverage, true);
+    // 5️⃣ Generate reports using modern istanbul-reports API
+    const reportTypes = ['html', 'lcov', 'text'] as const;
+    for (const type of reportTypes) {
+      reports.create(type).execute(context);
+    }
 
     logger.println(`✅ Coverage reports generated successfully`);
   }

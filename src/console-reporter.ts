@@ -369,15 +369,19 @@ export class ConsoleReporter {
 
     this.specCount++;
 
+    // Defensively handle both spec-level status and suite-level overallStatus
+    const status = result?.status ?? result?.overallStatus;
+    if (!status) return;
+
     const spec = this.specById.get(result.id);
     if (spec) {
-      spec.status = result.status;
+      spec.status = status;
       spec.duration = result.duration;
       spec.failedExpectations = result.failedExpectations;
       spec.pendingReason = result.pendingReason;
     }
 
-    switch (result.status) {
+    switch (status) {
       case 'passed':
         this.executableSpecCount++;
         break;
@@ -433,12 +437,22 @@ export class ConsoleReporter {
 
     this.clearCurrentLine();
 
-    if (this.failedSpecs.length > 0) {
+    // Filter out stale specs (e.g., retried specs that later passed)
+    const actualFailedSpecs = this.failedSpecs.filter(s => s.status === 'failed' || s.overallStatus === 'failed');
+    const actualPendingSpecs = this.pendingSpecs.filter(s => s.status === 'pending' || s.overallStatus === 'pending');
+
+    if (actualFailedSpecs.length > 0) {
+      this.failedSpecs = actualFailedSpecs;
       this.printFailures();
+    } else {
+      this.failedSpecs = [];
     }
 
-    if (this.pendingSpecs.length > 0) {
+    if (actualPendingSpecs.length > 0) {
+      this.pendingSpecs = actualPendingSpecs;
       this.printPendingSpecs();
+    } else {
+      this.pendingSpecs = [];
     }
 
     this.printSummary(totalTime);
@@ -496,9 +510,13 @@ export class ConsoleReporter {
     // Calculate elapsed time
     const totalTime = (Date.now() - this.startTime) / 1000;
 
-    // Print failures if any
-    if (this.failedSpecs.length > 0) {
+    // Filter out stale specs before printing
+    const actualFailedSpecs = this.failedSpecs.filter(s => s.status === 'failed' || s.overallStatus === 'failed');
+    if (actualFailedSpecs.length > 0) {
+      this.failedSpecs = actualFailedSpecs;
       this.printFailures();
+    } else {
+      this.failedSpecs = [];
     }
 
     // Print test tree
@@ -775,10 +793,8 @@ export class ConsoleReporter {
     this.print(this.colored('bold', '  Demanding Attention\n'));
     this.print(this.colored('gray', this.separator() + '\n'));
 
-    // Calculate suite statuses for ALL suites (including those that never started)
-    for (const [id, suite] of this.suiteById) {
-      this.calculateSuiteStatuses(suite);
-    }
+    // Calculate suite statuses starting from root (recursively covers all suites)
+    this.calculateSuiteStatuses(this.rootSuite);
 
     // Print all top-level suites (those whose parent is rootSuite)
     let hasProblems = false;

@@ -20,7 +20,6 @@ export interface JSONCleanerOptions {
 interface ParseState {
   inString: boolean;
   stringChar: string | null;
-  escapeNext: boolean;
 }
 
 export class JSONCleaner {
@@ -89,31 +88,28 @@ export class JSONCleaner {
     let i = 0;
     const state: ParseState = {
       inString: false,
-      stringChar: null,
-      escapeNext: false
+      stringChar: null
     };
 
     while (i < str.length) {
       const char = str[i];
       const nextChar = str[i + 1];
 
-      // Handle escape sequences
-      if (state.escapeNext) {
-        result += char;
-        state.escapeNext = false;
-        i++;
-        continue;
-      }
-
+      // Handle escape sequences atomically inside strings
       if (char === '\\' && state.inString) {
-        result += char;
-        state.escapeNext = true;
-        i++;
+        const next = str[i + 1];
+        if (next !== undefined) {
+          result += char + next;
+          i += 2;
+        } else {
+          result += char;
+          i++;
+        }
         continue;
       }
 
       // Track string boundaries
-      if ((char === '"' || char === "'") && !state.escapeNext) {
+      if (char === '"' || char === "'") {
         if (!state.inString) {
           state.inString = true;
           state.stringChar = char;
@@ -197,30 +193,27 @@ export class JSONCleaner {
     let i = 0;
     const state: ParseState = {
       inString: false,
-      stringChar: null,
-      escapeNext: false
+      stringChar: null
     };
 
     while (i < str.length) {
       const char = str[i];
 
-      // Handle escape sequences
-      if (state.escapeNext) {
-        result += char;
-        state.escapeNext = false;
-        i++;
-        continue;
-      }
-
+      // Handle escape sequences atomically inside strings
       if (char === '\\' && state.inString) {
-        result += char;
-        state.escapeNext = true;
-        i++;
+        const next = str[i + 1];
+        if (next !== undefined) {
+          result += char + next;
+          i += 2;
+        } else {
+          result += char;
+          i++;
+        }
         continue;
       }
 
       // Track string boundaries
-      if ((char === '"' || char === "'") && !state.escapeNext) {
+      if (char === '"' || char === "'") {
         if (!state.inString) {
           state.inString = true;
           state.stringChar = char;
@@ -264,28 +257,26 @@ export class JSONCleaner {
     let i = 0;
     const state: ParseState = {
       inString: false,
-      stringChar: null,
-      escapeNext: false
+      stringChar: null
     };
 
     while (i < str.length) {
       const char = str[i];
 
-      if (state.escapeNext) {
-        result += char;
-        state.escapeNext = false;
-        i++;
-        continue;
-      }
-
+      // Handle escape sequences atomically inside strings
       if (char === '\\' && state.inString) {
-        result += char;
-        state.escapeNext = true;
-        i++;
+        const next = str[i + 1];
+        if (next !== undefined) {
+          result += char + next;
+          i += 2;
+        } else {
+          result += char;
+          i++;
+        }
         continue;
       }
 
-      if ((char === '"' || char === "'") && !state.escapeNext) {
+      if (char === '"' || char === "'") {
         if (!state.inString) {
           state.inString = true;
           state.stringChar = char;

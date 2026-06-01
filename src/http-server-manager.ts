@@ -13,7 +13,7 @@ export class HttpServerManager {
   constructor(private config: ViteJasmineConfig) {}
 
   async startServer(): Promise<http.Server> {
-    const port = this.config.port!;
+    const port = this.config.port ?? 8888;
     const outDir = path.resolve(this.config.outDir);
 
     const __filename = norm(fileURLToPath(import.meta.url));

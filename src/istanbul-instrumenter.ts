@@ -16,20 +16,9 @@ export interface InstrumentationResult {
 
 export class IstanbulInstrumenter {
   private config: ViteJasmineConfig;
-  private instrumenter: ReturnType<typeof createInstrumenter> | null = null;
 
   constructor(config: ViteJasmineConfig) {
     this.config = config;
-  }
-
-  private getInstrumenter(): ReturnType<typeof createInstrumenter> {
-    if (!this.instrumenter) {
-      this.instrumenter = createInstrumenter({
-        coverageVariable: "__coverage__",
-        produceSourceMap: true,
-      });
-    }
-    return this.instrumenter;
   }
 
   async instrument({ filename, source, sourceMap }: InstrumenterOptions): Promise<InstrumentationResult> {
@@ -42,8 +31,15 @@ export class IstanbulInstrumenter {
     // Ensure only JS files are instrumented
     if (!filename.endsWith(".js")) return { code: source };
 
+    // Create a fresh instrumenter for each file to avoid internal state mutation
+    // (coverage variable counters accumulating across files/spec files)
+    const instrumenter = createInstrumenter({
+      coverageVariable: "__coverage__",
+      produceSourceMap: true,
+    });
+
     // Instrument with Istanbul, preserving original source map if provided
-    const instrumentedCode = this.getInstrumenter().instrumentSync(source, filename, sourceMap);
+    const instrumentedCode = instrumenter.instrumentSync(source, filename, sourceMap);
 
     return { code: instrumentedCode };
   }
