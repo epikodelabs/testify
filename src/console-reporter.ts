@@ -1,11 +1,7 @@
 import util from 'util';
 import { logger, wrapLine } from './console-repl';
 import { EXIT_CODES } from './exit-codes';
-
-// ─── Constants ──────────────────────────────────────────────
-export const MAX_WIDTH = typeof process !== 'undefined' && process.stdout?.columns
-  ? Math.max(40, process.stdout.columns)
-  : 80;
+import { MAX_WIDTH } from './ansi-constants';
 
 export interface EnvironmentInfo {
   node: string;

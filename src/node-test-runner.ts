@@ -168,16 +168,22 @@ export async function runTests(reporter) {
   }
 
   return new Promise((resolve) => {
-    // Global error handlers
-    process.on('unhandledRejection', (error) => {
+    // Track handlers for cleanup to prevent leaks when module is cached/reused
+    const ownedHandlers = [];
+
+    const onUnhandledRejection = (error) => {
       console.error(\`❌ Unhandled Rejection: \${error}\`);
       process.exit(${EXIT_CODES.INTERNAL_ERROR});
-    });
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    ownedHandlers.push({ event: 'unhandledRejection', handler: onUnhandledRejection });
 
-    process.on('uncaughtException', (error) => {
+    const onUncaughtException = (error) => {
       console.error(\`❌ Uncaught Exception: \${error}\`);
       process.exit(${EXIT_CODES.INTERNAL_ERROR});
-    });
+    };
+    process.on('uncaughtException', onUncaughtException);
+    ownedHandlers.push({ event: 'uncaughtException', handler: onUncaughtException });
 
     // Only attach SIGINT/SIGTERM handlers if running as CLI entry
     if (import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -187,6 +193,7 @@ export async function runTests(reporter) {
       }
       process.on('SIGINT', onExit);
       process.on('SIGTERM', onExit);
+      ownedHandlers.push({ event: 'SIGINT', handler: onExit }, { event: 'SIGTERM', handler: onExit });
     }
 
     (async function () {
@@ -260,6 +267,10 @@ ${imports}
         resolve(${EXIT_CODES.INTERNAL_ERROR});
       } finally {
         restoreConsole();
+        // Remove all tracked handlers to prevent leaks on module re-import
+        for (const h of ownedHandlers) {
+          process.off(h.event, h.handler);
+        }
       }
     })();
   });

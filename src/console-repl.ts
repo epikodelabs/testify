@@ -1,4 +1,4 @@
-import { MAX_WIDTH } from "./console-reporter"; 
+import { MAX_WIDTH } from "./ansi-constants"; 
 
 // ─── ANSI handling ─────────────────────────────────────────
 export const ANSI_FULL_REGEX =

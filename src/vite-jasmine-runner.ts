@@ -78,7 +78,7 @@ export class ViteJasmineRunner extends EventEmitter {
       watch: config.watch ?? false,
       srcDirs: normalizedSrcDirs,
       testDirs: normalizedTestDirs,
-      outDir: norm(config.outDir) ?? norm(path.join(cwd, 'dist/.vite-jasmine-build/')),
+      outDir: norm(config.outDir ?? path.join(cwd, 'dist/.vite-jasmine-build/')),
     };
 
     this.fileDiscovery = new FileDiscoveryService(this.config);
@@ -321,6 +321,7 @@ export class ViteJasmineRunner extends EventEmitter {
     let testsCompleted = false;
     let testSuccess = false;
     let testHasPending = false;
+    let finishHeadedRunPromise: Promise<void> | undefined;
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     logger.println('📡 WebSocket server ready for real-time test reporting');
@@ -341,7 +342,8 @@ export class ViteJasmineRunner extends EventEmitter {
       testsCompleted = true;
       testSuccess = success;
       testHasPending = hasPending;
-      finishHeadedRun(coverage).catch((error) => {
+      finishHeadedRunPromise = finishHeadedRun(coverage);
+      finishHeadedRunPromise.catch((error) => {
         logger.error(`❌ Failed to finish headed browser run: ${error}`);
         process.exit(EXIT_CODES.INTERNAL_ERROR);
       });
@@ -366,6 +368,10 @@ export class ViteJasmineRunner extends EventEmitter {
       });
 
       await promise;
+      // Wait for finishHeadedRun to complete before cleanup and exit
+      if (finishHeadedRunPromise) {
+        await finishHeadedRunPromise;
+      }
       await this.cleanup();
       if (!testsCompleted) {
         process.exit(EXIT_CODES.SIGINT);
@@ -386,6 +392,9 @@ export class ViteJasmineRunner extends EventEmitter {
           logger.clearLine(); logger.printRaw('\n');
           logger.printlnRaw("🛑 Tests aborted by user (Ctrl+C)");
         });
+      }
+      if (finishHeadedRunPromise) {
+        await finishHeadedRunPromise;
       }
       await this.browserManager.closeBrowser();
       await this.cleanup();
