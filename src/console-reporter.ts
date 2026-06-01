@@ -602,9 +602,12 @@ export class ConsoleReporter {
     let availableWidth = maxWidth - prefix.length;
     let displayName = rawSuiteName;
 
+    // Reserve one visible column for the gap between name and dots when both exist
+    const minSpace = (visibleNameLength > 0 && dotsLength > 0) ? 1 : 0;
+
     // If name + dots too long, truncate name (add ellipsis if needed)
-    if (visibleNameLength + dotsLength > availableWidth) {
-      let maxNameLen = Math.max(0, availableWidth - dotsLength);
+    if (visibleNameLength + dotsLength + minSpace > availableWidth) {
+      let maxNameLen = Math.max(0, availableWidth - dotsLength - minSpace);
       if (maxNameLen > 0) {
         // Truncate and add ellipsis if needed
         if (visibleNameLength > maxNameLen) {
@@ -618,8 +621,8 @@ export class ConsoleReporter {
     }
 
     // If still too long, truncate dots from the left
-    if (visibleNameLength + dotsLength > availableWidth) {
-      let maxDotsLen = Math.max(0, availableWidth - visibleNameLength);
+    if (visibleNameLength + dotsLength + minSpace > availableWidth) {
+      let maxDotsLen = Math.max(0, availableWidth - visibleNameLength - minSpace);
       // Remove leftmost visible dots (handle ANSI)
       let plainDots = displayDots.replace(/\x1b\[[0-9;]*m/g, '');
       let ansiMatches = [...displayDots.matchAll(/\x1b\[[0-9;]*m/g)];
@@ -660,10 +663,8 @@ export class ConsoleReporter {
     }
 
     // Fill with spaces so dots are right-aligned
-    // Ensure at least one space between suite name and dots
-    let minSpace = ' ';
-    const spaces = ' '.repeat(Math.max(0, maxWidth - prefix.length - visibleNameLength - dotsLength));
-    this.print(prefix + this.colored('brightBlue', displayName) + minSpace + spaces + displayDots);
+    const spaces = ' '.repeat(Math.max(0, maxWidth - prefix.length - visibleNameLength - dotsLength - minSpace));
+    this.print(prefix + this.colored('brightBlue', displayName) + ' '.repeat(minSpace) + spaces + displayDots);
 
     if (!isFinal) {
       this.print('\r'); // carriage return
