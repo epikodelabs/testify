@@ -70,9 +70,19 @@ export class CoverageReportGenerator {
     });
 
     // 5️⃣ Generate reports using modern istanbul-reports API
-    const reportTypes = ['html', 'lcov', 'text'] as const;
-    for (const type of reportTypes) {
-      reports.create(type).execute(context);
+    reports.create('html').execute(context);
+    reports.create('lcov').execute(context);
+
+    // Text report: write to file at full width (no truncation), then print through logger
+    reports.create('text', { file: 'coverage.txt', maxCols: 0 }).execute(context);
+    const textPath = path.join(this.reportDir, 'coverage.txt');
+    if (fs.existsSync(textPath)) {
+      const text = fs.readFileSync(textPath, 'utf-8');
+      for (const line of text.split('\n')) {
+        if (line.trim().length > 0) {
+          logger.println(line);
+        }
+      }
     }
 
     logger.println(`✅ Coverage reports generated successfully`);
