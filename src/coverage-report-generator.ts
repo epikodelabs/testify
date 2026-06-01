@@ -35,6 +35,17 @@ export class CoverageReportGenerator {
 
     // 2️⃣ Remap coverage using source maps (assumes map files are alongside JS files)
     const remapper = libSourceMaps.createSourceMapStore();
+    for (const filePath of coverageMap.files()) {
+      const mapPath = filePath + '.map';
+      if (fs.existsSync(mapPath)) {
+        try {
+          const sourceMap = JSON.parse(fs.readFileSync(mapPath, 'utf-8'));
+          remapper.registerMap(filePath, sourceMap);
+        } catch {
+          // Skip unreadable or malformed source maps
+        }
+      }
+    }
     const remappedCoverage = await remapper.transformCoverage(coverageMap);
 
     // 3️⃣ Filter out test/spec files from coverage (e.g., env.spec.ts, test helpers)

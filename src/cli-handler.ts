@@ -109,7 +109,7 @@ export class CLIHandler {
 
       config = {
         ...config,
-        headless: headless ? true : (config.headless || false),
+        headless: headless || browserName === 'node' ? true : (config.headless || false),
         coverage: coverage ? true : (config.coverage || false),
         browser: hasBrowserArg ? browserName : (config.browser || 'chrome'),
         watch: watch ? true : (config.watch || false),
@@ -165,7 +165,7 @@ export class CLIHandler {
     logger.println('');
     logger.println('Options:');
     logger.println('  --headless           Run tests in the default Playwright browser without UI');
-    logger.println('  --browser <name>     Target browser (chrome|chromium|firefox|webkit)');
+    logger.println('  --browser <name>     Target browser (chrome|chromium|firefox|webkit|node)');
     logger.println('  --watch              Launch browser mode + HMR for rapid feedback (cannot be headless)');
     logger.println('  --coverage           Generate Istanbul coverage reports after the run');
     logger.println('  --seed <number>      Seed used for randomization order');
@@ -180,7 +180,7 @@ export class CLIHandler {
     logger.println('  Use --preserve after the first run if you need to debug manually generated assets.');
     logger.println('');
     logger.println('Tip:');
-    logger.println('  npx testify --headless --browser node   # fastest Node.js test execution');
+    logger.println('  npx testify --browser node              # fastest Node.js test execution');
     logger.println('  npx testify --headless                  # run headless Chrome for browser APIs');
     logger.println('');
     logger.println('Playwright Browsers:');
