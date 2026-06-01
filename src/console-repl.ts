@@ -11,6 +11,15 @@ export function visibleWidth(text: string): number {
 export type WrapMode = "word" | "char";
 const MIN_LONG_WORD_REMAINDER = 4;
 
+// ─── Text normalization ────────────────────────────────────
+export function normalize(text: string): string {
+  return text
+    .replace(/\s*\r?\n\s*/g, "")   // strip newlines and surrounding whitespace
+    .replace(/[\uFEFF\xA0\t]/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 interface DisplayUnit {
   value: string;
   visible: number;
@@ -69,12 +78,7 @@ export function wrapLine(
   indentation = 0,
   mode: WrapMode = "char"
 ): string[] {
-  // Remove all newlines (do not replace with space), then normalize whitespace
-  const normalized = text
-    .replace(/\r?\n/g, "")
-    .replace(/[\uFEFF\xA0\t]/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  const normalized = normalize(text);
 
   const indent = " ".repeat(indentation);
   const indentWidth = indent.length;
@@ -225,6 +229,10 @@ export class Logger {
 
   // ─── Utilities ───────────────────────────────────────────
 
+  normalize(text: string): string {
+    return normalize(text);
+  }
+
   visibleWidth(str: string): number {
     return [...str.replace(ANSI_FULL_REGEX, "")].length;
   }
@@ -259,12 +267,7 @@ export class Logger {
 
   reformat(text: string, opts: ReformatOptions): string[] {
     const { width, align = "left", padChar = " " } = opts;
-    // Remove all newlines (do not replace with space), then normalize whitespace
-    const normalized = text
-      .replace(/\r?\n/g, "")
-      .replace(/[\uFEFF\xA0\t]/g, " ")
-      .replace(/\s{2,}/g, " ")
-      .trim();
+    const normalized = normalize(text);
     let result: string[] = [];
     let buf = "";
     let vis = 0;

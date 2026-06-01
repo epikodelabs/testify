@@ -723,13 +723,13 @@ export class ConsoleReporter {
 
       if (spec.failedExpectations?.length > 0) {
         spec.failedExpectations.forEach((expectation: any, exIndex: number) => {
-          const messageLines = wrapLine(`✕ ${logger.reformat(expectation.message, { width: this.lineWidth, align: 'left' }).map((l: string) => l.trim()).join(' ')}`, this.lineWidth, 1);
+          const messageLines = wrapLine(`✕ ${logger.normalize(expectation.message)}`, this.lineWidth, 1);
           // Continuation lines of same message
           messageLines.forEach(line => (this.print(this.colored('brightRed', line)), this.print('\n')));
 
           // Stack trace — lightly indented and gray
           if (expectation.stack) {
-            const stackLines = wrapLine(logger.reformat(expectation.stack, { width: 80, align: 'left' }).map((l: string) => l.trim()).join(' '), this.lineWidth, 2);
+            const stackLines = wrapLine(logger.normalize(expectation.stack), this.lineWidth, 2);
             stackLines.forEach(line => (this.print(this.colored('gray', line)), this.print('\n')));
           }
 
