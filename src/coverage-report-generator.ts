@@ -4,6 +4,7 @@ import libCoverage from 'istanbul-lib-coverage';
 import libReport from 'istanbul-lib-report';
 import libSourceMaps from 'istanbul-lib-source-maps';
 import reports from 'istanbul-reports';
+import { getMaxWidth } from './ansi-constants';
 import { logger } from './console-repl';
 import { norm } from './utils';
 
@@ -73,8 +74,8 @@ export class CoverageReportGenerator {
     reports.create('html').execute(context);
     reports.create('lcov').execute(context);
 
-    // Text report: write to file at full width (no truncation), then print through logger
-    reports.create('text', { file: 'coverage.txt', maxCols: 0 }).execute(context);
+    // Text report: write to file fitted to terminal width, then print through logger
+    reports.create('text', { file: 'coverage.txt', maxCols: getMaxWidth() }).execute(context);
     const textPath = path.join(this.reportDir, 'coverage.txt');
     if (fs.existsSync(textPath)) {
       const text = fs.readFileSync(textPath, 'utf-8');
