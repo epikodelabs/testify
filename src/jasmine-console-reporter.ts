@@ -66,6 +66,9 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     this.specCount = 0;
     this.executableSpecCount = 0;
     this.failureCount = 0;
+    this.failedSpecs = [];
+    this.pendingSpecs = [];
+    this.failedSuites = [];
     if (options?.order?.random) {
       this.print('Randomized with seed ' + options.order.seed);
       this.printNewline();

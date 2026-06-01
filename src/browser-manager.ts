@@ -139,9 +139,10 @@ export class BrowserManager {
     let browserName = this.config.browser || 'chrome';
     const url = `http://localhost:${port}/index.html`;
     
+    let browser: PlayWright.Browser | null = null;
     try {
       const playwright = await this.getPlaywright();
-      let browserType: any;
+      let browserType: PlayWright.BrowserType | null = null;
       
       switch (browserName.toLowerCase()) {
         case 'chrome':
@@ -168,7 +169,7 @@ export class BrowserManager {
       }
       
       logger.println(`🌐 Opening ${browserName} browser...`);
-      const browser = await browserType.launch({ 
+      browser = await browserType.launch({ 
         headless: this.config.headless,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
       });
@@ -178,18 +179,22 @@ export class BrowserManager {
       this.currentPage = page;
       await page.goto(url);
       
-      // Handle browser close event
+      // Handle browser close event (keep handler sync to avoid unhandled rejections)
       const exitOnClose = options?.exitOnClose !== false;
-      page.on('close', async () => {
-        if (onBrowserClose) {
-          await onBrowserClose();
-        } else if (exitOnClose) {
-          process.exit(EXIT_CODES.SUCCESS);
-        }
-        this.clearBrowserState();
+      page.on('close', () => {
+        Promise.resolve(onBrowserClose?.()).then(() => {
+          if (exitOnClose && !onBrowserClose) {
+            process.exit(EXIT_CODES.SUCCESS);
+          }
+        }).catch(() => {}).finally(() => {
+          this.clearBrowserState();
+        });
       });
       
     } catch (error: any) {
+      if (browser && !browser.isConnected()) {
+        await browser.close().catch(() => {});
+      }
       if (error.code === 'MODULE_NOT_FOUND') {
         logger.println(`ℹ️ Playwright not installed. Please open browser manually: ${url}`);
         logger.println(`💡 Tip: Install Playwright to enable automatic browser opening:\n   npm install playwright`);

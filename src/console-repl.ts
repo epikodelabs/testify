@@ -1,4 +1,4 @@
-import { MAX_WIDTH } from "./ansi-constants"; 
+import { getMaxWidth } from "./ansi-constants"; 
 
 // ─── ANSI handling ─────────────────────────────────────────
 export const ANSI_FULL_REGEX =
@@ -244,11 +244,6 @@ export class Logger {
   private writeLine(line: string, color = "") {
     this.clearLine();
     process.stdout.write(color + line + colors.reset);
-
-    // ⭐ critical fix: force newline when width is exhausted
-    if (this.visibleWidth(line) >= MAX_WIDTH) {
-      process.stdout.write("\n");
-    }
   }
 
   private addLine(text: string, opts: Partial<LoggedLine> = {}) {
@@ -318,7 +313,7 @@ export class Logger {
   print(msg: string) {
     const lines = wrapLine(
       this.showPrompt ? this.prompt + msg : msg,
-      MAX_WIDTH,
+      getMaxWidth(),
       0,
       "word"
     );
@@ -357,7 +352,7 @@ export class Logger {
   error(msg: string) {
     const lines = wrapLine(
       this.showPrompt ? this.errorPrompt + msg : msg,
-      MAX_WIDTH,
+      getMaxWidth(),
       0,
       "word"
     );

@@ -366,26 +366,18 @@ export class ViteConfigBuilder {
     const user = this.config.viteConfig;
     if (!user) return base;
 
-    return {
-      ...base,
-      ...user,
-      build: {
-        ...base.build,
-        ...user.build,
-        rollupOptions: {
-          ...base.build?.rollupOptions,
-          ...user.build?.rollupOptions
-        }
-      },
-      resolve: {
-        ...base.resolve,
-        ...user.resolve,
-        alias: {
-          ...base.resolve?.alias,
-          ...user.resolve?.alias
-        }
+    // Deep-merge nested objects so user settings augment rather than replace defaults
+    const merge = (a: any, b: any): any => {
+      if (!b) return a;
+      if (typeof b !== 'object' || Array.isArray(b)) return b;
+      const result = { ...a };
+      for (const key of Object.keys(b)) {
+        result[key] = merge(a?.[key], b[key]);
       }
+      return result;
     };
+
+    return merge(base, user);
   }
 
   /* -------------------------------------------------- */

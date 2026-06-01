@@ -1,7 +1,7 @@
 import util from 'util';
 import { logger, wrapLine } from './console-repl';
 import { EXIT_CODES } from './exit-codes';
-import { MAX_WIDTH } from './ansi-constants';
+import { getMaxWidth } from './ansi-constants';
 
 export interface EnvironmentInfo {
   node: string;
@@ -64,7 +64,7 @@ export class ConsoleReporter {
   private currentSpec: TestSpec | null;
   private suiteById: Map<string, TestSuite> = new Map();
   private specById: Map<string, TestSpec> = new Map();
-  private readonly lineWidth: number = MAX_WIDTH;
+  private get lineWidth(): number { return getMaxWidth(); }
   private interruptHandlersRegistered: boolean = false;
   private interrupted = false;
   private orderedSuites: any[] | null = null;

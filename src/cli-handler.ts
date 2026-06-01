@@ -38,7 +38,7 @@ export class CLIHandler {
 
     if (seedIndex !== -1) {
       const raw = args[seedIndex + 1];
-      const parsed = raw !== undefined ? Number(raw) : NaN;
+      const parsed = raw !== undefined && raw !== '' ? Number(raw) : NaN;
       if (!Number.isFinite(parsed)) {
         logger.error('ERROR: Invalid --seed value (expected a number).');
         process.exit(EXIT_CODES.INVALID_USAGE);
@@ -46,8 +46,13 @@ export class CLIHandler {
       seedValue = parsed;
     }
 
-    if (hasBrowserArg && browserIndex + 1 < args.length) {
-      browserName = args[browserIndex + 1];
+    if (hasBrowserArg) {
+      if (browserIndex + 1 < args.length && !args[browserIndex + 1].startsWith('-')) {
+        browserName = args[browserIndex + 1];
+      } else {
+        logger.error('ERROR: --browser requires a browser name (chrome|chromium|firefox|webkit|node).');
+        process.exit(EXIT_CODES.INVALID_USAGE);
+      }
     }
 
     if (hasProjectArg && projectIndex + 1 < args.length) {

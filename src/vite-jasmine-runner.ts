@@ -307,13 +307,18 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   private async runHeadlessNodeMode(): Promise<void> {
-    const exitCode = await this.nodeTestRunner.start();
-    if (this.config.coverage) {
-      const coverage = (globalThis as any).__coverage__;
-      const cov = new CoverageReportGenerator();
-      await cov.generate(coverage);
+    try {
+      const exitCode = await this.nodeTestRunner.start();
+      if (this.config.coverage) {
+        const coverage = (globalThis as any).__coverage__;
+        const cov = new CoverageReportGenerator();
+        await cov.generate(coverage);
+      }
+      process.exit(exitCode);
+    } catch (error: any) {
+      logger.error(`❌ Node test execution failed: ${error.message ?? error}`);
+      process.exit(EXIT_CODES.INTERNAL_ERROR);
     }
-    process.exit(exitCode);
   }
 
   private async runHeadedBrowserMode(): Promise<void> {

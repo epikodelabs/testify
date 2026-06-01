@@ -47,7 +47,7 @@ export class HtmlGenerator {
     const htmlContent = this.generateHtmlTemplateWithHmr(faviconTag);
     const htmlPath = norm(path.join(htmlDir, 'index.html'));
     fs.writeFileSync(htmlPath, htmlContent);
-    console.log('📄 Generated HMR-enabled test page:', norm(path.relative(this.config.outDir, htmlPath)));
+    logger.println(`📄 Generated HMR-enabled test page: ${norm(path.relative(this.config.outDir, htmlPath))}`);
   }
 
   private getFaviconTag(): string {

@@ -333,7 +333,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       logger.println(`🚀 Starting test runner in current process...`);
       const fileUrl = pathToFileURL(childFile).href;
 
-      this.runnerModule = await import(fileUrl);
+      this.runnerModule = await import(`${fileUrl}?t=${Date.now()}`);
 
       if (typeof this.runnerModule.runTests === 'function') {
         const exitCode: number = await this.runnerModule.runTests(this.reporter);

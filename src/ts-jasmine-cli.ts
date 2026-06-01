@@ -314,6 +314,7 @@ async function main() {
   // For debugging, launch Node with the loader explicitly so breakpoints stay in one process.
   if (isTypeScriptLike(args.spec) && !hasEsmLoader() && !process.execArgv.join(' ').includes('--inspect')) {
     await respawnWithLoader(args);
+    return; // Parent process must not continue after respawning child
   }
 
   const { jasmineEnv } = await loadJasmine();

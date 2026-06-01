@@ -37,21 +37,18 @@ export class FileDiscoveryService {
   }
 
   async filterExistingFiles(paths: string[]): Promise<string[]> {
-    const existingFiles: string[] = [];
-    
-    await Promise.all(
+    const results = await Promise.all(
       paths.map(async (filePath) => {
         const normalizedPath = norm(filePath);
         try {
           await fs.access(normalizedPath);
-          existingFiles.push(normalizedPath);
+          return normalizedPath;
         } catch {
-          // File doesn't exist, skip it
+          return null;
         }
       })
     );
-    
-    return existingFiles;
+    return results.filter((p): p is string => p !== null);
   }
 
   async discoverSources(): Promise<{ srcFiles: string[]; specFiles: string[] }> {
