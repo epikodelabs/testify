@@ -5,101 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.24] - 2026-06-01
+
+Fixed a broad set of runtime and reporting bugs: coverage now remaps through registered source maps so original source paths appear in reports, the Istanbul instrumenter is recreated per file to avoid counter mutation, HMR rebuild races and graph leaks are resolved, console output width calculations account for all gaps so lines no longer overflow, signal handling and browser lifecycle leaks are cleaned up, `--browser node` implies `--headless`, and `MAX_WIDTH` is now dynamic. Also removed unused dependencies and condensed the README.
+
 ## [1.0.23] - 2026-05-27
 
-### Added
-- `--project <name>` flag to run tests scoped to a specific package.
-  - Accepts an npm package name and resolves it automatically via `tsconfig.json` project references or workspace definitions (npm / pnpm).
-- `--exclusive` flag to terminate any previously running testify instance before starting a new one.
-  - Uses a PID file scoped to the working directory (and project, when `--project` is used).
-  - Sends `SIGTERM`, waits for graceful shutdown, then falls back to `SIGKILL` if necessary.
-
-### Changed
-- `srcDirs` and `testDirs` are now automatically scoped under the resolved `--project` directory when the flag is provided.
+Added `--project <name>` to run tests scoped to a specific package (resolved via `tsconfig.json` references or workspace definitions) and `--exclusive` to terminate any previously running testify instance before starting a new one. `srcDirs` and `testDirs` are now automatically scoped under the resolved project directory when `--project` is provided.
 
 ## [1.0.22] - 2026-05-21
 
-### Fixed
-- Resolved a broad set of runtime bugs, ESM compatibility issues, and internal regressions across the package.
-- Fixed project-scoped runtime issues that could break test execution in local setups.
-
-### Changed
-- Revised `testify` exit codes to make CLI failures easier to interpret.
-- Improved console wrapping so long output stays readable.
+Resolved a broad set of runtime bugs, ESM compatibility issues, and internal regressions. Revised exit codes for clearer CLI failure interpretation and improved console wrapping so long output stays readable.
 
 ## [1.0.20] - 2026-02-14
 
-### Fixed
-- Single `Ctrl+C` now aborts the current run and exits cleanly.
-- Fixed double `Ctrl+C` handling during interrupted runs.
-- Corrected line merging in console output.
-
-### Changed
-- Suite labels now always use exactly one space before dot fill.
-- Suite names and dot leaders now respect `MAX_WIDTH`.
+Single `Ctrl+C` now aborts the current run and exits cleanly, double `Ctrl+C` handling during interrupted runs was fixed, and line merging in console output was corrected. Suite labels now always use exactly one space before dot fill and respect `MAX_WIDTH`.
 
 ## [1.0.11] - 2025-10-03
 
-### Added
-- Initial public release of `testify`.
-- Browser-based Jasmine runner.
-- CLI binaries with shebang support.
+Initial public release of `testify` with browser-based Jasmine runner, CLI binaries with shebang support, watch mode with hot module reloading, WebSocket-based event forwarding, Istanbul coverage support, and VS Code debug integration.
 
-### Changed
-- Improved package configuration and logging.
-
-## Historical Milestones
-
-The sections below summarize major work that landed between `1.0.11` and `1.0.20` but was not published as separately tagged releases.
-
-### Browser Runner and Watch Mode
-
-- Added watch mode with hot module reloading.
-- Added WebSocket-based event forwarding and hot test reload support.
-- Switched test discovery to dynamic retrieval instead of hardcoded HTML entries.
-- Added support for `js` and `mjs` sources and specs.
-- Disabled random order by default in watch mode.
-- Added cache-busting for dynamic imports and corrected browser runner HTML/script paths.
-- Made Node.js headless mode the default runner.
-
-### Reporting and Console UX
-
-- Added the compound reporter with `userAgent` and abort callbacks.
-- Added `console-repl` for interactive console access.
-- Added suite tree rendering plus `orderedSuites` and `orderedSpecs` config support.
-- Improved pending spec wrapping, status calculation, and first-line prompt behavior.
-- Expanded console reporter output and normalized control-sequence handling.
-
-### Coverage and Runtime Architecture
-
-- Added coverage support for headless browser modes.
-- Merged the Node runner and HTML generator so tests execute inside the host process.
-- Reworked coverage generation to run synchronously.
-- Removed the dedicated coverage reporter in favor of direct report generation.
-- Fixed child-process initialization.
-- Moved dependency and browser installation into the postinstall flow.
-
-### CLI and Configuration
-
-- Added `ts-jasmine-cli init` to create or update VS Code launch configuration.
-- Added a VS Code environment check.
-- Added `--silent` mode for the Node.js runner.
-- Added `--preserve` to reuse existing build outputs.
-- Simplified CLI config and reworked the config file structure.
-- Ensured testify config is loaded before project config.
-- Added path normalization and relative-path cleanup.
-- Replaced the custom console reporter with `jasmine-console-reporter`.
-- Added richer Jasmine failure output.
-- Skipped types-only modules during build.
-- Updated the runner, build script, and HTML generator.
-
-### Rebrand and Package Refresh
-
-- Renamed the project from `ts-test-runner` to `testify`.
-- Updated organization metadata, package dependencies, and utility names.
-- Refreshed the README, build workflow, and GitHub workflows.
-- Added Open Collective funding metadata.
-
+[1.0.24]: https://github.com/epikodelabs/testify/compare/1.0.23...1.0.24
 [1.0.23]: https://github.com/epikodelabs/testify/compare/1.0.22...1.0.23
 [1.0.22]: https://github.com/epikodelabs/testify/compare/1.0.20...1.0.22
 [1.0.20]: https://github.com/epikodelabs/testify/compare/1.0.11...1.0.20
