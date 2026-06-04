@@ -242,25 +242,21 @@ export class ViteJasmineRunner extends EventEmitter {
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose, { exitOnClose: false });
 
-    process.once('SIGINT', async () => {
+    const shutdown = async (signal: 'SIGINT' | 'SIGTERM') => {
       if (shuttingDown) return;
       shuttingDown = true;
-      logger.println('🛑 Stopping HMR server...');
+      const label = signal === 'SIGTERM' ? 'Received SIGTERM' : 'Stopping HMR server';
+      logger.println(`🛑 ${label}...`);
+      const forceExit = setTimeout(() => process.exit(EXIT_CODES[signal]), 3000);
       await this.browserManager.closeBrowser();
       logger.println('🔄 Browser window closed');
       await this.cleanup();
-      process.exit(EXIT_CODES.SIGINT);
-    });
+      clearTimeout(forceExit);
+      process.exit(EXIT_CODES[signal]);
+    };
 
-    process.once('SIGTERM', async () => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      logger.println('🛑 Received SIGTERM, stopping HMR server...');
-      await this.browserManager.closeBrowser();
-      logger.println('🔄 Browser window closed');
-      await this.cleanup();
-      process.exit(EXIT_CODES.SIGTERM);
-    });
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
   }
 
   private async runHeadlessBrowserMode(): Promise<void> {
@@ -389,7 +385,10 @@ export class ViteJasmineRunner extends EventEmitter {
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
 
-    process.once('SIGINT', async () => {
+    let headedShuttingDown = false;
+    process.on('SIGINT', async () => {
+      if (headedShuttingDown) return;
+      headedShuttingDown = true;
       if (!testsCompleted) {
         setImmediate(() => {
           logger.clearLine(); logger.printRaw('\n');
@@ -398,11 +397,13 @@ export class ViteJasmineRunner extends EventEmitter {
           logger.printlnRaw("🛑 Tests aborted by user (Ctrl+C)");
         });
       }
+      const forceExit = setTimeout(() => process.exit(EXIT_CODES.SIGINT), 3000);
       if (finishHeadedRunPromise) {
         await finishHeadedRunPromise;
       }
       await this.browserManager.closeBrowser();
       await this.cleanup();
+      clearTimeout(forceExit);
       if (!testsCompleted) {
         process.exit(EXIT_CODES.SIGINT);
       }
