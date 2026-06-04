@@ -97,6 +97,43 @@ export class ViteJasmineRunner extends EventEmitter {
     });
   }
 
+  private handleSignal(signal: NodeJS.Signals) {
+    logger.println(`Received ${signal}, cleaning up...`);
+    this.cleanupAndExit();
+  }
+  
+  private handleExit() {
+    this.cleanupSync();
+  }
+  
+  private cleanupAndExit() {
+    this.cleanupSync();
+    process.exit(0);
+  }
+  
+  private cleanupSync() {
+    try {
+      // Clean up this specific instance
+      this.cleanupInternal();
+    } catch (error) {
+      // Log but don't throw during cleanup
+      logger.error(`Error during sync cleanup: ${error}`);
+    }
+  }
+  
+  private cleanupInternal() {
+    if (this.hmrManager) {
+      this.hmrManager.stop && this.hmrManager.stop();
+      this.hmrManager = null;
+    }
+    if (this.webSocketManager) {
+      this.webSocketManager.cleanup && this.webSocketManager.cleanup();
+      this.webSocketManager = null;
+    }
+    // Don't await cleanup here since we're in a sync context
+    this.httpServerManager.cleanup && this.httpServerManager.cleanup();
+  }
+
   async preprocess(): Promise<void> {
     try {
       const { srcFiles, specFiles } = await this.fileDiscovery.discoverSources();
@@ -414,8 +451,3 @@ export class ViteJasmineRunner extends EventEmitter {
     });
   }
 }
-
-
-
-
-

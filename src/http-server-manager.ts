@@ -1,9 +1,11 @@
+import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import http, { createServer } from 'http';
-import { ViteJasmineConfig } from './vite-jasmine-config';
-import { fileURLToPath, parse } from 'url';
+import { fileURLToPath } from 'url';
+import { parse } from 'url';
+import { createServer } from 'http';
 import { extname } from 'path';
+import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import { logger } from './console-repl';
 
@@ -85,14 +87,54 @@ export class HttpServerManager {
         });
 
         this.server!.on('error', (error: any) => {
-          if (error.code === 'EADDRINUSE' && attempt <= 3) {
-            logger.println(`⏳ Port ${port} is busy (attempt ${attempt}/3), retrying in 1s...`);
-            setTimeout(() => {
-              this.server!.close(() => {
-                this.server = this.createHttpServer();
+          if (error.code === 'EADDRINUSE' && attempt <= 5) { // Increased retries
+            logger.println(`⏳ Port ${port} is busy (attempt ${attempt}/5), retrying in 1s...`);
+            
+            // Before retrying, try to force close the server instance
+            this.server!.close(() => {
+              // Create a fresh server instance
+              this.server = this.createHttpServer();
+              
+              // Wait a bit longer for the port to become available
+              setTimeout(() => {
                 tryListen(attempt + 1);
+              }, 1500); // Longer delay between attempts
+            });
+          } else if (error.code === 'EADDRINUSE') {
+            // After max retries, try to kill any process using the port
+            logger.println(`⏳ Max retries reached. Attempting to kill process using port ${port}...`);
+            
+            // Close the current server instance
+            this.server!.close(() => {
+              // Import child_process here to avoid top-level import issues
+              const { exec } = require('child_process');
+              
+              // Platform-specific command to kill process using the port
+              let killCommand = '';
+              if (process.platform === 'win32') {
+                // On Windows: find process using the port and kill it
+                // Using PowerShell to execute the command that finds and kills the process
+                killCommand = `for /f "skip=3 tokens=5" %i in ('netstat -ano ^| findstr :${port}') do taskkill /f /pid %i 2>nul`;
+              } else {
+                // On Unix-like systems: find and kill process using the port
+                killCommand = `lsof -ti:${port} | xargs -r kill -9 2>/dev/null || true`;
+              }
+              
+              exec(killCommand, (err: Error | null) => {
+                // Wait a bit for the port to be freed regardless of whether the command succeeded
+                setTimeout(() => {
+                  // Try one more time with a fresh server instance
+                  this.server = this.createHttpServer();
+                  this.server!.listen(port, () => {
+                    logger.println(`🚀 Test server running at http://localhost:${port}`);
+                    resolve(this.server!);
+                  }).once('error', (finalError) => {
+                    logger.error(`❌ Final server error: ${finalError}`);
+                    reject(finalError);
+                  });
+                }, 1000);
               });
-            }, 1000);
+            });
           } else {
             logger.error(`❌ Server error: ${error}`);
             reject(error);
