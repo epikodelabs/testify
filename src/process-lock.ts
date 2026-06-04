@@ -51,11 +51,16 @@ export class ProcessLock {
       // Check if process is still alive
       try {
         process.kill(pid, 0);
-      } catch {
-        // Stale PID file
-        logger.println(`🧹 Stale lock file found (PID ${pid} is gone). Removing.`);
-        fs.unlinkSync(this.pidFile);
-        return;
+      } catch (err: any) {
+        if (err.code === 'EPERM') {
+          // Process exists but we lack permission to query it (e.g. debugger attached).
+          // Assume it's alive and proceed with the kill attempt.
+        } else {
+          // Stale PID file
+          logger.println(`🧹 Stale lock file found (PID ${pid} is gone). Removing.`);
+          fs.unlinkSync(this.pidFile);
+          return;
+        }
       }
 
       // Verify the process is actually a Node process before killing it
