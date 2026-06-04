@@ -135,7 +135,7 @@ export class CLIHandler {
         logger.println('Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).');
       }
 
-      const lock = exclusive ? new ProcessLock(config.project) : null;
+      const lock = exclusive ? new ProcessLock(config.project, config.port ?? 8888) : null;
       if (lock) {
         await lock.acquire();
         process.on('exit', () => lock.releaseSync());
