@@ -12,15 +12,13 @@ export class HttpServerManager {
 
   constructor(private config: ViteJasmineConfig) {}
 
-  async startServer(): Promise<http.Server> {
-    const port = this.config.port ?? 8888;
+  private createHttpServer(): http.Server {
     const outDir = path.resolve(this.config.outDir);
-
     const __filename = norm(fileURLToPath(import.meta.url));
     const __dirname = norm(path.dirname(__filename));
     const vendorDir = path.resolve(path.join(__dirname, '../node_modules'));
-    
-    this.server = createServer((req, res) => {
+
+    return createServer((req, res) => {
       let { pathname } = parse(req.url === '/' ? '/index.html' : req.url!, true);
       const filePath = decodeURIComponent(pathname!);
 
@@ -73,17 +71,35 @@ export class HttpServerManager {
         stream.pipe(res);
       });
     });
+  }
+
+  async startServer(): Promise<http.Server> {
+    const port = this.config.port ?? 8888;
+    this.server = this.createHttpServer();
 
     return new Promise((resolve, reject) => {
-      this.server!.listen(port, () => {
-        logger.println(`🚀 Test server running at http://localhost:${port}`);
-        resolve(this.server!);
-      });
+      const tryListen = (attempt = 1) => {
+        this.server!.listen(port, () => {
+          logger.println(`🚀 Test server running at http://localhost:${port}`);
+          resolve(this.server!);
+        });
 
-      this.server!.on('error', (error) => {
-        logger.error(`❌ Server error: ${error}`);
-        reject(error);
-      });
+        this.server!.on('error', (error: any) => {
+          if (error.code === 'EADDRINUSE' && attempt <= 3) {
+            logger.println(`⏳ Port ${port} is busy (attempt ${attempt}/3), retrying in 1s...`);
+            setTimeout(() => {
+              this.server!.close(() => {
+                this.server = this.createHttpServer();
+                tryListen(attempt + 1);
+              });
+            }, 1000);
+          } else {
+            logger.error(`❌ Server error: ${error}`);
+            reject(error);
+          }
+        });
+      };
+      tryListen();
     });
   }
 
