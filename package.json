@@ -1,6 +1,6 @@
 {
   "name": "@epikodelabs/testify",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
     "jasmine": "bin/jasmine",
