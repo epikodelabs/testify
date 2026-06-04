@@ -135,11 +135,9 @@ export class CLIHandler {
         logger.println('Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).');
       }
 
-      const lock = exclusive ? new ProcessLock(config.project, config.port ?? 8888) : null;
-      if (lock) {
-        await lock.acquire();
-        process.on('exit', () => lock.releaseSync());
-      }
+      const lock = new ProcessLock(config.project, config.port ?? 8888);
+      await lock.acquire(exclusive);
+      process.on('exit', () => lock.releaseSync());
 
       const runner = createViteJasmineRunner(config);
 
@@ -149,7 +147,7 @@ export class CLIHandler {
         await runner.start();
       }
 
-      lock?.releaseSync();
+      lock.releaseSync();
     } catch (error) {
       logger.error(`ERROR: Failed to start test runner: ${error}`);
       process.exit(getExitCode(error));

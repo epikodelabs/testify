@@ -22,8 +22,10 @@ export class ProcessLock {
     this.pidFile = path.join(cwd, `.${parts.join('-')}.pid`);
   }
 
-  async acquire(): Promise<void> {
-    await this.releasePrevious();
+  async acquire(killPrevious: boolean = true): Promise<void> {
+    if (killPrevious) {
+      await this.releasePrevious();
+    }
     fs.writeFileSync(this.pidFile, String(process.pid), 'utf-8');
   }
 
