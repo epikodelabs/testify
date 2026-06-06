@@ -294,6 +294,9 @@ export class ViteJasmineRunner extends EventEmitter {
 
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+    // Keep the runner alive until an explicit shutdown signal/browser close.
+    await new Promise(() => {});
   }
 
   private async runHeadlessBrowserMode(): Promise<void> {
@@ -449,5 +452,8 @@ export class ViteJasmineRunner extends EventEmitter {
       }
       process.exit(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
     });
+
+    // Keep the runner alive until the browser closes or an explicit shutdown signal.
+    await new Promise(() => {});
   }
 }

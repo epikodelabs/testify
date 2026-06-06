@@ -87,54 +87,29 @@ export class HttpServerManager {
         });
 
         this.server!.on('error', (error: any) => {
-          if (error.code === 'EADDRINUSE' && attempt <= 5) { // Increased retries
-            logger.println(`⏳ Port ${port} is busy (attempt ${attempt}/5), retrying in 1s...`);
-            
-            // Before retrying, try to force close the server instance
+          if (error.code === 'EADDRINUSE' && attempt === 1) {
+            logger.println(`⏳ Port ${port} is busy. Waiting 3s before reclaiming it...`);
+
             this.server!.close(() => {
-              // Create a fresh server instance
-              this.server = this.createHttpServer();
-              
-              // Wait a bit longer for the port to become available
               setTimeout(() => {
-                tryListen(attempt + 1);
-              }, 1500); // Longer delay between attempts
+                const { exec } = require('child_process');
+
+                let killCommand = '';
+                if (process.platform === 'win32') {
+                  killCommand = `for /f "skip=3 tokens=5" %i in ('netstat -ano ^| findstr :${port}') do taskkill /f /pid %i 2>nul`;
+                } else {
+                  killCommand = `lsof -ti:${port} | xargs -r kill -9 2>/dev/null || true`;
+                }
+
+                exec(killCommand, () => {
+                  this.server = this.createHttpServer();
+                  tryListen(attempt + 1);
+                });
+              }, 3000);
             });
           } else if (error.code === 'EADDRINUSE') {
-            // After max retries, try to kill any process using the port
-            logger.println(`⏳ Max retries reached. Attempting to kill process using port ${port}...`);
-            
-            // Close the current server instance
-            this.server!.close(() => {
-              // Import child_process here to avoid top-level import issues
-              const { exec } = require('child_process');
-              
-              // Platform-specific command to kill process using the port
-              let killCommand = '';
-              if (process.platform === 'win32') {
-                // On Windows: find process using the port and kill it
-                // Using PowerShell to execute the command that finds and kills the process
-                killCommand = `for /f "skip=3 tokens=5" %i in ('netstat -ano ^| findstr :${port}') do taskkill /f /pid %i 2>nul`;
-              } else {
-                // On Unix-like systems: find and kill process using the port
-                killCommand = `lsof -ti:${port} | xargs -r kill -9 2>/dev/null || true`;
-              }
-              
-              exec(killCommand, (err: Error | null) => {
-                // Wait a bit for the port to be freed regardless of whether the command succeeded
-                setTimeout(() => {
-                  // Try one more time with a fresh server instance
-                  this.server = this.createHttpServer();
-                  this.server!.listen(port, () => {
-                    logger.println(`🚀 Test server running at http://localhost:${port}`);
-                    resolve(this.server!);
-                  }).once('error', (finalError) => {
-                    logger.error(`❌ Final server error: ${finalError}`);
-                    reject(finalError);
-                  });
-                }, 1000);
-              });
-            });
+            logger.error(`❌ Port ${port} is still busy after reclaim attempt.`);
+            reject(error);
           } else {
             logger.error(`❌ Server error: ${error}`);
             reject(error);
