@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.25] - 2026-06-10
+
+### Added
+- **Browser Lifecycle Management**: Improved browser process handling in `BrowserManager` to gracefully manage user interruptions (Ctrl+C) and prevent orphaned processes.
+- **Test Interruption Handling**: The new reporter can now gracefully handle `SIGINT` and `SIGTERM` signals, aborting the test run and providing a summary of executed, failed, and incomplete tests.
+
+
+### Added
+- Introduced a centralized logging system with emoji and ANSI strict mode support.
+- All console messages now use placeholders (e.g., `[info]`, `[warning]`) for consistent output.
+- Added `--ansi` CLI flag to disable emojis and use text-based fallbacks (e.g., `[INFO]`, `[WARN]`) for improved compatibility with all terminals.
+- Refactored internal logging in `node-test-runner.ts` to be self-contained and use the new placeholder system.
+
 ## [1.0.24] - 2026-06-01
 
 Fixed a broad set of runtime and reporting bugs: coverage now remaps through registered source maps so original source paths appear in reports, the Istanbul instrumenter is recreated per file to avoid counter mutation, HMR rebuild races and graph leaks are resolved, console output width calculations account for all gaps so lines no longer overflow, signal handling and browser lifecycle leaks are cleaned up, `--browser node` implies `--headless`, and `MAX_WIDTH` is now dynamic. Also removed unused dependencies and condensed the README.
