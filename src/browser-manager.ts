@@ -77,9 +77,7 @@ export class BrowserManager {
       if (!page.isClosed()) {
         void page.close().catch(() => {});
       }
-      void browser.close().catch(() => {}).finally(() => {
-        process.exit(getSignalExitCode(signal));
-      });
+      void browser.close().catch(() => {});
     };
 
     const sigintHandler = () => abortRun('SIGINT');

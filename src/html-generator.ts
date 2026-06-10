@@ -71,7 +71,7 @@ export class HtmlGenerator {
 <head>
   <meta charset="UTF-8">
   ${faviconTag}
-  <title>${this.config.htmlOptions?.title || 'Jasmine Tests Runner'}</title>
+  <title>${this.config.htmlOptions?.title || 'Jasmine Test Runner'}</title>
   <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css">
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
@@ -99,7 +99,7 @@ export class HtmlGenerator {
 <head>
   <meta charset="UTF-8">
   ${faviconTag}
-  <title>${this.config.htmlOptions?.title || "Jasmine Tests Runner (HMR)"}</title>
+  <title>${this.config.htmlOptions?.title || "Jasmine Test Runner (HMR)"}</title>
   <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css">
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>

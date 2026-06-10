@@ -12,7 +12,21 @@ export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineR
 }
 
 export class CLIHandler {
+  private static runner: ViteJasmineRunner | null = null;
+
+  static async cleanup(): Promise<void> {
+    if (this.runner) {
+      await this.runner.cleanup();
+      this.runner = null;
+    }
+  }
+
   static async run(): Promise<void> {
+    process.on('SIGINT', async () => {
+      await this.cleanup();
+      process.exit(EXIT_CODES.SIGINT);
+    });
+
     const args = process.argv.slice(2);
     const helpRequested = args.includes('--help') || args.includes('-h');
 
@@ -140,6 +154,7 @@ export class CLIHandler {
       process.on('exit', () => lock.releaseSync());
 
       const runner = createViteJasmineRunner(config);
+      this.runner = runner;
 
       if (watch) {
         await runner.watch();

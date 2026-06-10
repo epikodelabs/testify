@@ -270,7 +270,16 @@ async function respawnWithLoader(args: RunnerArgs): Promise<void> {
     { stdio: 'inherit', env, cwd: process.cwd() },
   );
 
-  child.on('exit', (code, signal) => process.exit(code ?? getSignalExitCode(signal)));
+  let onCtrlC: NodeJS.SignalsListener | undefined;
+  if (child.pid) {
+    onCtrlC = () => child.kill('SIGINT');
+    process.on('SIGINT', onCtrlC);
+  }
+
+  child.on('exit', (code, signal) => {
+    if (onCtrlC) process.off('SIGINT', onCtrlC);
+    process.exit(code ?? getSignalExitCode(signal));
+  });
 
   await once(child, 'exit');
 }

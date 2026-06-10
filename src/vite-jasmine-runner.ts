@@ -97,42 +97,7 @@ export class ViteJasmineRunner extends EventEmitter {
     });
   }
 
-  private handleSignal(signal: NodeJS.Signals) {
-    logger.println(`Received ${signal}, cleaning up...`);
-    this.cleanupAndExit();
-  }
-  
-  private handleExit() {
-    this.cleanupSync();
-  }
-  
-  private cleanupAndExit() {
-    this.cleanupSync();
-    process.exit(0);
-  }
-  
-  private cleanupSync() {
-    try {
-      // Clean up this specific instance
-      this.cleanupInternal();
-    } catch (error) {
-      // Log but don't throw during cleanup
-      logger.error(`Error during sync cleanup: ${error}`);
-    }
-  }
-  
-  private cleanupInternal() {
-    if (this.hmrManager) {
-      this.hmrManager.stop && this.hmrManager.stop();
-      this.hmrManager = null;
-    }
-    if (this.webSocketManager) {
-      this.webSocketManager.cleanup && this.webSocketManager.cleanup();
-      this.webSocketManager = null;
-    }
-    // Don't await cleanup here since we're in a sync context
-    this.httpServerManager.cleanup && this.httpServerManager.cleanup();
-  }
+
 
   async preprocess(): Promise<void> {
     try {
@@ -250,7 +215,7 @@ export class ViteJasmineRunner extends EventEmitter {
     }
 
     this.config.watch = true;
-    logger.println('👀 Starting Jasmine Tests Runner in Watch Mode...');
+    logger.println('👀 Starting Jasmine Test Runner in Watch Mode...');
     await this.preprocess();
     await this.runWatchMode();
   }
@@ -279,21 +244,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose, { exitOnClose: false });
 
-    const shutdown = async (signal: 'SIGINT' | 'SIGTERM') => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      const label = signal === 'SIGTERM' ? 'Received SIGTERM' : 'Stopping HMR server';
-      logger.println(`🛑 ${label}...`);
-      const forceExit = setTimeout(() => process.exit(EXIT_CODES[signal]), 3000);
-      await this.browserManager.closeBrowser();
-      logger.println('🔄 Browser window closed');
-      await this.cleanup();
-      clearTimeout(forceExit);
-      process.exit(EXIT_CODES[signal]);
-    };
-
-    process.on('SIGINT', () => shutdown('SIGINT'));
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    
 
     // Keep the runner alive until an explicit shutdown signal/browser close.
     await new Promise(() => {});
@@ -425,33 +376,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
 
-    let headedShuttingDown = false;
-    process.on('SIGINT', async () => {
-      if (headedShuttingDown) return;
-      headedShuttingDown = true;
-      if (!testsCompleted) {
-        setImmediate(() => {
-          logger.clearLine(); logger.printRaw('\n');
-          logger.clearLine(); this.consoleReporter.testsAborted();
-          logger.clearLine(); logger.printRaw('\n');
-          logger.printlnRaw("🛑 Tests aborted by user (Ctrl+C)");
-        });
-      }
-      const forceExit = setTimeout(() => process.exit(EXIT_CODES.SIGINT), 3000);
-      if (finishHeadedRunPromise) {
-        await finishHeadedRunPromise;
-      }
-      await this.browserManager.closeBrowser();
-      await this.cleanup();
-      clearTimeout(forceExit);
-      if (!testsCompleted) {
-        process.exit(EXIT_CODES.SIGINT);
-      }
-      if (!testSuccess) {
-        process.exit(EXIT_CODES.TEST_FAILURES);
-      }
-      process.exit(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
-    });
+    
 
     // Keep the runner alive until the browser closes or an explicit shutdown signal.
     await new Promise(() => {});

@@ -73,7 +73,7 @@ export class ConfigManager {
       },
 
       htmlOptions: {
-        title: 'Jasmine Tests Runner'
+        title: 'Jasmine Test Runner'
       },
       suppressConsoleLogs: false
     };

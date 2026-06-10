@@ -5,7 +5,6 @@ import JSONCleaner from './json-cleaner';
 import { Reporter } from './compound-reporter';
 import { HmrManager, HmrUpdate } from './hmr-manager';
 import { FileDiscoveryService } from './file-discovery-service';
-import { ViteConfigBuilder } from './vite-config-builder';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import path from 'path';
 import { logger } from './console-repl';

@@ -87,21 +87,25 @@ export class HttpServerManager {
         });
 
         this.server!.on('error', (error: any) => {
-          if (error.code === 'EADDRINUSE' && attempt === 1) {
+          if (error.code === 'EADDRINUSE' && attempt < 3) { // try 2 times
             logger.println(`⏳ Port ${port} is busy. Waiting 3s before reclaiming it...`);
 
             this.server!.close(() => {
               setTimeout(() => {
                 const { exec } = require('child_process');
 
-                let killCommand = '';
-                if (process.platform === 'win32') {
-                  killCommand = `for /f "skip=3 tokens=5" %i in ('netstat -ano ^| findstr :${port}') do taskkill /f /pid %i 2>nul`;
-                } else {
-                  killCommand = `lsof -ti:${port} | xargs -r kill -9 2>/dev/null || true`;
-                }
+                const isWindows = process.platform === 'win32';
+                const killCommand = isWindows
+                  ? `powershell -command "Get-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess | Stop-Process -Force"`
+                  : `lsof -ti:${port} | xargs -r kill -9`;
 
-                exec(killCommand, () => {
+                exec(killCommand, (err: Error, stdout: string, stderr: string) => {
+                  if (err) {
+                    logger.error(`❌ Failed to kill process on port ${port}: ${err.message}`);
+                    logger.error(stderr);
+                  } else {
+                    logger.println(`✅ Port ${port} reclaimed.`);
+                  }
                   this.server = this.createHttpServer();
                   tryListen(attempt + 1);
                 });
