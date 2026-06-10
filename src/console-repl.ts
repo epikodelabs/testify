@@ -78,108 +78,8 @@ export function wrapLine(
   indentation = 0,
   mode: WrapMode = "char"
 ): string[] {
-  const normalized = normalize(text);
-
   const indent = " ".repeat(indentation);
-  const indentWidth = indent.length;
-  if (width <= indentWidth) width = indentWidth + 1;
-  const availableWidth = width - indentWidth;
-  return mode === "char"
-    ? wrapByChar(normalized, availableWidth, indent)
-    : wrapByWord(normalized, availableWidth, indent);
-}
-
-function wrapByChar(text: string, available: number, indent: string): string[] {
-  const lines: string[] = [];
-  let buf = "";
-  let vis = 0;
-
-  for (const unit of toDisplayUnits(text)) {
-    if (unit.visible === 0) {
-      buf += unit.value;
-      continue;
-    }
-
-    if (vis >= available) {
-      lines.push(indent + buf);
-      buf = "";
-      vis = 0;
-    }
-    buf += unit.value;
-    vis += unit.visible;
-  }
-
-  if (buf) lines.push(indent + buf);
-  return lines;
-}
-
-function wrapByWord(text: string, available: number, indent: string): string[] {
-  const lines: string[] = [];
-  let buf = "";
-  let vis = 0;
-  let word = "";
-  let wordVis = 0;
-
-  const flushWord = () => {
-    if (!word) return;
-
-    if (wordVis > available) {
-      if (vis > 0 && available - vis < MIN_LONG_WORD_REMAINDER) {
-        lines.push(indent + buf.trimEnd());
-        buf = "";
-        vis = 0;
-      }
-
-      const hangingIndent = " ".repeat(vis);
-
-      for (const ch of [...word]) {
-        if (vis >= available) {
-          lines.push(indent + buf.trimEnd());
-          buf = hangingIndent;
-          vis = hangingIndent.length;
-        }
-        buf += ch;
-        vis++;
-      }
-    } else {
-      if (vis + wordVis > available && vis > 0) {
-        lines.push(indent + buf.trimEnd());
-        buf = "";
-        vis = 0;
-      }
-      buf += word;
-      vis += wordVis;
-    }
-
-    word = "";
-    wordVis = 0;
-  };
-
-  for (const unit of toDisplayUnits(text)) {
-    if (unit.visible === 0) {
-      if (word) {
-        word += unit.value;
-      } else {
-        buf += unit.value;
-      }
-      continue;
-    }
-
-    if (unit.whitespace) {
-      flushWord();
-      if (vis < available && vis > 0) {
-        buf += " ";
-        vis++;
-      }
-    } else {
-      word += unit.value;
-      wordVis += unit.visible;
-    }
-  }
-
-  flushWord();
-  if (buf) lines.push(indent + buf.trimEnd());
-  return lines;
+  return text.split('\n').map(line => indent + line);
 }
 
 // ─── ANSI colors ───────────────────────────────────────────
@@ -311,13 +211,8 @@ export class Logger {
   // ─── Printing ────────────────────────────────────────────
 
   print(msg: string) {
-    const lines = wrapLine(
-      this.showPrompt ? this.prompt + msg : msg,
-      getMaxWidth(),
-      0,
-      "word"
-    );
-
+    const fullMessage = this.showPrompt ? this.prompt + msg : msg;
+    const lines = fullMessage.split('\n');
     for (let i = 0; i < lines.length; i++) {
       this.writeLine(lines[i]);
       if (i < lines.length - 1) process.stdout.write("\n");
@@ -350,13 +245,8 @@ export class Logger {
   }
 
   error(msg: string) {
-    const lines = wrapLine(
-      this.showPrompt ? this.errorPrompt + msg : msg,
-      getMaxWidth(),
-      0,
-      "word"
-    );
-
+    const fullMessage = this.showPrompt ? this.errorPrompt + msg : msg;
+    const lines = fullMessage.split('\n');
     for (let i = 0; i < lines.length; i++) {
       this.writeLine(lines[i], colors.brightRed);
       if (i < lines.length - 1) process.stdout.write("\n");
