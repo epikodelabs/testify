@@ -1,5 +1,5 @@
 import util from 'util';
-import { logger, wrapLine } from './console-repl';
+import { logger, wrapLine, visibleWidth, ANSI_FULL_REGEX } from './console-repl';
 import { EXIT_CODES } from './exit-codes';
 import { getMaxWidth } from './ansi-constants';
 
@@ -46,6 +46,10 @@ export interface TestSuite {
 
 export type TestStatus = 'passed' | 'failed' | 'pending' | 'skipped' | 'running' | 'incomplete';
 
+export interface ConsoleReporterOptions {
+  showColors?: boolean;
+}
+
 export class ConsoleReporter {
   private print: (...args: any[]) => void;
   private showColors: boolean;
@@ -70,9 +74,9 @@ export class ConsoleReporter {
   private orderedSuites: any[] | null = null;
   private orderedSpecs: any[] | null = null;
 
-  constructor() {
+  constructor(options: ConsoleReporterOptions = {}) {
     this.print = (...args) => logger.printRaw(util.format(...args));
-    this.showColors = this.detectColorSupport();
+    this.showColors = options.showColors ?? this.detectColorSupport();
     this.config = null;
     this.specCount = 0;
     this.executableSpecCount = 0;
@@ -113,8 +117,8 @@ export class ConsoleReporter {
   // Detect if terminal supports colors
   private detectColorSupport(): boolean {
     if (process.env.NO_COLOR) return false;
-    if (process.env.FORCE_COLOR) return true;
-    return process.stdout.isTTY ?? false;
+    if (process.env.FORCE_COLOR === '1' || process.env.FORCE_COLOR === 'true' || process.env.FORCE_COLOR) return true;
+    return process.stdout.isTTY;
   }
 
   private createRootSuite(): TestSuite {
@@ -461,6 +465,7 @@ export class ConsoleReporter {
     this.printFinalStatus(result?.overallStatus);
 
     this.print('\n\n');
+    this.removeInterruptHandler();
   }
 
   /** Mark all specs and suites that were never executed as skipped */
@@ -498,6 +503,8 @@ export class ConsoleReporter {
   }
 
   testsAborted(message?: string) {
+    if (this.interrupted) return;
+    this.interrupted = true;
     // Clear the status line (which is on the line above)
     this.print('\r\x1b[1A'); // Move up one line
     this.clearCurrentLine();  // Clear that line
@@ -529,6 +536,7 @@ export class ConsoleReporter {
     this.print('\n');
     this.printBox('✕ TESTS INTERRUPTED', 'yellow');
     this.print('\n');
+    this.removeInterruptHandler();
 
     return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
   }
@@ -537,21 +545,21 @@ export class ConsoleReporter {
   private determineSuiteStatusFromInternal(suite: TestSuite): TestStatus {
     // Leaf suite: check specs
     if (suite.specs.length > 0) {
-      const hasFailed = suite.specs.some(s => s.status === 'failed');
-      if (hasFailed) return 'failed';
-
-      const hasPending = suite.specs.some(s => s.status === 'pending');
-      if (hasPending) return 'pending';
-
-      const hasRunning = suite.specs.some(s => s.status === 'running');
-      if (hasRunning) return 'incomplete';
-
-      const hasSkipped = suite.specs.every(s => s.status === 'skipped');
-      if (hasSkipped) return 'skipped';
-
-      return 'passed';
+      if (suite.specs.some(s => s.status === 'failed')) return 'failed';
+      if (suite.specs.some(s => s.status === 'incomplete')) return 'incomplete';
+      if (suite.specs.some(s => s.status === 'running')) return 'incomplete';
+      if (suite.specs.some(s => s.status === 'pending')) return 'pending';
+      if (suite.specs.every(s => s.status === 'skipped')) return 'skipped';
+      if (suite.specs.every(s => s.status === 'passed' || s.status === 'skipped')) return 'passed';
     }
-
+  
+    // If no specs, check children
+    if (suite.children.length > 0) {
+      if (suite.children.some(c => this.determineSuiteStatusFromInternal(c) === 'failed')) return 'failed';
+      if (suite.children.some(c => this.determineSuiteStatusFromInternal(c) === 'incomplete')) return 'incomplete';
+      if (suite.children.some(c => this.determineSuiteStatusFromInternal(c) === 'pending')) return 'pending';
+      if (suite.children.every(c => this.determineSuiteStatusFromInternal(c) === 'skipped')) return 'skipped';
+    }
     // Non-leaf suite: check children recursively
     if (suite.children.length > 0) {
       let childStatuses = suite.children.map(child => this.determineSuiteStatusFromInternal(child));
@@ -559,11 +567,11 @@ export class ConsoleReporter {
       if (childStatuses.includes('pending')) return 'pending';
       if (childStatuses.includes('incomplete')) return 'incomplete';
       if (childStatuses.every(s => s === 'skipped')) return 'skipped';
-      return 'passed';
+      if (childStatuses.every(s => s === 'passed' || s === 'skipped')) return 'passed';
     }
-
-    // Empty suite
-    return 'skipped';
+  
+    // Default for empty suites or suites with only passed/skipped specs/children
+    return suite.specs.length > 0 || suite.children.length > 0 ? 'passed' : 'skipped';
   }
 
   private setupInterruptHandler() {
@@ -571,6 +579,12 @@ export class ConsoleReporter {
     process.once('SIGINT', () => process.exit(this.testsAborted('SIGINT')));
     process.once('SIGTERM', () => process.exit(this.testsAborted('SIGTERM')));
     this.interruptHandlersRegistered = true;
+  }
+
+  private removeInterruptHandler() {
+    if (!this.interruptHandlersRegistered) return;
+    process.removeAllListeners('SIGINT');
+    process.removeAllListeners('SIGTERM');
   }
 
   private updateStatusLine() {
@@ -589,83 +603,33 @@ export class ConsoleReporter {
   }
 
   private printSuiteLine(suite: TestSuite, isFinal: boolean) {
-    const suiteName = suite.description;
-    let displayDots = this.getSpecDots(suite); // current dots
-
+    const suiteName = this.colored('brightBlue', suite.description);
+    const displayDots = this.getSpecDots(suite);
     const prefix = '  ';
     const maxWidth = this.lineWidth;
-    const rawSuiteName = suiteName.replace(/\x1b\[[0-9;]*m/g, '');
-    let visibleNameLength = rawSuiteName.length;
-    let dotsLength = this.countVisualDots(displayDots);
-
-    // First, try to fit both name and dots
-    let availableWidth = maxWidth - prefix.length;
-    let displayName = rawSuiteName;
-
-    // Reserve one visible column for the gap between name and dots when both exist
-    const minSpace = (visibleNameLength > 0 && dotsLength > 0) ? 1 : 0;
-
-    // If name + dots too long, truncate name (add ellipsis if needed)
-    if (visibleNameLength + dotsLength + minSpace > availableWidth) {
-      let maxNameLen = Math.max(0, availableWidth - dotsLength - minSpace);
-      if (maxNameLen > 0) {
-        // Truncate and add ellipsis if needed
-        if (visibleNameLength > maxNameLen) {
-          displayName = rawSuiteName.slice(0, Math.max(0, maxNameLen - 1)) + '…';
-          visibleNameLength = displayName.length;
-        }
-      } else {
-        displayName = '';
-        visibleNameLength = 0;
+  
+    const visibleNameLength = visibleWidth(suiteName);
+    const dotsLength = visibleWidth(displayDots);
+    const totalLength = prefix.length + visibleNameLength + 1 + dotsLength;
+  
+    if (totalLength <= maxWidth) {
+      // Fits on one line
+      const spaces = ' '.repeat(maxWidth - totalLength);
+      this.print(prefix + suiteName + ' ' + spaces + displayDots);
+    } else {
+      // Does not fit, print suite name on one line and dots on the next
+      const availableForName = maxWidth - prefix.length;
+      let truncatedName = suiteName;
+      if (visibleNameLength > availableForName) {
+        // Truncate name if needed
+        const rawName = suite.description;
+        const ellipsis = '…';
+        truncatedName = this.colored('brightBlue', rawName.substring(0, availableForName - 1) + ellipsis);
       }
+      this.print(prefix + truncatedName);
+      if (!isFinal) this.print('\n' + prefix + displayDots);
     }
-
-    // If still too long, truncate dots from the left
-    if (visibleNameLength + dotsLength + minSpace > availableWidth) {
-      let maxDotsLen = Math.max(0, availableWidth - visibleNameLength - minSpace);
-      // Remove leftmost visible dots (handle ANSI)
-      let plainDots = displayDots.replace(/\x1b\[[0-9;]*m/g, '');
-      let ansiMatches = [...displayDots.matchAll(/\x1b\[[0-9;]*m/g)];
-      // To preserve color, we need to slice the string by visible chars
-      let resultDots = '';
-      let visCount = 0;
-      let i = plainDots.length - maxDotsLen;
-      if (i < 0) i = 0;
-      let skip = i;
-      // Rebuild colored dots string, skipping leftmost
-      let vis = 0;
-      let inAnsi = false;
-      for (let j = 0, k = 0; j < displayDots.length && vis < maxDotsLen; ) {
-        if (displayDots[j] === '\x1b') {
-          // Copy ANSI sequence
-          let ansiSeq = displayDots.slice(j).match(/^\x1b\[[0-9;]*m/);
-          if (ansiSeq) {
-            resultDots += ansiSeq[0];
-            j += ansiSeq[0].length;
-            continue;
-          }
-        }
-        if (skip > 0) {
-          // Skip visible chars
-          if (displayDots[j] !== '\x1b') {
-            skip--;
-          }
-          j++;
-          continue;
-        }
-        // Copy visible char
-        resultDots += displayDots[j];
-        vis++;
-        j++;
-      }
-      displayDots = resultDots;
-      dotsLength = this.countVisualDots(displayDots);
-    }
-
-    // Fill with spaces so dots are right-aligned
-    const spaces = ' '.repeat(Math.max(0, maxWidth - prefix.length - visibleNameLength - dotsLength - minSpace));
-    this.print(prefix + this.colored('brightBlue', displayName) + ' '.repeat(minSpace) + spaces + displayDots);
-
+  
     if (!isFinal) {
       this.print('\r'); // carriage return
     }
@@ -676,6 +640,14 @@ export class ConsoleReporter {
   }
 
   private getSpecSymbol(spec: TestSpec): string {
+    if (!this.showColors) {
+      switch (spec.status) {
+        case 'passed': return '.';
+        case 'failed': return 'F';
+        case 'pending': return '*';
+        default: return '';
+      }
+    }
     switch (spec.status) {
       case 'passed':
         return this.colored('brightGreen', '●');
@@ -766,11 +738,11 @@ export class ConsoleReporter {
     const hasIncompleteSuite = [...this.suiteById.values()].some(
       (suite) => suite.status === 'incomplete' || suite.status === 'running'
     );
-
-    if (hasIncompleteSpec || hasIncompleteSuite || jasmineOverallStatus === 'incomplete') {
+  
+    if (this.interrupted || hasIncompleteSpec || hasIncompleteSuite || jasmineOverallStatus === 'incomplete') {
       return 'incomplete';
     }
-
+  
     return 'passed';
   }
 
@@ -833,11 +805,11 @@ export class ConsoleReporter {
     const specs = suite.specs;
     const failedCount = specs.filter(s => s.status === 'failed').length;
     const pendingCount = specs.filter(s => s.status === 'pending').length;
-    const incompleteCount = specs.filter(s => s.status === 'incomplete').length;
+    const incompleteCount = specs.filter(s => s.status === 'incomplete' || s.status === 'running').length;
     const skippedCount = specs.filter(s => s.status === 'skipped').length;
 
     const hasFailedChildren = childStatuses.includes('failed');
-    const hasPendingChildren = childStatuses.includes('pending');
+    const hasPendingChildren = childStatuses.includes('pending') || childStatuses.includes('running');
     const hasIncompleteChildren = childStatuses.includes('incomplete');
 
     // ⚠️ FIX: Check incomplete status BEFORE passed status
@@ -948,6 +920,16 @@ export class ConsoleReporter {
   }
 
   private getSuiteSymbol(status: 'failed' | 'pending' | 'skipped' | 'incomplete' | 'passed' | 'running'): { symbol: string; color: string } {
+    if (!this.showColors) {
+      switch (status) {
+        case 'failed': return { symbol: 'x', color: 'brightRed' };
+        case 'pending': return { symbol: 'o', color: 'brightYellow' };
+        case 'skipped': return { symbol: '-', color: 'gray' };
+        case 'incomplete': return { symbol: '!', color: 'cyan' };
+        case 'passed': return { symbol: '+', color: 'brightGreen' };
+        default: return { symbol: '?', color: 'white' };
+      }
+    }
     switch (status) {
       case 'failed':
         return { symbol: '✕', color: 'brightRed' };
@@ -965,12 +947,21 @@ export class ConsoleReporter {
   }
 
   private printBox(text: string, color: string) {
-    const width = text.length + 4;
+    if (!this.showColors) {
+      const strippedText = text.replace(ANSI_FULL_REGEX, '');
+      const line = '-'.repeat(strippedText.length + 4);
+      logger.printlnRaw(this.colored(color, `  ${line}`));
+      logger.printlnRaw(this.colored(color, `  | ${strippedText} |`));
+      logger.printlnRaw(this.colored(color, `  ${line}`));
+      return;
+    }
+
+    const width = visibleWidth(text) + 4;
     const topBottom = '═'.repeat(width);
 
-    logger.printlnRaw(`${this.colored(color, `  ╔${topBottom}╗`)}`);
-    logger.printlnRaw(`${this.colored(color, `  ║  `)}${this.colored(['bold', color], text + `  ║`)}`);
-    logger.printlnRaw(`${this.colored(color, `  ╚${topBottom}╝`)}`);
+    logger.printlnRaw(this.colored(color, `  ╔${topBottom}╗`));
+    logger.printlnRaw(`${this.colored(color, '  ║  ')}${this.colored(['bold', color], text)}  ${this.colored(color, '║')}`);
+    logger.printlnRaw(this.colored(color, `  ╚${topBottom}╝`));
   }
 
   private printSectionHeader(text: string, color: string) {
@@ -1040,19 +1031,19 @@ export class ConsoleReporter {
     const parts: string[] = [];
 
     if (passed > 0)
-      parts.push(this.colored('brightGreen', `✓ Passed: ${passed}`));
+      parts.push(this.colored('brightGreen', `${this.showColors ? '✓' : '+'} Passed: ${passed}`));
 
     if (failed > 0)
-      parts.push(this.colored('brightRed', `✕ Failed: ${failed}`));
+      parts.push(this.colored('brightRed', `${this.showColors ? '✕' : 'x'} Failed: ${failed}`));
 
     if (pending > 0)
-      parts.push(this.colored('brightYellow', `○ Pending: ${pending}`));
+      parts.push(this.colored('brightYellow', `${this.showColors ? '○' : 'o'} Pending: ${pending}`));
 
     if (incomplete > 0)
-      parts.push(this.colored('cyan', `◷ Incomplete: ${incomplete}`));
+      parts.push(this.colored('cyan', `${this.showColors ? '◷' : '!'} Incomplete: ${incomplete}`));
 
     if (skipped > 0)
-      parts.push(this.colored('gray', `⤼ Skipped: ${skipped}`));
+      parts.push(this.colored('gray', `${this.showColors ? '⤼' : '-'} Skipped: ${skipped}`));
 
     if (notRun > 0)
       parts.push(this.colored('gray', `⊘ Not Run: ${notRun}`));
@@ -1064,6 +1055,7 @@ export class ConsoleReporter {
   }
 
   private colored(style: string | string[], text: string): string {
+    if (!this.showColors) return text.replace(ANSI_FULL_REGEX, '');
     const styles = Array.isArray(style) ? style : [style];
     const seq = styles.map(s => this.ansi[s] ?? '').join('');
     return `${seq}${text}${this.ansi.none}`;

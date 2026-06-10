@@ -19,6 +19,7 @@ export interface ViteJasmineConfig {
   watch?: boolean;
   suppressConsoleLogs?: boolean;
   preserveOutputs: boolean;
+  ansi?: boolean;
   
   tsconfig?: string;
   viteConfig?: InlineConfig;

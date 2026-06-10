@@ -87,7 +87,7 @@ export class ViteJasmineRunner extends EventEmitter {
     this.browserManager = new BrowserManager(this.config);
     this.httpServerManager = new HttpServerManager(this.config);
     this.instrumenter = new IstanbulInstrumenter(this.config);
-    this.consoleReporter = new ConsoleReporter();
+    this.consoleReporter = new ConsoleReporter({ showColors: this.config.ansi });
     this.nodeTestRunner = new NodeTestRunner(this.config, {
       reporter: this.consoleReporter,
       cwd: this.config.outDir,

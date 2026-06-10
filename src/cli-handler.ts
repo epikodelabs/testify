@@ -41,6 +41,7 @@ export class CLIHandler {
     const coverage = args.includes('--coverage');
     const exclusive = args.includes('--exclusive');
     const browserIndex = args.findIndex((a) => a === '--browser');
+    const ansiFlag = args.includes('--ansi');
     const seedIndex = args.findIndex((a) => a === '--seed');
     const projectIndex = args.findIndex((a) => a === '--project');
     const silentLogs = args.includes('--silent') || args.includes('--quiet');
@@ -132,6 +133,7 @@ export class CLIHandler {
         testDirs: normalizeDirConfig(config.testDirs, './tests'),
         preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,
         project: projectValue ?? config.project,
+        ansi: ansiFlag ? true : config.ansi,
       };
 
       if (seedValue !== undefined) {
@@ -184,6 +186,7 @@ export class CLIHandler {
     logger.println('  --seed <number>      Seed used for randomization order');
     logger.println('  --silent / --quiet    Suppress console logs when running in Node.js mode');
     logger.println('  --preserve           Skip regenerating index.html and test-runner.js when outputs exist');
+    logger.println('  --ansi               Force ANSI colors and symbols, even in non-TTY environments');
     logger.println('  --project <name>     Run tests only for the specified package or directory');
     logger.println('  --exclusive          Close any previously running testify instance before starting');
     logger.println('  --help, -h           Show this help message');
