@@ -427,9 +427,11 @@ export class ConsoleReporter {
     suite.status = this.determineSuiteStatusFromInternal(suite);
 
     // Optional UI output
-    this.clearCurrentLine();
-    this.printSuiteLine(suite, true);
-    this.print('\n');
+    if (this.isTTY) {
+      this.clearCurrentLine();
+      this.printSuiteLine(suite, true);
+      this.print('\n');
+    }
 
     // Pop from stack
     this.suiteStack.pop();
