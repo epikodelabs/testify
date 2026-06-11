@@ -1,4 +1,4 @@
-# Contributing to Jasmine
+# Contributing to testify
 
 ## Bug reports
 
@@ -6,16 +6,13 @@ Bug reports are welcome, but please help us help you by:
 
 * Searching for existing issues (including closed issues) that are similar to
   yours
-* Reading the [FAQ](https://jasmine.github.io/pages/faq.html)
+* Reading the project documentation (if available)
 * Providing enough information for someone else to to understand and reproduce
-  the problem. In most cases that includes a clear description of what you're
-  trying to do, the version of each Jasmine package that you're using, the Node
-  version, and a minimal but complete code sample that demonstrates the problem.
+  the problem. In most cases that includes a clear description of what you're trying to do, the version of `testify` that you're using, the Node.js version, and a minimal but complete code sample that demonstrates the problem.
 
 ## Contributing documentation
 
-We welcome efforts to improve Jasmine's documentation. The source code for the
-documentation site is at <https://github.com/jasmine/jasmine.github.io/>.
+We welcome efforts to improve testify's documentation. If the documentation is in a separate repository, please link it here.
 
 ## Contributing code
 
@@ -43,6 +40,6 @@ Before submitting a PR, please check that:
 * Your code matches the style of the surrounding code
 
 
-We use Circle CI to test pull requests against a variety of operating systems
-and Node versions. Please check back after submitting your PR and make sure
+We use CI to test pull requests against a variety of operating systems
+and Node.js versions. Please check back after submitting your PR and make sure
 that the build succeeded.

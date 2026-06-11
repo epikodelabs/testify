@@ -541,15 +541,7 @@ export class ConsoleReporter {
       if (suite.children.some(c => this.determineSuiteStatusFromInternal(c) === 'incomplete')) return 'incomplete';
       if (suite.children.some(c => this.determineSuiteStatusFromInternal(c) === 'pending')) return 'pending';
       if (suite.children.every(c => this.determineSuiteStatusFromInternal(c) === 'skipped')) return 'skipped';
-    }
-    // Non-leaf suite: check children recursively
-    if (suite.children.length > 0) {
-      let childStatuses = suite.children.map(child => this.determineSuiteStatusFromInternal(child));
-      if (childStatuses.includes('failed')) return 'failed';
-      if (childStatuses.includes('pending')) return 'pending';
-      if (childStatuses.includes('incomplete')) return 'incomplete';
-      if (childStatuses.every(s => s === 'skipped')) return 'skipped';
-      if (childStatuses.every(s => s === 'passed' || s === 'skipped')) return 'passed';
+      if (suite.children.every(c => ['passed', 'skipped'].includes(this.determineSuiteStatusFromInternal(c)))) return 'passed';
     }
   
     // Default for empty suites or suites with only passed/skipped specs/children
