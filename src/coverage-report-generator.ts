@@ -82,7 +82,7 @@ export class CoverageReportGenerator {
       const text = fs.readFileSync(textPath, 'utf-8');
       for (const line of text.split('\n')) {
         if (line.trim().length > 0) {
-          logger.println(line);
+          logger.printlnRaw(line);
         }
       }
     }

@@ -913,18 +913,19 @@ export class ConsoleReporter {
     text = replacePlaceholders(text);
     const strippedText = text.replace(ANSI_FULL_REGEX, '');
     const width = visibleWidth(text) + 4;
-    const border = '-'.repeat(width);
 
     if (!this.showColors) {
+      const border = '-'.repeat(width);
       logger.printlnRaw(`  +${border}+`);
       logger.printlnRaw(`  |  ${strippedText}  |`);
       logger.printlnRaw(`  +${border}+`);
       return;
     }
 
-    logger.printlnRaw(this.colored(color, `  +${border}+`));
-    logger.printlnRaw(`${this.colored(color, `  |  `)}${this.colored(['bold', color], text)}${this.colored(color, `  |`)}`);
-    logger.printlnRaw(this.colored(color, `  +${border}+`));
+    const topBottom = SYMBOLS.box_double_h.repeat(width);
+    logger.printlnRaw(this.colored(color, `  ${SYMBOLS.box_tl}${topBottom}${SYMBOLS.box_tr}`));
+    logger.printlnRaw(`${this.colored(color, `  ${SYMBOLS.box_v}  `)}${this.colored(['bold', color], text)}${this.colored(color, `  ${SYMBOLS.box_v}`)}`);
+    logger.printlnRaw(this.colored(color, `  ${SYMBOLS.box_bl}${topBottom}${SYMBOLS.box_br}`));
   }
 
   private printSectionHeader(text: string, color: string) {
