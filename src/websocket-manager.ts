@@ -7,7 +7,7 @@ import { HmrManager, HmrUpdate } from './hmr-manager';
 import { FileDiscoveryService } from './file-discovery-service';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import path from 'path';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { WebSocketMessages } from './log-messages';
 
 export class WebSocketManager extends EventEmitter {

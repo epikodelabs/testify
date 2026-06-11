@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { ConfigManager } from "./config-manager";
-import { logger } from "./console-repl";
+import { logger } from './logger';
 import { PackageResolver } from "./package-resolver";
 import { ProcessLock } from "./process-lock";
 import { ViteJasmineConfig } from "./vite-jasmine-config";

@@ -3,7 +3,7 @@ import * as path from 'path';
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { ExitCodeError, EXIT_CODES } from './exit-codes';
 import { ConfigMessages } from './log-messages';
 

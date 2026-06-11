@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { ProcessLockMessages } from './log-messages';
 import { norm } from './utils';
 

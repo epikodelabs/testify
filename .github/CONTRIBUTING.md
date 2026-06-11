@@ -22,13 +22,13 @@ of getting a "no" at the pull request stage.
 
 Don't have an idea of your own but want to help solve problems for other
 people? That's great! Have a look at the list of
-[issues tagged "help needed"](https://github.com/issues?q=is%3Aopen+is%3Aissue+org%3Ajasmine+sort%3Aupdated-desc).
+[issues tagged "help needed"](https://github.com/issues?q=is%3Aopen+is%3Aissue+org%3Aepikodelabs+repo%3Atestify+label%3A%22help+wanted%22).
 
 ### The nuts and bolts of preparing a pull request
 
-Jasmine is mature software that's downloaded millions of times a week and
+`testify` is mature software that's downloaded millions of times a week and
 supported by a tiny group of people in their free time. Anything that breaks
-things for existing users or makes Jasmine harder to maintain is a tough sell.
+things for existing users or makes `testify` harder to maintain is a tough sell.
 
 Before submitting a PR, please check that:
 

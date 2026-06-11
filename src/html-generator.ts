@@ -4,7 +4,7 @@ import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { norm } from './utils';
 import { fileURLToPath } from 'url';
 import { FileDiscoveryService } from './file-discovery-service';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 
 export class HtmlGenerator {

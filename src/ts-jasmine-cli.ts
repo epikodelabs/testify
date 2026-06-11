@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL, fileURLToPath } from 'url';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { JasmineCLIMessages } from './log-messages';
 import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
 import JSONCleaner from './json-cleaner';

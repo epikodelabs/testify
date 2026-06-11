@@ -6,7 +6,7 @@ import type { WarningHandlerWithDefault } from 'rollup';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { ViteConfigMessages } from './log-messages';
 import { minimatch } from 'minimatch';
 

@@ -4,7 +4,7 @@ import { norm } from "./utils";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { createHash } from 'crypto';
-import { logger } from "./console-repl";
+import { logger } from './logger';
 import { FileDiscoveryMessages } from './log-messages';
 
 export class FileDiscoveryService {

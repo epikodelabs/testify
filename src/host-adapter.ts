@@ -1,6 +1,6 @@
 // host-adapter.ts
 import { ChildProcess } from 'node:child_process';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { HostAdapterMessages } from './log-messages';
 
 export class HostAdapter {

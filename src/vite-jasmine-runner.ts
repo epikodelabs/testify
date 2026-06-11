@@ -15,7 +15,7 @@ import { IstanbulInstrumenter } from './istanbul-instrumenter';
 import { WebSocketManager } from './websocket-manager';
 import { CoverageReportGenerator } from './coverage-report-generator';
 import { HmrManager } from './hmr-manager';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { RunnerMessages } from './log-messages';
 import { ExitCodeError, EXIT_CODES } from './exit-codes';
 

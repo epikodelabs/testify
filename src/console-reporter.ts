@@ -1,5 +1,6 @@
 import util from 'util';
-import { logger, wrapLine, visibleWidth, ANSI_FULL_REGEX } from './console-repl';
+import { logger } from './logger';
+import { wrapLine, visibleWidth, ANSI_FULL_REGEX, normalize } from './utils';
 import { EXIT_CODES } from './exit-codes';
 import { getMaxWidth, isAnsiMode } from './ansi-constants';
 import { ReporterMessages } from './log-messages';
@@ -78,7 +79,7 @@ export class ConsoleReporter {
   private isTTY: boolean;
 
   constructor(options: ConsoleReporterOptions = {}) {
-    this.print = (...args) => logger.printRaw(util.format(...args));
+    this.print = (...args) => process.stdout.write(util.format(...args));
     this.showColors = options.showColors ?? this.detectColorSupport();
     this.isTTY = !isAnsiMode() && (process.stdout.isTTY ?? false);
     this.config = null;
@@ -651,13 +652,13 @@ export class ConsoleReporter {
 
       if (spec.failedExpectations?.length > 0) {
         spec.failedExpectations.forEach((expectation: any, exIndex: number) => {
-          const messageLines = wrapLine(`${SYMBOLS.cross_mark} ${logger.normalize(expectation.message)}`, this.lineWidth, 1);
+          const messageLines = wrapLine(`${SYMBOLS.cross_mark} ${normalize(expectation.message)}`, this.lineWidth, 1);
           // Continuation lines of same message
           messageLines.forEach(line => (this.print(this.colored('brightRed', line)), this.print('\n')));
 
           // Stack trace — lightly indented and gray
           if (expectation.stack) {
-            const stackLines = wrapLine(logger.normalize(expectation.stack), this.lineWidth, 2);
+            const stackLines = wrapLine(normalize(expectation.stack), this.lineWidth, 2);
             stackLines.forEach(line => (this.print(this.colored('gray', line)), this.print('\n')));
           }
 
@@ -908,16 +909,16 @@ export class ConsoleReporter {
 
     if (!this.showColors) {
       const border = '-'.repeat(width);
-      logger.printlnRaw(`  +${border}+`);
-      logger.printlnRaw(`  |  ${strippedText}  |`);
-      logger.printlnRaw(`  +${border}+`);
+      process.stdout.write(`  +${border}+\n`);
+      process.stdout.write(`  |  ${strippedText}  |\n`);
+      process.stdout.write(`  +${border}+\n`);
       return;
     }
 
-    const topBottom = SYMBOLS.box_double_h.repeat(width);
-    logger.printlnRaw(this.colored(color, `  ${SYMBOLS.box_tl}${topBottom}${SYMBOLS.box_tr}`));
-    logger.printlnRaw(`${this.colored(color, `  ${SYMBOLS.box_v}  `)}${this.colored(['bold', color], text)}${this.colored(color, `  ${SYMBOLS.box_v}`)}`);
-    logger.printlnRaw(this.colored(color, `  ${SYMBOLS.box_bl}${topBottom}${SYMBOLS.box_br}`));
+    const topBottom = SYMBOLS.box_double_h.repeat(width);    
+    this.print(this.colored(color, `  ${SYMBOLS.box_tl}${topBottom}${SYMBOLS.box_tr}\n`));
+    this.print(`${this.colored(color, `  ${SYMBOLS.box_v}  `)}${this.colored(['bold', color], text)}${this.colored(color, `  ${SYMBOLS.box_v}`)}\n`);
+    this.print(this.colored(color, `  ${SYMBOLS.box_bl}${topBottom}${SYMBOLS.box_br}\n`));
   }
 
   private printSectionHeader(text: string, color: string) {

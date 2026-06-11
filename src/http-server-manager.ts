@@ -7,7 +7,7 @@ import { createServer } from 'http';
 import { extname } from 'path';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { HttpServerMessages } from './log-messages';
 
 export class HttpServerManager {

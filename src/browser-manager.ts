@@ -1,4 +1,4 @@
-import { logger } from "./console-repl";
+import { logger } from './logger';
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import type * as PlayWright from 'playwright';
 import { EXIT_CODES, getSignalExitCode } from './exit-codes';

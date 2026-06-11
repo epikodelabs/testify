@@ -5,7 +5,7 @@ import libReport from 'istanbul-lib-report';
 import libSourceMaps from 'istanbul-lib-source-maps';
 import reports from 'istanbul-reports';
 import { getMaxWidth } from './ansi-constants';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { norm } from './utils';
 import { CoverageMessages } from './log-messages';
 

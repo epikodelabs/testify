@@ -8,7 +8,7 @@ import { norm } from './utils';
 import { ConsoleReporter } from './console-reporter';
 import { CoverageReportGenerator } from './coverage-report-generator';
 import { EXIT_CODES } from './exit-codes';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { NodeRunnerMessages } from './log-messages';
 
 export interface TestRunnerOptions {

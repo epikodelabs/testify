@@ -8,7 +8,7 @@ import { ViteConfigBuilder } from './vite-config-builder';
 import { glob } from 'glob';
 import picomatch from 'picomatch';
 import { FileDiscoveryService } from './file-discovery-service';
-import { logger } from './console-repl';
+import { logger } from './logger';
 import { HmrMessages } from './log-messages';
 
 // Dynamic import to avoid top-level await issues
