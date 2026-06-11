@@ -180,22 +180,22 @@ export const ReporterMessages = {
     `%puzzle% Suite tree built (${suites} suites, ${specs} specs).`,
 
   testsInterrupted: () =>
-    `%cross% TESTS INTERRUPTED`,
+    `[STOP] TESTS INTERRUPTED`,
 
   allTestsPassed: () =>
-    `%check% ALL TESTS PASSED`,
+    `[OK] ALL TESTS PASSED`,
 
   allTestsPassedWithPending: (pendingCount: number) =>
-    `%check% ALL TESTS PASSED (${pendingCount} pending)`,
+    `[OK] ALL TESTS PASSED (${pendingCount} pending)`,
 
   testsFailed: (count: number) =>
-    `%cross% ${count} TEST${count === 1 ? '' : 'S'} FAILED`,
+    `[ERROR] ${count} TEST${count === 1 ? '' : 'S'} FAILED`,
 
   testsIncomplete: () =>
-    `%warn% TESTS INCOMPLETE`,
+    `[WARN] TESTS INCOMPLETE`,
 
   unknownStatus: (status: string) =>
-    `%warn% UNKNOWN STATUS: ${status}`,
+    `[WARN] UNKNOWN STATUS: ${status}`,
 };
 
 // ─── coverage-report-generator.ts ────────────────────────────────────────────

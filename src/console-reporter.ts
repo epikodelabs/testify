@@ -338,12 +338,6 @@ export class ConsoleReporter {
     // Push to stack
     this.suiteStack.push(suite);
     this.currentSuite = suite;
-
-    // UI feedback
-    if (config.description) {
-      this.clearCurrentLine();
-      this.printSuiteLine(suite, false);
-    }
   }
 
   specStarted(config: any) {
@@ -369,8 +363,6 @@ export class ConsoleReporter {
       // Fallback to root if somehow outside any suite
       this.rootSuite.specs.push(spec);
     }
-
-    this.updateStatusLine();
   }
 
   specDone(result: any) {
@@ -408,13 +400,6 @@ export class ConsoleReporter {
     }
 
     this.currentSpec = null;
-
-    // Update suite display
-    if (this.currentSuite) {
-      this.clearCurrentLine();
-      this.printSuiteLine(this.currentSuite, false);
-      this.updateStatusLine();
-    }
   }
 
   suiteDone(result: any) {
@@ -426,12 +411,9 @@ export class ConsoleReporter {
     // Mark suite result
     suite.status = this.determineSuiteStatusFromInternal(suite);
 
-    // Optional UI output
-    if (this.isTTY) {
-      this.clearCurrentLine();
-      this.printSuiteLine(suite, true);
-      this.print('\n');
-    }
+    // Print final suite result
+    this.printSuiteLine(suite);
+    this.print('\n');
 
     // Pop from stack
     this.suiteStack.pop();
@@ -445,8 +427,6 @@ export class ConsoleReporter {
         : Date.now() - this.startTime;
 
     const totalTime = totalTimeMs / 1000;
-
-    this.clearCurrentLine();
 
     // Filter out stale specs (e.g., retried specs that later passed)
     const actualFailedSpecs = this.failedSpecs.filter(s => s.status === 'failed' || s.overallStatus === 'failed');
@@ -512,13 +492,6 @@ export class ConsoleReporter {
   testsAborted(message?: string) {
     if (this.interrupted) return;
     this.interrupted = true;
-    if (this.isTTY) {
-      // Clear the status line (which is on the line above)
-      this.print('\r\x1b[1A'); // Move up one line
-      this.clearCurrentLine();  // Clear that line
-      this.clearCurrentLine();  // Clear current line
-      this.print('\n');
-    }
 
     // Mark all unexecuted specs as skipped
     this.markUnexecutedAsSkipped();
@@ -596,32 +569,16 @@ export class ConsoleReporter {
     process.removeAllListeners('SIGTERM');
   }
 
-  private updateStatusLine() {
-    if (!this.isTTY || !this.currentSuite || !this.currentSpec) return;
-
-    const suiteName = this.currentSuite.description;
-    const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
-    const statusText = `\n  ${this.colored('dim', SYMBOLS.arrow)} ${suiteName} ${this.colored('gray', `[${passed}/${this.executableSpecCount} passed]`)}`;
-    this.clearCurrentLine();
-    this.print(statusText);
-    this.print('\r\x1b[1A');
-  }
-
-  private clearCurrentLine() {
-    if (!this.isTTY) return;
-    this.print('\x1b[2K\r');
-  }
-
-  private printSuiteLine(suite: TestSuite, isFinal: boolean) {
+  private printSuiteLine(suite: TestSuite) {
     const suiteName = this.colored('brightBlue', suite.description);
     const displayDots = this.getSpecDots(suite);
     const prefix = '  ';
     const maxWidth = this.lineWidth;
-  
+
     const visibleNameLength = visibleWidth(suiteName);
     const dotsLength = visibleWidth(displayDots);
     const totalLength = prefix.length + visibleNameLength + 1 + dotsLength;
-  
+
     if (totalLength <= maxWidth) {
       // Fits on one line
       const spaces = ' '.repeat(maxWidth - totalLength);
@@ -637,16 +594,7 @@ export class ConsoleReporter {
         truncatedName = this.colored('brightBlue', rawName.substring(0, availableForName - 1) + ellipsis);
       }
       this.print(prefix + truncatedName);
-      if (!isFinal) this.print('\n' + prefix + displayDots);
-    }
-  
-    if (!isFinal && !this.isTTY) {
-      // Skip intermediate redraws when not in a TTY
-      return;
-    }
-
-    if (!isFinal) {
-      this.print('\r'); // carriage return
+      this.print('\n' + prefix + displayDots);
     }
   }
 
@@ -963,22 +911,20 @@ export class ConsoleReporter {
 
   private printBox(text: string, color: string) {
     text = replacePlaceholders(text);
+    const strippedText = text.replace(ANSI_FULL_REGEX, '');
+    const width = visibleWidth(text) + 4;
+    const border = '-'.repeat(width);
 
     if (!this.showColors) {
-      const strippedText = text.replace(ANSI_FULL_REGEX, '');
-      const line = '-'.repeat(strippedText.length + 4);
-      logger.printlnRaw(this.colored(color, `  ${line}`));
-      logger.printlnRaw(this.colored(color, `  | ${strippedText} |`));
-      logger.printlnRaw(this.colored(color, `  ${line}`));
+      logger.printlnRaw(`  +${border}+`);
+      logger.printlnRaw(`  |  ${strippedText}  |`);
+      logger.printlnRaw(`  +${border}+`);
       return;
     }
 
-    const width = visibleWidth(text) + 4;
-    const topBottom = SYMBOLS.box_double_h.repeat(width);
-
-    logger.printlnRaw(this.colored(color, `  ${SYMBOLS.box_tl}${topBottom}${SYMBOLS.box_tr}`));
-    logger.printlnRaw(`${this.colored(color, `  ${SYMBOLS.box_v}  `)}${this.colored(['bold', color], text)}  ${this.colored(color, SYMBOLS.box_v)}`);
-    logger.printlnRaw(this.colored(color, `  ${SYMBOLS.box_bl}${topBottom}${SYMBOLS.box_br}`));
+    logger.printlnRaw(this.colored(color, `  +${border}+`));
+    logger.printlnRaw(`${this.colored(color, `  |  `)}${this.colored(['bold', color], text)}${this.colored(color, `  |`)}`);
+    logger.printlnRaw(this.colored(color, `  +${border}+`));
   }
 
   private printSectionHeader(text: string, color: string) {
