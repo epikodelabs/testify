@@ -3,7 +3,7 @@ import { logger, wrapLine, visibleWidth, ANSI_FULL_REGEX } from './console-repl'
 import { EXIT_CODES } from './exit-codes';
 import { getMaxWidth, isAnsiMode } from './ansi-constants';
 import { ReporterMessages } from './log-messages';
-import { SYMBOLS } from './symbols';
+import { SYMBOLS, replacePlaceholders } from './symbols';
 
 export interface EnvironmentInfo {
   node: string;
@@ -962,6 +962,8 @@ export class ConsoleReporter {
   }
 
   private printBox(text: string, color: string) {
+    text = replacePlaceholders(text);
+
     if (!this.showColors) {
       const strippedText = text.replace(ANSI_FULL_REGEX, '');
       const line = '-'.repeat(strippedText.length + 4);
