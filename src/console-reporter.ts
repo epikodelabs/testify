@@ -657,9 +657,9 @@ export class ConsoleReporter {
   private getSpecSymbol(spec: TestSpec): string {
     if (!this.showColors) {
       switch (spec.status) {
-        case 'passed': return '.';
-        case 'failed': return 'F';
-        case 'pending': return '*';
+        case 'passed': return SYMBOLS.passed;
+        case 'failed': return SYMBOLS.failed;
+        case 'pending': return SYMBOLS.pending;
         default: return '';
       }
     }
@@ -937,11 +937,11 @@ export class ConsoleReporter {
   private getSuiteSymbol(status: 'failed' | 'pending' | 'skipped' | 'incomplete' | 'passed' | 'running'): { symbol: string; color: string } {
     if (!this.showColors) {
       switch (status) {
-        case 'failed': return { symbol: 'x', color: 'brightRed' };
-        case 'pending': return { symbol: 'o', color: 'brightYellow' };
-        case 'skipped': return { symbol: '-', color: 'gray' };
-        case 'incomplete': return { symbol: '!', color: 'cyan' };
-        case 'passed': return { symbol: '+', color: 'brightGreen' };
+        case 'failed': return { symbol: SYMBOLS.cross_mark, color: 'brightRed' };
+        case 'pending': return { symbol: SYMBOLS.pending, color: 'brightYellow' };
+        case 'skipped': return { symbol: SYMBOLS.skip, color: 'gray' };
+        case 'incomplete': return { symbol: SYMBOLS.incomplete, color: 'cyan' };
+        case 'passed': return { symbol: SYMBOLS.check_mark, color: 'brightGreen' };
         default: return { symbol: '?', color: 'white' };
       }
     }
