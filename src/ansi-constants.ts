@@ -10,3 +10,24 @@ export const MAX_WIDTH = getMaxWidth();
 // ─── ANSI regex ────────────────────────────────────────────
 export const ANSI_FULL_REGEX =
   /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
+
+// ─── Emoji support ─────────────────────────────────────────
+let ansiMode = false;
+
+export function setAnsiMode(value = true): void {
+  ansiMode = value;
+  if (value) {
+    process.env.NO_EMOJI = '1';
+  }
+}
+
+export function isAnsiMode(): boolean {
+  return ansiMode;
+}
+
+export function supportsEmoji(): boolean {
+  if (ansiMode) return false;
+  if (process.env.NO_EMOJI) return false;
+  if (process.env.FORCE_EMOJI) return true;
+  return process.stdout.isTTY ?? false;
+}

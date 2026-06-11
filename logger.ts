@@ -60,8 +60,12 @@ class Logger {
             return { formattedMessage: `${color}${iconStr}${messageContent}${colors.reset}`, stream };
         }
 
-        // For ASCII, the raw message already contains the desired textual prefix.
-        return { formattedMessage: rawMessage, stream };
+        // For non-TTY (ASCII), create a strict tag and use the raw message without the original prefix.
+        const tag = `[${template.type.toUpperCase()}]`;
+        const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
+        messageContent = (prefixMatch && prefixMatch[1]) ? prefixMatch[1] : rawMessage;
+        
+        return { formattedMessage: `${tag} ${messageContent}`, stream };
     }
 }
 

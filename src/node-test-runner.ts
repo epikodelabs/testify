@@ -75,6 +75,14 @@ export class NodeTestRunner {
    */
   private generateRunnerTemplate(imports: string): string {   
     const jasmineCoreUrl = this.resolveJasmineCoreUrl();
+    const messages = {
+      unhandledRejection: NodeRunnerMessages.unhandledRejection(''),
+      uncaughtException: NodeRunnerMessages.uncaughtException(''),
+      caughtSignal: NodeRunnerMessages.caughtSignal(''),
+      errorDuringExecution: NodeRunnerMessages.errorDuringExecution(''),
+      failedToRunTests: NodeRunnerMessages.failedToRunTests(''),
+    };
+    
     return `// Auto-generated in-process Jasmine test runner
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -83,6 +91,39 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const __cwd = process.cwd();
+
+// ---------------------------
+// Symbol/emoji replacement (embedded in generated runner)
+// ---------------------------
+function replacePlaceholders(text) {
+  if (!text) return text;
+  const useEmoji = process.stdout?.isTTY && !process.env.NO_EMOJI;
+  return text
+    .replace(/%check%/g, useEmoji ? '✅' : '[OK]')
+    .replace(/%cross%/g, useEmoji ? '❌' : '[ERROR]')
+    .replace(/%warn%/g, useEmoji ? '⚠️' : '[WARN]')
+    .replace(/%info%/g, useEmoji ? 'ℹ️' : '[INFO]')
+    .replace(/%globe%/g, useEmoji ? '🌐' : '[BROWSER]')
+    .replace(/%doc%/g, useEmoji ? '📄' : '[FILE]')
+    .replace(/%puzzle%/g, useEmoji ? '🧩' : '[TREE]')
+    .replace(/%stop%/g, useEmoji ? '🛑' : '[STOP]')
+    .replace(/%bulb%/g, useEmoji ? '💡' : '[TIP]')
+    .replace(/%rocket%/g, useEmoji ? '🚀' : '[START]')
+    .replace(/%hourglass%/g, useEmoji ? '⏳' : '[WAIT]')
+    .replace(/%circle_green%/g, useEmoji ? '🟢' : '[READY]')
+    .replace(/%plus%/g, useEmoji ? '➕' : '[ADD]')
+    .replace(/%minus%/g, useEmoji ? '➖' : '[REM]')
+    .replace(/%folder%/g, useEmoji ? '📁' : '[DIR]')
+    .replace(/%box%/g, useEmoji ? '📦' : '[BUILD]')
+    .replace(/%refresh%/g, useEmoji ? '🔄' : '[RETRY]')
+    .replace(/%broom%/g, useEmoji ? '🧹' : '[CLEAN]')
+    .replace(/%lock%/g, useEmoji ? '🔒' : '[LOCK]')
+    .replace(/%fire%/g, useEmoji ? '🔥' : '[HMR]')
+    .replace(/%satellite%/g, useEmoji ? '📡' : '[WS]')
+    .replace(/%ok%/g, useEmoji ? '👌' : '[OK]')
+    .replace(/%eyes%/g, useEmoji ? '👀' : '[WATCH]')
+    .replace(/%plug%/g, useEmoji ? '🔌' : '[CONN]');
+}
 
 // Jasmine internals
 let jasmineInstance = null;
@@ -171,14 +212,14 @@ export async function runTests(reporter) {
     const ownedHandlers = [];
 
     const onUnhandledRejection = (error) => {
-      logger.log('unhandledRejection', String(error)); // NodeRunnerMessages.unhandledRejection
+      console.error(replacePlaceholders(${JSON.stringify(messages.unhandledRejection)}) + (error instanceof Error ? error.message : String(error)));
       process.exit(${EXIT_CODES.INTERNAL_ERROR});
     };
     process.on('unhandledRejection', onUnhandledRejection);
     ownedHandlers.push({ event: 'unhandledRejection', handler: onUnhandledRejection });
 
     const onUncaughtException = (error) => {
-      logger.log('uncaughtException', String(error));
+      console.error(replacePlaceholders(${JSON.stringify(messages.uncaughtException)}) + (error instanceof Error ? error.message : String(error)));
       process.exit(${EXIT_CODES.INTERNAL_ERROR});
     };
     process.on('uncaughtException', onUncaughtException);
@@ -187,7 +228,7 @@ export async function runTests(reporter) {
     // Only attach SIGINT/SIGTERM handlers if running as CLI entry
     if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       function onExit(signal) {
-        logger.log('caughtSignal', signal);
+        console.log(replacePlaceholders(${JSON.stringify(messages.caughtSignal)}) + signal);
         process.exit(signal === 'SIGTERM' ? ${EXIT_CODES.SIGTERM} : ${EXIT_CODES.SIGINT});
       }
       process.on('SIGINT', onExit);
@@ -222,7 +263,7 @@ ${imports}
         // Configure env from template (inlined from ViteJasmineConfig)
         const random = ${this.config.jasmineConfig?.env?.random ?? false};
         const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
-        const seed = ${(this.config.jasmineConfig?.env as any)?.seed} ?? 0;
+        const seed = ${(this.config.jasmineConfig?.env as any)?.seed ?? 0};
 
         jasmineEnv.configure({
           random,
@@ -261,7 +302,7 @@ ${imports}
           resolve(${EXIT_CODES.SUCCESS});
         }
       } catch (error) {
-        logger.log('errorDuringExecution', error instanceof Error ? error.message : String(error));
+        console.error(replacePlaceholders(${JSON.stringify(messages.errorDuringExecution)}) + (error instanceof Error ? error.message : String(error)));
         if (error instanceof Error && error.stack) console.error(error.stack);
         resolve(${EXIT_CODES.INTERNAL_ERROR});
       } finally {
@@ -288,7 +329,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       const failures = await runTests(new ConsoleReporter());
       process.exit(failures);
     } catch (error) {
-      logger.log('failedToRunTests', error instanceof Error ? error.message : String(error));
+      console.error(replacePlaceholders(${JSON.stringify(messages.failedToRunTests)}) + (error instanceof Error ? error.message : String(error)));
       process.exit(${EXIT_CODES.INTERNAL_ERROR});
     }
   })();

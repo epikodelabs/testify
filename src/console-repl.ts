@@ -1,4 +1,5 @@
-import { getMaxWidth } from "./ansi-constants"; 
+import { getMaxWidth, isAnsiMode } from "./ansi-constants";
+import { replacePlaceholders } from "./symbols"; 
 
 // ─── ANSI handling ─────────────────────────────────────────
 export const ANSI_FULL_REGEX =
@@ -122,6 +123,9 @@ export class Logger {
   private prompt: string;
   private errorPrompt: string;
 
+  private plainPrompt = '> ';
+  private plainErrorPrompt = '> ';
+
   constructor(options: LoggerOptions = {}) {
     this.prompt = `${colors.bold}${options.promptColor ?? colors.brightGreen}> ${colors.reset}`;
     this.errorPrompt = `${options.errorPromptColor ?? colors.brightRed}> ${colors.reset}`;
@@ -138,12 +142,17 @@ export class Logger {
   }
 
   clearLine() {
+    if (isAnsiMode()) return;
     process.stdout.write("\r\x1b[K");
   }
 
   private writeLine(line: string, color = "") {
-    this.clearLine();
-    process.stdout.write(color + line + colors.reset);
+    if (isAnsiMode()) {
+      process.stdout.write(line);
+    } else {
+      this.clearLine();
+      process.stdout.write(color + line + colors.reset);
+    }
   }
 
   private addLine(text: string, opts: Partial<LoggedLine> = {}) {
@@ -211,7 +220,9 @@ export class Logger {
   // ─── Printing ────────────────────────────────────────────
 
   print(msg: string) {
-    const fullMessage = this.showPrompt ? this.prompt + msg : msg;
+    msg = replacePlaceholders(msg);
+    const prompt = isAnsiMode() ? this.plainPrompt : this.prompt;
+    const fullMessage = this.showPrompt ? prompt + msg : msg;
     const lines = fullMessage.split('\n');
     for (let i = 0; i < lines.length; i++) {
       this.writeLine(lines[i]);
@@ -245,7 +256,9 @@ export class Logger {
   }
 
   error(msg: string) {
-    const fullMessage = this.showPrompt ? this.errorPrompt + msg : msg;
+    msg = replacePlaceholders(msg);
+    const prompt = isAnsiMode() ? this.plainErrorPrompt : this.errorPrompt;
+    const fullMessage = this.showPrompt ? prompt + msg : msg;
     const lines = fullMessage.split('\n');
     for (let i = 0; i < lines.length; i++) {
       this.writeLine(lines[i], colors.brightRed);

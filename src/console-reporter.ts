@@ -1,8 +1,9 @@
 import util from 'util';
 import { logger, wrapLine, visibleWidth, ANSI_FULL_REGEX } from './console-repl';
 import { EXIT_CODES } from './exit-codes';
-import { getMaxWidth } from './ansi-constants';
+import { getMaxWidth, isAnsiMode } from './ansi-constants';
 import { ReporterMessages } from './log-messages';
+import { SYMBOLS } from './symbols';
 
 export interface EnvironmentInfo {
   node: string;
@@ -74,10 +75,12 @@ export class ConsoleReporter {
   private interrupted = false;
   private orderedSuites: any[] | null = null;
   private orderedSpecs: any[] | null = null;
+  private isTTY: boolean;
 
   constructor(options: ConsoleReporterOptions = {}) {
     this.print = (...args) => logger.printRaw(util.format(...args));
     this.showColors = options.showColors ?? this.detectColorSupport();
+    this.isTTY = !isAnsiMode() && (process.stdout.isTTY ?? false);
     this.config = null;
     this.specCount = 0;
     this.executableSpecCount = 0;
@@ -117,9 +120,10 @@ export class ConsoleReporter {
 
   // Detect if terminal supports colors
   private detectColorSupport(): boolean {
+    if (isAnsiMode()) return false;
     if (process.env.NO_COLOR) return false;
     if (process.env.FORCE_COLOR === '1' || process.env.FORCE_COLOR === 'true' || process.env.FORCE_COLOR) return true;
-    return process.stdout.isTTY;
+    return process.stdout.isTTY ?? false;
   }
 
   private createRootSuite(): TestSuite {
@@ -506,11 +510,13 @@ export class ConsoleReporter {
   testsAborted(message?: string) {
     if (this.interrupted) return;
     this.interrupted = true;
-    // Clear the status line (which is on the line above)
-    this.print('\r\x1b[1A'); // Move up one line
-    this.clearCurrentLine();  // Clear that line
-    this.clearCurrentLine();  // Clear current line
-    this.print('\n');
+    if (this.isTTY) {
+      // Clear the status line (which is on the line above)
+      this.print('\r\x1b[1A'); // Move up one line
+      this.clearCurrentLine();  // Clear that line
+      this.clearCurrentLine();  // Clear current line
+      this.print('\n');
+    }
 
     // Mark all unexecuted specs as skipped
     this.markUnexecutedAsSkipped();
@@ -589,17 +595,18 @@ export class ConsoleReporter {
   }
 
   private updateStatusLine() {
-    if (!this.currentSuite || !this.currentSpec) return;
+    if (!this.isTTY || !this.currentSuite || !this.currentSpec) return;
 
     const suiteName = this.currentSuite.description;
     const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
-    const statusText = `\n  ${this.colored('dim', '→')} ${suiteName} ${this.colored('gray', `[${passed}/${this.executableSpecCount} passed]`)}`;
+    const statusText = `\n  ${this.colored('dim', SYMBOLS.arrow)} ${suiteName} ${this.colored('gray', `[${passed}/${this.executableSpecCount} passed]`)}`;
     this.clearCurrentLine();
     this.print(statusText);
     this.print('\r\x1b[1A');
   }
 
   private clearCurrentLine() {
+    if (!this.isTTY) return;
     this.print('\x1b[2K\r');
   }
 
@@ -631,6 +638,11 @@ export class ConsoleReporter {
       if (!isFinal) this.print('\n' + prefix + displayDots);
     }
   
+    if (!isFinal && !this.isTTY) {
+      // Skip intermediate redraws when not in a TTY
+      return;
+    }
+
     if (!isFinal) {
       this.print('\r'); // carriage return
     }
@@ -651,11 +663,11 @@ export class ConsoleReporter {
     }
     switch (spec.status) {
       case 'passed':
-        return this.colored('brightGreen', '●');
+        return this.colored('brightGreen', SYMBOLS.passed);
       case 'failed':
-        return this.colored('brightRed', '⨯');
+        return this.colored('brightRed', SYMBOLS.failed);
       case 'pending':
-        return this.colored('brightYellow', '○');
+        return this.colored('brightYellow', SYMBOLS.pending);
       default:
         return '';
     }
@@ -680,7 +692,7 @@ export class ConsoleReporter {
   }
 
   private separator(): string {
-    return '  ' + '─'.repeat(this.lineWidth - 2);
+    return '  ' + SYMBOLS.box_h.repeat(this.lineWidth - 2);
   }
 
   private printFailures() {
@@ -697,7 +709,7 @@ export class ConsoleReporter {
 
       if (spec.failedExpectations?.length > 0) {
         spec.failedExpectations.forEach((expectation: any, exIndex: number) => {
-          const messageLines = wrapLine(`✕ ${logger.normalize(expectation.message)}`, this.lineWidth, 1);
+          const messageLines = wrapLine(`${SYMBOLS.cross_mark} ${logger.normalize(expectation.message)}`, this.lineWidth, 1);
           // Continuation lines of same message
           messageLines.forEach(line => (this.print(this.colored('brightRed', line)), this.print('\n')));
 
@@ -724,7 +736,7 @@ export class ConsoleReporter {
 
     this.pendingSpecs.forEach((spec, idx) => {
       // Print numbered spec header with wrapping
-      const header = wrapLine(`${this.colored('brightYellow', '○')} ${this.colored('white', spec.fullName)}`, this.lineWidth, 1, 'word');
+      const header = wrapLine(`${this.colored('brightYellow', SYMBOLS.pending)} ${this.colored('white', spec.fullName)}`, this.lineWidth, 1, 'word');
       header.forEach(line => (this.print(line), this.print('\n')));
     });
   }
@@ -787,7 +799,7 @@ export class ConsoleReporter {
     }
 
     if (!hasProblems) {
-      this.print('  ' + this.colored('brightGreen', '✓') + ' ' + this.colored('dim', 'All suites completed successfully\n'));
+      this.print('  ' + this.colored('brightGreen', SYMBOLS.check_mark) + ' ' + this.colored('dim', 'All suites completed successfully\n'));
     }
   }
 
@@ -912,7 +924,7 @@ export class ConsoleReporter {
           ["failed", "pending", "incomplete"].includes(c.status!)
         );
         if (hasNonSkippedChildProblems) {
-          this.print(`${indent}${this.colored("brightBlue", "↳")} ${this.colored("dim", suite.description)}\n`);
+          this.print(`${indent}${this.colored("brightBlue", SYMBOLS.arrow_down_right)} ${this.colored("dim", suite.description)}\n`);
         }
       }
     }
@@ -933,15 +945,15 @@ export class ConsoleReporter {
     }
     switch (status) {
       case 'failed':
-        return { symbol: '✕', color: 'brightRed' };
+        return { symbol: SYMBOLS.cross_mark, color: 'brightRed' };
       case 'pending':
-        return { symbol: '○', color: 'brightYellow' };
+        return { symbol: SYMBOLS.pending, color: 'brightYellow' };
       case 'skipped':
-        return { symbol: '⤼', color: 'gray' };
+        return { symbol: SYMBOLS.skip, color: 'gray' };
       case 'incomplete':
-        return { symbol: '◷', color: 'cyan' };
+        return { symbol: SYMBOLS.incomplete, color: 'cyan' };
       case 'passed':
-        return { symbol: '✓', color: 'brightGreen' };
+        return { symbol: SYMBOLS.check_mark, color: 'brightGreen' };
       default:
         return { symbol: '?', color: 'white' };
     }
@@ -958,11 +970,11 @@ export class ConsoleReporter {
     }
 
     const width = visibleWidth(text) + 4;
-    const topBottom = '═'.repeat(width);
+    const topBottom = SYMBOLS.box_double_h.repeat(width);
 
-    logger.printlnRaw(this.colored(color, `  ╔${topBottom}╗`));
-    logger.printlnRaw(`${this.colored(color, '  ║  ')}${this.colored(['bold', color], text)}  ${this.colored(color, '║')}`);
-    logger.printlnRaw(this.colored(color, `  ╚${topBottom}╝`));
+    logger.printlnRaw(this.colored(color, `  ${SYMBOLS.box_tl}${topBottom}${SYMBOLS.box_tr}`));
+    logger.printlnRaw(`${this.colored(color, `  ${SYMBOLS.box_v}  `)}${this.colored(['bold', color], text)}  ${this.colored(color, SYMBOLS.box_v)}`);
+    logger.printlnRaw(this.colored(color, `  ${SYMBOLS.box_bl}${topBottom}${SYMBOLS.box_br}`));
   }
 
   private printSectionHeader(text: string, color: string) {
@@ -1032,22 +1044,22 @@ export class ConsoleReporter {
     const parts: string[] = [];
 
     if (passed > 0)
-      parts.push(this.colored('brightGreen', `${this.showColors ? '✓' : '+'} Passed: ${passed}`));
+      parts.push(this.colored('brightGreen', `${SYMBOLS.check_mark} Passed: ${passed}`));
 
     if (failed > 0)
-      parts.push(this.colored('brightRed', `${this.showColors ? '✕' : 'x'} Failed: ${failed}`));
+      parts.push(this.colored('brightRed', `${SYMBOLS.cross_mark} Failed: ${failed}`));
 
     if (pending > 0)
-      parts.push(this.colored('brightYellow', `${this.showColors ? '○' : 'o'} Pending: ${pending}`));
+      parts.push(this.colored('brightYellow', `${SYMBOLS.pending} Pending: ${pending}`));
 
     if (incomplete > 0)
-      parts.push(this.colored('cyan', `${this.showColors ? '◷' : '!'} Incomplete: ${incomplete}`));
+      parts.push(this.colored('cyan', `${SYMBOLS.incomplete} Incomplete: ${incomplete}`));
 
     if (skipped > 0)
-      parts.push(this.colored('gray', `${this.showColors ? '⤼' : '-'} Skipped: ${skipped}`));
+      parts.push(this.colored('gray', `${SYMBOLS.skip} Skipped: ${skipped}`));
 
     if (notRun > 0)
-      parts.push(this.colored('gray', `⊘ Not Run: ${notRun}`));
+      parts.push(this.colored('gray', `${SYMBOLS.not_run} Not Run: ${notRun}`));
 
     if (parts.length > 0)
       this.print('  ' + parts.join(this.colored('gray', '  |  ')) + '\n');
@@ -1202,21 +1214,21 @@ export class ConsoleReporter {
       parts.push(
         this.colored("magenta", "Fail Fast:") +
         " " +
-        this.colored("white", config.stopOnSpecFailure ? "✓ enabled" : "✗ disabled")
+        this.colored("white", config.stopOnSpecFailure ? `${SYMBOLS.check_mark} enabled` : `${SYMBOLS.cross_mark} disabled`)
       );
 
     if (config.stopSpecOnExpectationFailure !== void 0)
       parts.push(
         this.colored("magenta", "Stop Spec:") +
         " " +
-        this.colored("white", config.stopSpecOnExpectationFailure ? "✓ enabled" : "✗ disabled")
+        this.colored("white", config.stopSpecOnExpectationFailure ? `${SYMBOLS.check_mark} enabled` : `${SYMBOLS.cross_mark} disabled`)
       );
 
     if (config.failSpecWithNoExpectations !== void 0)
       parts.push(
         this.colored("magenta", "No Expect:") +
         " " +
-        this.colored("white", config.failSpecWithNoExpectations ? "✓ fail" : "✗ pass")
+        this.colored("white", config.failSpecWithNoExpectations ? `${SYMBOLS.check_mark} fail` : `${SYMBOLS.cross_mark} pass`)
       );
 
     if (parts.length > 0) {
