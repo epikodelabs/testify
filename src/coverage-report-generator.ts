@@ -7,6 +7,7 @@ import reports from 'istanbul-reports';
 import { getMaxWidth } from './ansi-constants';
 import { logger } from './console-repl';
 import { norm } from './utils';
+import { CoverageMessages } from './log-messages';
 
 export class CoverageReportGenerator {
   private reportDir: string;
@@ -24,9 +25,9 @@ export class CoverageReportGenerator {
 
       fs.writeFileSync(outFile, JSON.stringify(coverage, null, 2), "utf8");
 
-      logger.println(`📄 Raw coverage saved to ${outFile}`);
+      logger.println(CoverageMessages.rawCoverageSaved(outFile));
     } catch (err) {
-      logger.error(`❌ Failed to write coverage file: ${err}`);
+      logger.error(CoverageMessages.failedToWriteCoverage(err));
     }
   }
 
@@ -86,6 +87,6 @@ export class CoverageReportGenerator {
       }
     }
 
-    logger.println(`✅ Coverage reports generated successfully`);
+    logger.println(CoverageMessages.coverageReportsGenerated());
   }
 }

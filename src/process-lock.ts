@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { logger } from './console-repl';
+import { ProcessLockMessages } from './log-messages';
 import { norm } from './utils';
 
 export class ProcessLock {
@@ -57,7 +58,7 @@ export class ProcessLock {
           // Assume it's alive and proceed with the kill attempt.
         } else {
           // Stale PID file
-          logger.println(`🧹 Stale lock file found (PID ${pid} is gone). Removing.`);
+          logger.println(ProcessLockMessages.staleLockFile(pid));
           fs.unlinkSync(this.pidFile);
           return;
         }
@@ -66,7 +67,7 @@ export class ProcessLock {
       // Verify the process is actually a Node process before killing it
       const processName = await this.getProcessName(pid);
       if (!processName || !/node/i.test(processName)) {
-        logger.println(`⚠️  PID ${pid} does not appear to be a Node process (${processName || 'unknown'}). Skipping kill.`);
+        logger.println(ProcessLockMessages.nonNodeProcess(pid, processName || 'unknown'));
         fs.unlinkSync(this.pidFile);
         return;
       }
@@ -85,9 +86,9 @@ export class ProcessLock {
       // Verify final state and log
       const finalAlive = await this.isAlive(pid);
       if (finalAlive) {
-        logger.println(`⚠️  Could not terminate previous testify instance (PID ${pid}).`);
+        logger.println(ProcessLockMessages.couldNotTerminate(pid));
       } else {
-        logger.println(`🔒 Terminated previous testify instance (PID ${pid}).`);
+        logger.println(ProcessLockMessages.terminatedPrevious(pid));
       }
       fs.unlinkSync(this.pidFile);
     } catch {

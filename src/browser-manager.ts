@@ -2,6 +2,7 @@ import { logger } from "./console-repl";
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import type * as PlayWright from 'playwright';
 import { EXIT_CODES, getSignalExitCode } from './exit-codes';
+import { BrowserMessages } from './log-messages';
 
 export class BrowserManager {
   private playwright: typeof PlayWright | null = null;
@@ -35,17 +36,17 @@ export class BrowserManager {
           browser = playwright.webkit;
           break;
         default:
-          logger.println(`⚠️  Unknown browser "${browserName}", falling back to Node.js mode`);
+          logger.println(BrowserMessages.unknownBrowserFallback(browserName));
           return null;
       }
 
       return browser;
     } catch (err: any) {
       if (err.code === 'MODULE_NOT_FOUND') {
-        logger.println(`ℹ️ Playwright not installed. Browser "${browserName}" not available.`);
-        logger.println(`💡 Tip: Install Playwright to enable browser testing:\n   npm install playwright`);
+        logger.println(BrowserMessages.playwrightNotInstalled(browserName));
+        logger.println(BrowserMessages.playwrightInstallTip());
       } else {
-        logger.error(`❌ Browser execution failed for "${browserName}": ${err.message}`);
+        logger.error(BrowserMessages.browserExecutionFailed(browserName, err.message));
       }
       return null;
     }
@@ -90,15 +91,15 @@ export class BrowserManager {
       const text = msg.text();
       const type = msg.type();
       if (text.match(/error|failed/i)) {
-        if (type === 'error') logger.error(`BROWSER ERROR: ${text}`);
-        else if (type === 'warn') logger.println(`BROWSER WARN: ${text}`);
+        if (type === 'error') logger.error(BrowserMessages.browserConsoleError(text));
+        else if (type === 'warn') logger.println(BrowserMessages.browserConsoleWarn(text));
       }
     });
 
-    page.on('pageerror', (error: any) => logger.error(`❌ Page error: ${error.message}`));
-    page.on('requestfailed', (request: any) => logger.error(`❌ Request failed: ${request.url()}, ${request.failure()?.errorText}`));
+    page.on('pageerror', (error: any) => logger.error(BrowserMessages.pageError(error.message)));
+    page.on('requestfailed', (request: any) => logger.error(BrowserMessages.requestFailed(request.url(), request.failure()?.errorText)));
 
-    logger.println('🌐 Navigating to test page...');
+    logger.println(BrowserMessages.navigatingToTestPage());
     await page.goto(`http://localhost:${port}/index.html`, { waitUntil: 'networkidle', timeout: 120000 });
 
     try {
@@ -116,11 +117,11 @@ export class BrowserManager {
     } catch (error) {
       if (interrupted || error === interruptError) {
         logger.printRaw('\n\n');
-        logger.println('🛑 Tests aborted by user (Ctrl+C)');
+        logger.println(BrowserMessages.testsAbortedByUser());
         await browser.close();
         return false;
       }
-      logger.error(`❌ Test execution failed: ${error}`);
+      logger.error(BrowserMessages.testExecutionFailed(error));
       await browser.close();
       throw error;
     } finally {
@@ -155,18 +156,18 @@ export class BrowserManager {
           browserType = playwright.webkit;
           break;
         default:
-          logger.println(`⚠️  Unknown browser "${browserName}", using Chrome instead`);
+          logger.println(BrowserMessages.unknownBrowserFallbackToChrome(browserName));
           browserType = playwright.chromium;
           browserName = 'chrome';
       }
       
       if (!browserType) {
-        logger.println(`❌ Browser "${browserName}" is not installed.`);
-        logger.println(`💡 Tip: Install it by running: npx playwright install ${browserName.toLowerCase()}`);
+        logger.println(BrowserMessages.browserNotInstalled(browserName));
+        logger.println(BrowserMessages.browserInstallTip(browserName));
         return;
       }
       
-      logger.println(`🌐 Opening ${browserName} browser...`);
+      logger.println(BrowserMessages.openingBrowser(browserName));
       browser = await browserType.launch({ 
         headless: this.config.headless,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -194,11 +195,11 @@ export class BrowserManager {
         await browser.close().catch(() => {});
       }
       if (error.code === 'MODULE_NOT_FOUND') {
-        logger.println(`ℹ️ Playwright not installed. Please open browser manually: ${url}`);
-        logger.println(`💡 Tip: Install Playwright to enable automatic browser opening:\n   npm install playwright`);
+        logger.println(BrowserMessages.playwrightNotInstalledManual(url));
+        logger.println(BrowserMessages.playwrightAutoOpenTip());
       } else {
-        logger.error(`❌ Failed to open browser: ${error.message}`);
-        logger.println(`💡 Please open browser manually: ${url}`);
+        logger.error(BrowserMessages.failedToOpenBrowser(error.message));
+        logger.println(BrowserMessages.openBrowserManually(url));
       }
     }
   }
@@ -220,7 +221,7 @@ export class BrowserManager {
         await this.currentPage.close();
       }
     } catch (error: any) {
-      logger.error(`❌ Failed to close browser: ${error?.message ?? error}`);
+      logger.error(BrowserMessages.failedToCloseBrowser(error?.message ?? error));
     } finally {
       this.clearBrowserState();
     }

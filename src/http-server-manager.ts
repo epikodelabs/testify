@@ -8,6 +8,7 @@ import { extname } from 'path';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import { logger } from './console-repl';
+import { HttpServerMessages } from './log-messages';
 
 export class HttpServerManager {
   private server: http.Server | null = null;
@@ -82,13 +83,13 @@ export class HttpServerManager {
     return new Promise((resolve, reject) => {
       const tryListen = (attempt = 1) => {
         this.server!.listen(port, () => {
-          logger.println(`🚀 Test server running at http://localhost:${port}`);
+          logger.println(HttpServerMessages.serverRunning(port));
           resolve(this.server!);
         });
 
         this.server!.on('error', (error: any) => {
           if (error.code === 'EADDRINUSE' && attempt < 3) { // try 2 times
-            logger.println(`⏳ Port ${port} is busy. Waiting 3s before reclaiming it...`);
+            logger.println(HttpServerMessages.portBusyRetrying(port));
 
             this.server!.close(() => {
               setTimeout(() => {
@@ -101,10 +102,9 @@ export class HttpServerManager {
 
                 exec(killCommand, (err: Error, stdout: string, stderr: string) => {
                   if (err) {
-                    logger.error(`❌ Failed to kill process on port ${port}: ${err.message}`);
-                    logger.error(stderr);
+                    logger.error(HttpServerMessages.failedToKillProcess(port, err.message, stderr));
                   } else {
-                    logger.println(`✅ Port ${port} reclaimed.`);
+                    logger.println(HttpServerMessages.portReclaimed(port));
                   }
                   this.server = this.createHttpServer();
                   tryListen(attempt + 1);
@@ -112,10 +112,10 @@ export class HttpServerManager {
               }, 3000);
             });
           } else if (error.code === 'EADDRINUSE') {
-            logger.error(`❌ Port ${port} is still busy after reclaim attempt.`);
+            logger.error(HttpServerMessages.portStillBusy(port));
             reject(error);
           } else {
-            logger.error(`❌ Server error: ${error}`);
+            logger.error(HttpServerMessages.serverError(error));
             reject(error);
           }
         });

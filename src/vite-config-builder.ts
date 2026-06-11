@@ -7,6 +7,7 @@ import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
 import { logger } from './console-repl';
+import { ViteConfigMessages } from './log-messages';
 import { minimatch } from 'minimatch';
 
 export class ViteConfigBuilder {
@@ -306,7 +307,7 @@ export class ViteConfigBuilder {
     this.inputMap = this.buildInputMap(files);
 
     if (!Object.keys(this.inputMap).length) {
-      logger.error('❌ No files found to build');
+      logger.error(ViteConfigMessages.noFilesToBuild());
     }
 
     return this.mergeUserConfig(this.baseConfig(this.inputMap, false));
@@ -331,9 +332,7 @@ export class ViteConfigBuilder {
       if (!fs.existsSync(v)) delete this.inputMap[k];
     }
 
-    logger.println(
-      `📦 Incremental build: ${Object.keys(this.inputMap).length} files`
-    );
+    logger.println(ViteConfigMessages.incrementalBuild(Object.keys(this.inputMap).length));
 
     return this.mergeUserConfig(
       this.baseConfig(this.inputMap, true, cache)
@@ -403,7 +402,7 @@ export class ViteConfigBuilder {
         );
       }
     } catch (err) {
-      logger.error(`⚠️ tsconfig parse failed: ${err}`);
+      logger.error(ViteConfigMessages.tsconfigParseFailed(err));
     }
 
     return aliases;

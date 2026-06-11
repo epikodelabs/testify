@@ -4,6 +4,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL, fileURLToPath } from 'url';
 import { logger } from './console-repl';
+import { JasmineCLIMessages } from './log-messages';
 import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
@@ -91,7 +92,7 @@ function parseArgs(argv: string[]): RunnerArgs {
   }
 
   if (command && !command.startsWith('-') && command !== 'init') {
-    logger.error(`ERROR: Unknown command: ${command}`);
+    logger.error(JasmineCLIMessages.unknownCommand(command));
     logger.println('');
     printHelp();
     process.exit(EXIT_CODES.INVALID_USAGE);
@@ -109,7 +110,7 @@ function parseArgs(argv: string[]): RunnerArgs {
   }
 
   if (!specRaw) {
-    logger.error('ERROR: Missing required --spec <path>');
+    logger.error(JasmineCLIMessages.missingSpecArg());
     logger.println('');
     printHelp();
     process.exit(EXIT_CODES.INVALID_USAGE);
@@ -117,13 +118,13 @@ function parseArgs(argv: string[]): RunnerArgs {
 
   const spec = norm(path.resolve(process.cwd(), specRaw));
   if (!fs.existsSync(spec)) {
-    logger.error(`ERROR: Spec file not found: ${spec}`);
+    logger.error(JasmineCLIMessages.specFileNotFound(spec));
     process.exit(EXIT_CODES.CONFIG_ERROR);
   }
 
   const seedRaw = get('--seed');
   if (seedRaw !== undefined && !Number.isFinite(Number(seedRaw))) {
-    logger.error(`ERROR: Invalid --seed value: ${seedRaw}`);
+    logger.error(JasmineCLIMessages.invalidSeedValue(seedRaw!));
     process.exit(EXIT_CODES.INVALID_USAGE);
   }
 
@@ -198,8 +199,8 @@ function initVsCodeLaunchConfig(): void {
   if (!fs.existsSync(launchJsonPath)) {
     const launchJson = { version: '0.2.0', configurations: [config] };
     fs.writeFileSync(launchJsonPath, `${JSON.stringify(launchJson, null, 2)}\n`);
-    logger.println(`Created VS Code launch config at ${launchJsonPath}`);
-    logger.println(`Added configuration: ${vscodeLaunchConfigName}`);
+    logger.println(JasmineCLIMessages.createdVsCodeLaunchConfig(launchJsonPath));
+    logger.println(JasmineCLIMessages.addedVsCodeConfiguration(vscodeLaunchConfigName));
     return;
   }
 
@@ -211,10 +212,10 @@ function initVsCodeLaunchConfig(): void {
     try {
       parsed = new JSONCleaner().parse(raw);
     } catch (error) {
-      logger.error(`ERROR: Failed to parse existing VS Code launch config: ${launchJsonPath}`);
+      logger.error(JasmineCLIMessages.failedToParseVsCodeConfig(launchJsonPath));
       logger.error(String(error));
       logger.println('');
-      logger.println('Add this configuration manually:');
+      logger.println(JasmineCLIMessages.addConfigManually());
       logger.println(`${JSON.stringify(getDefaultVsCodeLaunchConfiguration(), null, 2)}`);
       process.exit(EXIT_CODES.CONFIG_ERROR);
     }
@@ -234,15 +235,15 @@ function initVsCodeLaunchConfig(): void {
   });
 
   if (alreadyHasConfig) {
-    logger.println(`VS Code launch config already contains: ${vscodeLaunchConfigName}`);
+    logger.println(JasmineCLIMessages.vsCodeConfigAlreadyContains(vscodeLaunchConfigName));
     return;
   }
 
   parsed.version ??= '0.2.0';
   parsed.configurations.unshift(config);
   fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
-  logger.println(`Updated VS Code launch config at ${launchJsonPath}`);
-  logger.println(`Added configuration: ${vscodeLaunchConfigName}`);
+  logger.println(JasmineCLIMessages.updatedVsCodeLaunchConfig(launchJsonPath));
+  logger.println(JasmineCLIMessages.addedVsCodeConfiguration(vscodeLaunchConfigName));
 }
 
 async function respawnWithLoader(args: RunnerArgs): Promise<void> {
@@ -309,9 +310,9 @@ async function main() {
 
   if (args.initLaunchConfig) {
     if (!isRunningInVsCode()) {
-      logger.error('ERROR: `npx jasmine init` is only supported when run from VS Code.');
+      logger.error(JasmineCLIMessages.notRunningInVsCode());
       logger.println('');
-      logger.println('Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).');
+      logger.println(JasmineCLIMessages.openVsCodeTerminalHint());
       process.exit(EXIT_CODES.INVALID_USAGE);
     }
     initVsCodeLaunchConfig();
@@ -329,11 +330,11 @@ async function main() {
   const { jasmineEnv } = await loadJasmine();
 
   process.on('unhandledRejection', (error) => {
-    logger.error(`ERROR: Unhandled rejection: ${error}`);
+    logger.error(JasmineCLIMessages.unhandledRejection(error));
     process.exit(EXIT_CODES.INTERNAL_ERROR);
   });
   process.on('uncaughtException', (error) => {
-    logger.error(`ERROR: Uncaught exception: ${error}`);
+    logger.error(JasmineCLIMessages.uncaughtException(error));
     process.exit(EXIT_CODES.INTERNAL_ERROR);
   });
 
@@ -362,6 +363,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error(`ERROR: Failed to run jasmine: ${error.stack ?? error}`);
+  logger.error(JasmineCLIMessages.failedToRunJasmine(error.stack ?? String(error)));
   process.exit(EXIT_CODES.INTERNAL_ERROR);
 });

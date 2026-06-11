@@ -2,6 +2,7 @@ import util from 'util';
 import { logger, wrapLine, visibleWidth, ANSI_FULL_REGEX } from './console-repl';
 import { EXIT_CODES } from './exit-codes';
 import { getMaxWidth } from './ansi-constants';
+import { ReporterMessages } from './log-messages';
 
 export interface EnvironmentInfo {
   node: string;
@@ -209,7 +210,7 @@ export class ConsoleReporter {
     // Debug summary
     const totalSuites = this.orderedSuites?.length; // real suites (root excluded)
     const totalSpecs = this.orderedSpecs?.length;   // all specs
-    logger.println(`🧩 Suite tree built (${totalSuites} suites, ${totalSpecs} specs).`);
+    logger.println(ReporterMessages.suiteTreeBuilt(totalSuites, totalSpecs));
   }
 
   countSpecs(suite: TestSuite) {
@@ -534,7 +535,7 @@ export class ConsoleReporter {
     this.printSummary(totalTime);
 
     this.print('\n');
-    this.printBox('✕ TESTS INTERRUPTED', 'yellow');
+    this.printBox(ReporterMessages.testsInterrupted(), 'yellow');
     this.print('\n');
     this.removeInterruptHandler();
 
@@ -750,15 +751,15 @@ export class ConsoleReporter {
     const overallStatus = this.computeOverallStatus(jasmineOverallStatus);
     if (overallStatus === 'passed') {
       const msg = this.pendingSpecs.length === 0
-        ? '✓ ALL TESTS PASSED'
-        : `✓ ALL TESTS PASSED (${this.pendingSpecs.length} pending)`;
+        ? ReporterMessages.allTestsPassed()
+        : ReporterMessages.allTestsPassedWithPending(this.pendingSpecs.length);
       this.printBox(msg, 'green');
     } else if (overallStatus === 'failed') {
-      this.printBox(`✕ ${this.failureCount} TEST${this.failureCount === 1 ? '' : 'S'} FAILED`, 'red');
+      this.printBox(ReporterMessages.testsFailed(this.failureCount), 'red');
     } else if (overallStatus === 'incomplete') {
-      this.printBox('⚠ TESTS INCOMPLETE', 'yellow');
+      this.printBox(ReporterMessages.testsIncomplete(), 'yellow');
     } else {
-      this.printBox(`⚠ UNKNOWN STATUS: ${overallStatus}`, 'red');
+      this.printBox(ReporterMessages.unknownStatus(overallStatus), 'red');
     }
   }
 

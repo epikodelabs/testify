@@ -5,10 +5,11 @@ import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
-import { logger } from './console-repl';
 import { ConsoleReporter } from './console-reporter';
 import { CoverageReportGenerator } from './coverage-report-generator';
 import { EXIT_CODES } from './exit-codes';
+import { logger } from './console-repl';
+import { NodeRunnerMessages } from './log-messages';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -56,7 +57,7 @@ export class NodeTestRunner {
       .sort();
 
     if (builtFiles.length === 0) {
-      logger.println('⚠️  No JS files found for test runner generation.');
+      logger.println(NodeRunnerMessages.noJsFilesForRunner());
       return;
     }
 
@@ -64,10 +65,8 @@ export class NodeTestRunner {
 
     const runnerContent = this.generateRunnerTemplate(imports);
     const testRunnerPath = norm(path.join(outDir, 'test-runner.js'));
-    fs.writeFileSync(testRunnerPath, runnerContent);
-    logger.println(
-      `🤖 Generated in-process test runner: ${norm(path.relative(outDir, testRunnerPath))}`,
-    );
+    fs.writeFileSync(testRunnerPath, runnerContent); 
+    logger.println(NodeRunnerMessages.generatedInProcessRunner(norm(path.relative(outDir, testRunnerPath))));
   }
 
   /**
@@ -172,14 +171,14 @@ export async function runTests(reporter) {
     const ownedHandlers = [];
 
     const onUnhandledRejection = (error) => {
-      console.error(\`❌ Unhandled Rejection: \${error}\`);
+      logger.log('unhandledRejection', String(error)); // NodeRunnerMessages.unhandledRejection
       process.exit(${EXIT_CODES.INTERNAL_ERROR});
     };
     process.on('unhandledRejection', onUnhandledRejection);
     ownedHandlers.push({ event: 'unhandledRejection', handler: onUnhandledRejection });
 
     const onUncaughtException = (error) => {
-      console.error(\`❌ Uncaught Exception: \${error}\`);
+      logger.log('uncaughtException', String(error));
       process.exit(${EXIT_CODES.INTERNAL_ERROR});
     };
     process.on('uncaughtException', onUncaughtException);
@@ -188,7 +187,7 @@ export async function runTests(reporter) {
     // Only attach SIGINT/SIGTERM handlers if running as CLI entry
     if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       function onExit(signal) {
-        console.log(\`\n⚙️  Caught \${signal}. Cleaning up...\`);
+        logger.log('caughtSignal', signal);
         process.exit(signal === 'SIGTERM' ? ${EXIT_CODES.SIGTERM} : ${EXIT_CODES.SIGINT});
       }
       process.on('SIGINT', onExit);
@@ -262,8 +261,8 @@ ${imports}
           resolve(${EXIT_CODES.SUCCESS});
         }
       } catch (error) {
-        console.error(\`❌ Error during test execution: \${error}\`);
-        console.error(error.stack);
+        logger.log('errorDuringExecution', error instanceof Error ? error.message : String(error));
+        if (error instanceof Error && error.stack) console.error(error.stack);
         resolve(${EXIT_CODES.INTERNAL_ERROR});
       } finally {
         restoreConsole();
@@ -289,7 +288,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       const failures = await runTests(new ConsoleReporter());
       process.exit(failures);
     } catch (error) {
-      console.error(\`❌ Failed to run tests: \${error}\`);
+      logger.log('failedToRunTests', error instanceof Error ? error.message : String(error));
       process.exit(${EXIT_CODES.INTERNAL_ERROR});
     }
   })();
@@ -302,9 +301,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
    */
   async start(): Promise<number> {
     if (this.isRunning) {
-      const message = 'Test process already running';
-      (this.reporter as any).jasmineFailed?.(message);
-      return Promise.reject(new Error(message));
+      logger.println(NodeRunnerMessages.testProcessAlreadyRunning());
+      return Promise.reject(new Error('Test process already running'));
     }
 
     this.isRunning = true;
@@ -330,7 +328,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
         this.options.file || path.join(this.config.outDir, 'test-runner.js'),
       );
 
-      logger.println(`🚀 Starting test runner in current process...`);
+      logger.println(NodeRunnerMessages.startingTestRunner());
       const fileUrl = pathToFileURL(childFile).href;
 
       this.runnerModule = await import(`${fileUrl}?t=${Date.now()}`);
@@ -344,11 +342,11 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
         }
         return exitCode;
       } else {
-        logger.error('⚠️  Test runner does not export runTests function');
+        logger.println(NodeRunnerMessages.runnerDoesNotExportRunTests());
         return EXIT_CODES.INTERNAL_ERROR;
       }
     } catch (error: any) {
-      (this.reporter as any).jasmineFailed?.(`Test execution error: ${error.message}`);
+      logger.println(NodeRunnerMessages.testExecutionError(error.message));
       throw error;
     } finally {
       if (shouldSilenceConsole) {

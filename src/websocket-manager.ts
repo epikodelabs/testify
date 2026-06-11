@@ -8,6 +8,7 @@ import { FileDiscoveryService } from './file-discovery-service';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import path from 'path';
 import { logger } from './console-repl';
+import { WebSocketMessages } from './log-messages';
 
 export class WebSocketManager extends EventEmitter {
   private wss: WebSocketServer | null = null;
@@ -25,7 +26,7 @@ export class WebSocketManager extends EventEmitter {
     this.wss = new WebSocketServer({ server: this.server });
     
     this.wss.on('connection', async (ws: WebSocket) => {
-      logger.println('🔌 WebSocket client connected');
+      logger.println(WebSocketMessages.clientConnected());
       this.wsClients.push(ws);
       // Send HMR status on connection
       if (this.hmrEnabled) {
@@ -44,7 +45,7 @@ export class WebSocketManager extends EventEmitter {
           const message = this.jsonCleaner.parse(data.toString());
           this.handleWebSocketMessage(message);
         } catch (error) {
-          logger.error(`❌ Failed to parse WebSocket message: ${error}`);
+          logger.error(WebSocketMessages.failedToParseMessage(error));
         }
       });
       
@@ -53,7 +54,7 @@ export class WebSocketManager extends EventEmitter {
       });
       
       ws.on('error', (error) => {
-        logger.error(`❌ WebSocket error: ${error}`);
+        logger.error(WebSocketMessages.websocketError(error));
         this.wsClients = this.wsClients.filter(client => client !== ws);
       });
     });
@@ -96,18 +97,18 @@ export class WebSocketManager extends EventEmitter {
           break;
 
         case 'hmr:ready':
-          logger.println('🔥 Client HMR runtime ready');
+          logger.println(WebSocketMessages.hmrClientReady());
           break;
 
         case 'hmr:error':
-          logger.error(`❌ HMR error on client: ${message.error}`);
+          logger.error(WebSocketMessages.hmrClientError(message.error));
           break;
           
         default:
-          logger.println(`⚠️  Unknown WebSocket message type: ${message.type}`);
+          logger.println(WebSocketMessages.unknownMessageType(message.type));
       }
     } catch (error) {
-      logger.error(`❌ Error handling WebSocket message: ${error}`);
+      logger.error(WebSocketMessages.errorHandlingMessage(error));
     }
   }
 
@@ -124,7 +125,7 @@ export class WebSocketManager extends EventEmitter {
       });
     });
 
-    logger.println('🔥 HMR enabled on WebSocket server');
+    logger.println(WebSocketMessages.hmrEnabled());
   }
 
   private broadcast(message: any): void {
@@ -153,7 +154,7 @@ export class WebSocketManager extends EventEmitter {
         try {
           if (client.readyState === WebSocket.OPEN) client.close();
         } catch (err) {
-          logger.error(`❌ Error closing WebSocket client: ${err}`);
+          logger.error(WebSocketMessages.errorClosingClient(err));
         }
       }
       this.wsClients = [];

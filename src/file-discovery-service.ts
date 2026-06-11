@@ -5,6 +5,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { createHash } from 'crypto';
 import { logger } from "./console-repl";
+import { FileDiscoveryMessages } from './log-messages';
 
 export class FileDiscoveryService {
   constructor(private config: ViteJasmineConfig) {}
@@ -31,7 +32,7 @@ export class FileDiscoveryService {
       let files = await glob(basePath, { absolute: true, ignore: exclude });
       return files.map((s) => norm(s));
     } catch (error) {
-      logger.error(`❌ Error discovering files: ${error}`);
+      logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
       throw new Error("Failed to discover source and test files");
     }
   }
@@ -76,7 +77,7 @@ export class FileDiscoveryService {
 
       return { srcFiles: [...new Set(srcFiles)], specFiles: [...new Set(specFiles)] };
     } catch (error) {
-      logger.error(`❌ Error discovering files: ${error}`);
+      logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
       throw new Error("Failed to discover source and test files");
     }
   }

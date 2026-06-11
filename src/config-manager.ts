@@ -5,6 +5,7 @@ import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
 import { logger } from './console-repl';
 import { ExitCodeError, EXIT_CODES } from './exit-codes';
+import { ConfigMessages } from './log-messages';
 
 export class ConfigManager {
   static ensureConfigExists(configPath?: string): ViteJasmineConfig {
@@ -17,7 +18,7 @@ export class ConfigManager {
       } catch (error) {
         throw new ExitCodeError(
           EXIT_CODES.CONFIG_ERROR,
-          `Failed to parse existing testify.json: ${error}`,
+          ConfigMessages.failedToParseConfig(error),
         );
       }
     }
@@ -26,11 +27,11 @@ export class ConfigManager {
 
     try {
       fs.writeFileSync(jsonPath, JSON.stringify(defaultConfig, null, 2));
-      logger.println(`Created default test runner config at ${jsonPath}`);
+      logger.println(ConfigMessages.createdDefaultConfig(jsonPath));
     } catch (error) {
       throw new ExitCodeError(
         EXIT_CODES.CONFIG_ERROR,
-        `Failed to create default testify.json: ${error}`,
+        ConfigMessages.failedToCreateConfig(error),
       );
     }
 
@@ -83,7 +84,7 @@ export class ConfigManager {
     const jsonPath = norm(configPath || path.resolve(process.cwd(), 'testify.json'));
 
     if (fs.existsSync(jsonPath)) {
-      logger.println(`Config already exists at ${jsonPath}`);
+      logger.println(ConfigMessages.configAlreadyExists(jsonPath));
       return;
     }
 
@@ -93,10 +94,10 @@ export class ConfigManager {
     } catch (error) {
       throw new ExitCodeError(
         EXIT_CODES.CONFIG_ERROR,
-        `Failed to write testify.json: ${error}`,
+        ConfigMessages.failedToWriteConfig(error),
       );
     }
-    logger.println(`Generated default Vite Jasmine config at ${jsonPath}`);
+    logger.println(ConfigMessages.generatedDefaultConfig(jsonPath));
   }
 
   static loadViteJasmineBrowserConfig(configPath?: string): ViteJasmineConfig {

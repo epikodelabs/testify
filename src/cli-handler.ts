@@ -6,6 +6,7 @@ import { ProcessLock } from "./process-lock";
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { ViteJasmineRunner } from "./vite-jasmine-runner";
 import { EXIT_CODES, getExitCode } from "./exit-codes";
+import { CLIMessages } from "./log-messages";
 
 export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineRunner {
   return new ViteJasmineRunner(config);
@@ -55,7 +56,7 @@ export class CLIHandler {
       const raw = args[seedIndex + 1];
       const parsed = raw !== undefined && raw !== '' ? Number(raw) : NaN;
       if (!Number.isFinite(parsed)) {
-        logger.error('ERROR: Invalid --seed value (expected a number).');
+        logger.error(CLIMessages.invalidSeed());
         process.exit(EXIT_CODES.INVALID_USAGE);
       }
       seedValue = parsed;
@@ -65,7 +66,7 @@ export class CLIHandler {
       if (browserIndex + 1 < args.length && !args[browserIndex + 1].startsWith('-')) {
         browserName = args[browserIndex + 1];
       } else {
-        logger.error('ERROR: --browser requires a browser name (chrome|chromium|firefox|webkit|node).');
+        logger.error(CLIMessages.browserArgMissing());
         process.exit(EXIT_CODES.INVALID_USAGE);
       }
     }
@@ -73,7 +74,7 @@ export class CLIHandler {
     if (hasProjectArg && projectIndex + 1 < args.length) {
       projectValue = args[projectIndex + 1];
     } else if (hasProjectArg) {
-      logger.error('ERROR: --project requires a package name or path.');
+      logger.error(CLIMessages.projectArgMissing());
       process.exit(EXIT_CODES.INVALID_USAGE);
     }
 
@@ -92,7 +93,7 @@ export class CLIHandler {
       if (browserName === 'node') invalidFlags.push('--browser node');
 
       if (invalidFlags.length > 0) {
-        logger.error(`ERROR: The --watch flag cannot be used with: ${invalidFlags.join(', ')}`);
+        logger.error(CLIMessages.watchIncompatibleFlags(invalidFlags));
         process.exit(EXIT_CODES.INVALID_USAGE);
       }
     }
@@ -117,7 +118,7 @@ export class CLIHandler {
         if (resolved) {
           projectValue = resolved;
         } else {
-          logger.error(`ERROR: Could not resolve project "${projectValue}". It is not a directory and not a known package name.`);
+          logger.error(CLIMessages.couldNotResolveProject(projectValue));
           process.exit(EXIT_CODES.INVALID_USAGE);
         }
       }
@@ -148,7 +149,7 @@ export class CLIHandler {
       }
 
       if (config.preserveOutputs) {
-        logger.println('Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).');
+        logger.println(CLIMessages.preserveOutputsEnabled());
       }
 
       const lock = new ProcessLock(config.project, config.port ?? 8888);
@@ -166,41 +167,14 @@ export class CLIHandler {
 
       lock.releaseSync();
     } catch (error) {
-      logger.error(`ERROR: Failed to start test runner: ${error}`);
+      logger.error(CLIMessages.failedToStartTestRunner(error));
       process.exit(getExitCode(error));
     }
   }
 
   private static printHelp(): void {
-    logger.println('testify - run your Jasmine tests across browsers, headless, or Node.js.');
-    logger.println('');
-    logger.println('Usage:');
-    logger.println('  npx testify [options]');
-    logger.println('  npx testify init               # scaffold testify.json');
-    logger.println('');
-    logger.println('Options:');
-    logger.println('  --headless           Run tests in the default Playwright browser without UI');
-    logger.println('  --browser <name>     Target browser (chrome|chromium|firefox|webkit|node)');
-    logger.println('  --watch              Launch browser mode + HMR for rapid feedback (cannot be headless)');
-    logger.println('  --coverage           Generate Istanbul coverage reports after the run');
-    logger.println('  --seed <number>      Seed used for randomization order');
-    logger.println('  --silent / --quiet    Suppress console logs when running in Node.js mode');
-    logger.println('  --preserve           Skip regenerating index.html and test-runner.js when outputs exist');
-    logger.println('  --ansi               Force ANSI colors and symbols, even in non-TTY environments');
-    logger.println('  --project <name>     Run tests only for the specified package or directory');
-    logger.println('  --exclusive          Close any previously running testify instance before starting');
-    logger.println('  --help, -h           Show this help message');
-    logger.println('');
-    logger.println('Configuration:');
-    logger.println('  testify.json keeps your src/test dirs, browser, port, coverage, and HTML options.');
-    logger.println('  Use --preserve after the first run if you need to debug manually generated assets.');
-    logger.println('');
-    logger.println('Tip:');
-    logger.println('  npx testify --browser node              # fastest Node.js test execution');
-    logger.println('  npx testify --headless                  # run headless Chrome for browser APIs');
-    logger.println('');
-    logger.println('Playwright Browsers:');
-    logger.println('  npx playwright install                         # install all supported browsers');
-    logger.println('  npx playwright install chromium                # install only Chromium');
+    for (const line of CLIMessages.helpLines()) {
+      logger.println(line);
+    }
   }
 }

@@ -5,6 +5,7 @@ import { norm } from './utils';
 import { fileURLToPath } from 'url';
 import { FileDiscoveryService } from './file-discovery-service';
 import { logger } from './console-repl';
+import { HtmlMessages } from './log-messages';
 
 export class HtmlGenerator {
   constructor(private fileDiscovery: FileDiscoveryService, private config: ViteJasmineConfig) { }
@@ -20,7 +21,7 @@ export class HtmlGenerator {
       .sort();
 
     if (builtFiles.length === 0) {
-      logger.println('⚠️  No JS files found for HTML generation.');
+      logger.println(HtmlMessages.noJsFilesForHtml());
       return;
     }
 
@@ -34,7 +35,7 @@ export class HtmlGenerator {
     const htmlContent = this.generateHtmlTemplate(imports, faviconTag);
     const htmlPath = norm(path.join(htmlDir, 'index.html'));
     fs.writeFileSync(htmlPath, htmlContent);
-    logger.println(`📄 Generated test page: ${norm(path.relative(this.config.outDir, htmlPath))}`);
+    logger.println(HtmlMessages.generatedTestPage(norm(path.relative(this.config.outDir, htmlPath))));
   }
 
   async generateHtmlFileWithHmr() {
@@ -47,7 +48,7 @@ export class HtmlGenerator {
     const htmlContent = this.generateHtmlTemplateWithHmr(faviconTag);
     const htmlPath = norm(path.join(htmlDir, 'index.html'));
     fs.writeFileSync(htmlPath, htmlContent);
-    logger.println(`📄 Generated HMR-enabled test page: ${norm(path.relative(this.config.outDir, htmlPath))}`);
+    logger.println(HtmlMessages.generatedHmrTestPage(norm(path.relative(this.config.outDir, htmlPath))));
   }
 
   private getFaviconTag(): string {
@@ -60,7 +61,7 @@ export class HtmlGenerator {
       const faviconBase64 = faviconData.toString('base64');
       return `<link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,${faviconBase64}">`;
     } else {
-      logger.println(`⚠️  Favicon not found at ${faviconPath}, using default <link>`);
+      logger.println(HtmlMessages.faviconNotFound(faviconPath));
       return `<link rel="icon" href="favicon.ico" type="image/x-icon" />`;
     }
   }

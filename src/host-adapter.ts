@@ -1,6 +1,7 @@
 // host-adapter.ts
 import { ChildProcess } from 'node:child_process';
 import { logger } from './console-repl';
+import { HostAdapterMessages } from './log-messages';
 
 export class HostAdapter {
   private queue: Array<() => Promise<void>> = [];
@@ -36,7 +37,7 @@ export class HostAdapter {
       try {
         await task();
       } catch (err) {
-        logger.error(`❌ Error processing IPC event: ${(err as Error).message}`);
+        logger.error(HostAdapterMessages.ipcEventError((err as Error).message));
       }
     }
 
@@ -50,7 +51,7 @@ export class HostAdapter {
         break;
 
       case 'ready':
-        logger.println('🟢 Child test process ready');
+        logger.println(HostAdapterMessages.childProcessReady());
         this.child.send({ type: 'hostReady', timestamp: Date.now() });
         break;
 
@@ -85,7 +86,7 @@ export class HostAdapter {
         break;
 
       default:
-        logger.println(`⚠️ Unknown message type: ${type}`);
+        logger.println(HostAdapterMessages.unknownMessageType(type));
     }
   }
 
