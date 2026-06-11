@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.27] - 2026-06-11
+
+### Fixed
+- **Restored Unicode box drawing in TTY mode**: The console reporter once again uses proper Unicode box-drawing borders (┌─┐│└─┘) when running in a TTY, while `--ansi` mode correctly keeps ASCII boxes.
+- **Coverage report output**: Coverage text reports now bypass prompt detection by using raw output, preventing formatting artifacts in printed reports.
+
 ## [1.0.26] - 2026-06-11
 
 ### Changed
@@ -36,6 +42,9 @@ Single `Ctrl+C` now aborts the current run and exits cleanly, double `Ctrl+C` ha
 
 Initial public release of `testify` with browser-based Jasmine runner, CLI binaries with shebang support, watch mode with hot module reloading, WebSocket-based event forwarding, Istanbul coverage support, and VS Code debug integration.
 
+[1.0.27]: https://github.com/epikodelabs/testify/compare/1.0.26...1.0.27
+[1.0.26]: https://github.com/epikodelabs/testify/compare/1.0.25...1.0.26
+[1.0.25]: https://github.com/epikodelabs/testify/compare/1.0.24...1.0.25
 [1.0.24]: https://github.com/epikodelabs/testify/compare/1.0.23...1.0.24
 [1.0.23]: https://github.com/epikodelabs/testify/compare/1.0.22...1.0.23
 [1.0.22]: https://github.com/epikodelabs/testify/compare/1.0.20...1.0.22
