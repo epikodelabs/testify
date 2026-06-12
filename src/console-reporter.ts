@@ -909,17 +909,33 @@ export class ConsoleReporter {
         }
 
         const details = statusParts.length ? this.colored("gray", ` (${statusParts.join(", ")})`) : "";
-        // Use brighter color for incomplete suites
-        const desc = suite.status === "incomplete" ? this.colored("yellow", suite.description) : suite.description;
+        // Truncate description so status details stay on the same line.
+        const rawDesc = suite.description;
+        const statusSymbol = this.colored(color, symbol);
+        const prefix = `${indent}${statusSymbol} `;
+        const availableForDesc = Math.max(0, this.lineWidth - visibleWidth(prefix) - visibleWidth(details));
+        const truncatedDesc =
+          availableForDesc > 0 && visibleWidth(rawDesc) > availableForDesc
+            ? this.truncateString(rawDesc, availableForDesc)
+            : rawDesc;
+        const desc = suite.status === "incomplete" ? this.colored("yellow", truncatedDesc) : truncatedDesc;
 
-        this.print(`${indent}${this.colored(color, symbol)} ${desc}${details}\n`);
+        this.print(`${prefix}${desc}${details}\n`);
       } else if (childHasProblems) {
         // Visual grouping for parent of problem children
         const hasNonSkippedChildProblems = suite.children.some(c =>
           ["failed", "pending", "incomplete"].includes(c.status!)
         );
         if (hasNonSkippedChildProblems) {
-          this.print(`${indent}${this.colored("brightBlue", SYMBOLS.arrow_down_right)} ${this.colored("dim", suite.description)}\n`);
+          const arrow = this.colored("brightBlue", SYMBOLS.arrow_down_right);
+          const prefix = `${indent}${arrow} `;
+          const rawDesc = suite.description;
+          const availableForDesc = Math.max(0, this.lineWidth - visibleWidth(prefix));
+          const truncatedDesc =
+            availableForDesc > 0 && visibleWidth(rawDesc) > availableForDesc
+              ? this.truncateString(rawDesc, availableForDesc)
+              : rawDesc;
+          this.print(`${prefix}${this.colored("dim", truncatedDesc)}\n`);
         }
       }
     }
@@ -1106,8 +1122,7 @@ export class ConsoleReporter {
     }
 
     this.print('\n');
-    const cwdShort = this.truncateString(this.envInfo.cwd, 45, true);
-    this.print(this.colored('cyan', '  Directory:  ') + this.colored('gray', `${cwdShort}\n`));
+    this.printLabeledField('Directory:  ', this.envInfo.cwd, 'gray', true);
   }
 
   private detectBrowser(userAgent: string): { name: string; version: string } {
@@ -1143,28 +1158,34 @@ export class ConsoleReporter {
     this.print(this.colored('bold', '  Browser/Navigator\n'));
     this.print(this.colored('gray', this.separator() + '\n'));
 
-    const shortUA = this.truncateString(userAgent.userAgent, 45);
-    this.print(this.colored('cyan', '  User Agent: ') + this.colored('white', `${shortUA}\n`));
-
-    this.print(this.colored('cyan', '  Browser:    ') + this.colored('white', `${browserName} ${browserVersion}\n`));
+    this.printLabeledField('User Agent: ', userAgent.userAgent, 'white');
+    this.printLabeledField('Browser:    ', `${browserName} ${browserVersion}`, 'white');
 
     if (userAgent.platform) {
-      this.print(this.colored('cyan', '  Platform:   ') + this.colored('white', `${userAgent.platform}\n`));
+      this.printLabeledField('Platform:   ', userAgent.platform, 'white');
     }
 
     if (userAgent.vendor) {
-      this.print(this.colored('cyan', '  Vendor:     ') + this.colored('white', `${userAgent.vendor}\n`));
+      this.printLabeledField('Vendor:     ', userAgent.vendor, 'white');
     }
 
     if (userAgent.language) {
-      this.print(this.colored('cyan', '  Language:   ') + this.colored('white', `${userAgent.language}\n`));
+      this.printLabeledField('Language:   ', userAgent.language, 'white');
     }
 
     if (userAgent.languages?.length > 0) {
       const langs = userAgent.languages.join(', ');
-      const shortLangs = this.truncateString(langs, 40);
-      this.print(this.colored('cyan', '  Languages:  ') + this.colored('white', `${shortLangs}\n`));
+      this.printLabeledField('Languages:  ', langs, 'white');
     }
+  }
+
+  private printLabeledField(label: string, value: string, valueColor: string, fromStart: boolean = false): void {
+    const prefix = `  ${this.colored('cyan', label)}`;
+    const available = Math.max(0, this.lineWidth - visibleWidth(prefix));
+    const displayValue = available > 3 && visibleWidth(value) > available
+      ? this.truncateString(value, available, fromStart)
+      : value;
+    this.print(prefix + this.colored(valueColor, `${displayValue}\n`));
   }
 
   private truncateString(str: string, maxLength: number, fromStart: boolean = false): string {
