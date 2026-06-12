@@ -564,30 +564,82 @@ export class ConsoleReporter {
 
   private printSuiteLine(suite: TestSuite) {
     const suiteName = this.colored('brightBlue', suite.description);
-    const displayDots = this.getSpecDots(suite);
+    const dots = suite.specs.map(spec => this.getSpecSymbol(spec));
     const prefix = '  ';
     const maxWidth = this.lineWidth;
 
     const visibleNameLength = visibleWidth(suiteName);
-    const dotsLength = visibleWidth(displayDots);
+    const dotsLength = dots.reduce((sum, dot) => sum + visibleWidth(dot), 0);
     const totalLength = prefix.length + visibleNameLength + 1 + dotsLength;
 
     if (totalLength <= maxWidth) {
       // Fits on one line
       const spaces = ' '.repeat(maxWidth - totalLength);
-      this.print(prefix + suiteName + ' ' + spaces + displayDots);
+      this.print(prefix + suiteName + ' ' + spaces + dots.join(''));
     } else {
-      // Does not fit, print suite name on one line and dots on the next
+      // Does not fit: use the suite-name line too, then wrap remaining dots right-aligned
       const availableForName = maxWidth - prefix.length;
       let truncatedName = suiteName;
       if (visibleNameLength > availableForName) {
-        // Truncate name if needed
+        // Truncate name with three dots if it does not fit on its own line
         const rawName = suite.description;
-        const ellipsis = '…';
-        truncatedName = this.colored('brightBlue', rawName.substring(0, availableForName - 1) + ellipsis);
+        const ellipsis = '...';
+        truncatedName = this.colored('brightBlue', rawName.substring(0, Math.max(0, availableForName - ellipsis.length)) + ellipsis);
       }
+
       this.print(prefix + truncatedName);
-      this.print('\n' + prefix + displayDots);
+
+      // Fit as many dots as possible on the same line as the suite name, right-aligned
+      const firstLineCapacity = Math.max(0, maxWidth - prefix.length - visibleWidth(truncatedName) - 1);
+      const firstLineDots: string[] = [];
+      let firstLineWidth = 0;
+      let remainingDots = dots;
+
+      for (const dot of dots) {
+        const dotWidth = visibleWidth(dot);
+        if (firstLineWidth + dotWidth > firstLineCapacity && firstLineDots.length > 0) break;
+        firstLineDots.push(dot);
+        firstLineWidth += dotWidth;
+        remainingDots = remainingDots.slice(1);
+      }
+
+      if (firstLineDots.length > 0) {
+        const spaces = ' '.repeat(firstLineCapacity - firstLineWidth);
+        this.print(' ' + spaces + firstLineDots.join(''));
+      }
+
+      // Print remaining dots on subsequent lines, each chunk right-aligned
+      this.printWrappedDots(remainingDots, prefix, maxWidth);
+    }
+  }
+
+  private printWrappedDots(dots: string[], prefix: string, maxWidth: number) {
+    const lineCapacity = maxWidth - prefix.length;
+    if (lineCapacity <= 0) return;
+
+    let currentLineWidth = 0;
+    let currentLineDots: string[] = [];
+
+    for (const dot of dots) {
+      const dotWidth = visibleWidth(dot);
+      if (dotWidth > lineCapacity) continue; // should not happen for single-char dots
+
+      if (currentLineWidth + dotWidth > lineCapacity && currentLineDots.length > 0) {
+        // Flush current line right-aligned
+        const spaces = ' '.repeat(lineCapacity - currentLineWidth);
+        this.print('\n' + prefix + spaces + currentLineDots.join(''));
+        currentLineDots = [];
+        currentLineWidth = 0;
+      }
+
+      currentLineDots.push(dot);
+      currentLineWidth += dotWidth;
+    }
+
+    // Flush remaining dots
+    if (currentLineDots.length > 0) {
+      const spaces = ' '.repeat(lineCapacity - currentLineWidth);
+      this.print('\n' + prefix + spaces + currentLineDots.join(''));
     }
   }
 
