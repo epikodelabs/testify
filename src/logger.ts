@@ -76,7 +76,7 @@ export class Logger {
         break;
     }
 
-    if (this.isTty) {
+    if (this.isTty && !isAnsiMode()) {
       const iconStr = icon ? `${icon} ` : '';
       const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
       messageContent = prefixMatch && prefixMatch[1] ? prefixMatch[1] : rawMessage;

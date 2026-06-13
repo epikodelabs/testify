@@ -16,6 +16,7 @@ import { WebSocketManager } from './websocket-manager';
 import { CoverageReportGenerator } from './coverage-report-generator';
 import { HmrManager } from './hmr-manager';
 import { logger } from './logger';
+import { setAnsiMode } from './symbols';
 import { RunnerMessages } from './log-messages';
 import { ExitCodeError, EXIT_CODES } from './exit-codes';
 
@@ -81,6 +82,10 @@ export class ViteJasmineRunner extends EventEmitter {
       testDirs: normalizedTestDirs,
       outDir: norm(config.outDir ?? path.join(cwd, 'dist/.vite-jasmine-build/')),
     };
+
+    if (this.config.ansi) {
+      setAnsiMode();
+    }
 
     this.fileDiscovery = new FileDiscoveryService(this.config);
     this.viteConfigBuilder = new ViteConfigBuilder(this.config);

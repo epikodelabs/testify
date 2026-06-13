@@ -18,6 +18,7 @@ export function setAnsiMode(value = true): void {
   ansiMode = value;
   if (value) {
     process.env.NO_EMOJI = '1';
+    process.env.NO_COLOR = '1';
   }
 }
 

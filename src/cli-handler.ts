@@ -142,6 +142,10 @@ export class CLIHandler {
         ansi: ansiFlag ? true : config.ansi,
       };
 
+      if (config.ansi) {
+        setAnsiMode();
+      }
+
       if (seedValue !== undefined) {
         const env = config.jasmineConfig?.env ?? {};
         config.jasmineConfig = {

@@ -132,7 +132,7 @@ export const CLIMessages = {
     '  --seed <number>      Seed used for randomization order',
     '  --silent / --quiet    Suppress console logs when running in Node.js mode',
     '  --preserve           Skip regenerating index.html and test-runner.js when outputs exist',
-    '  --ansi               Force ANSI colors and symbols, even in non-TTY environments',
+    '  --ansi               Use plain ASCII output (no colors, emoji, or cursor control)',
     '  --project <name>     Run tests only for the specified package or directory',
     '  --exclusive          Close any previously running testify instance before starting',
     '  --help, -h           Show this help message',
