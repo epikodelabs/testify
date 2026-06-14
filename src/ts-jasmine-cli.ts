@@ -13,7 +13,7 @@ import { EXIT_CODES, getSignalExitCode } from './exit-codes';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const packageRoot = norm(path.resolve(__dirname, '..'));
-const packageRequire = createRequire(path.join(packageRoot, 'package.json'));
+const packageRequire = createRequire(import.meta.url);
 
 interface RunnerArgs {
   spec: string;
