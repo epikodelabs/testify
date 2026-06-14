@@ -32,3 +32,10 @@ export function supportsEmoji(): boolean {
   if (process.env.FORCE_EMOJI) return true;
   return process.stdout.isTTY ?? false;
 }
+
+export function supportsColor(): boolean {
+  if (ansiMode) return false;
+  if (process.env.NO_COLOR) return false;
+  if (process.env.FORCE_COLOR === '1' || process.env.FORCE_COLOR === 'true' || process.env.FORCE_COLOR) return true;
+  return process.stdout.isTTY ?? false;
+}

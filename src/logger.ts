@@ -1,5 +1,4 @@
-import * as tty from 'tty';
-import { isAnsiMode } from './ansi-constants';
+import { supportsColor } from './ansi-constants';
 import { LOG_MESSAGES, LogMessageTemplate } from '../messages';
 import { replacePlaceholders } from './symbols';
 
@@ -25,7 +24,6 @@ interface LoggedLine {
 }
 
 export class Logger {
-  private readonly isTty: boolean;
   private previousLines: LoggedLine[] = [];
   private showPrompt = true;
   private prompt: string;
@@ -34,7 +32,6 @@ export class Logger {
   private plainErrorPrompt = '> ';
 
   constructor() {
-    this.isTty = tty.isatty(process.stdout.fd);
     this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;
     this.errorPrompt = `${colors.brightRed}> ${colors.reset}`;
   }
@@ -76,7 +73,7 @@ export class Logger {
         break;
     }
 
-    if (this.isTty && !isAnsiMode()) {
+    if (supportsColor()) {
       const iconStr = icon ? `${icon} ` : '';
       const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
       messageContent = prefixMatch && prefixMatch[1] ? prefixMatch[1] : rawMessage;
@@ -93,7 +90,7 @@ export class Logger {
 
   print(msg: string) {
     msg = replacePlaceholders(msg);
-    const prompt = isAnsiMode() ? this.plainPrompt : this.prompt;
+    const prompt = supportsColor() ? this.prompt : this.plainPrompt;
     const fullMessage = this.showPrompt ? prompt + msg : msg;
     const lines = fullMessage.split('\n');
     for (let i = 0; i < lines.length; i++) {
@@ -128,7 +125,7 @@ export class Logger {
 
   error(msg: string) {
     msg = replacePlaceholders(msg);
-    const prompt = isAnsiMode() ? this.plainErrorPrompt : this.errorPrompt;
+    const prompt = supportsColor() ? this.errorPrompt : this.plainErrorPrompt;
     const fullMessage = this.showPrompt ? prompt + msg : msg;
     const lines = fullMessage.split('\n');
     for (let i = 0; i < lines.length; i++) {
@@ -142,7 +139,7 @@ export class Logger {
   }
 
   clearLine() {
-    if (isAnsiMode()) return;
+    if (!supportsColor()) return;
     process.stdout.write('\r\x1b[K');
   }
 
@@ -165,11 +162,11 @@ export class Logger {
   // ─── Internal helpers ────────────────────────────────────
 
   private writeLine(line: string, color = '') {
-    if (isAnsiMode()) {
-      process.stdout.write(line);
-    } else {
+    if (supportsColor()) {
       this.clearLine();
       process.stdout.write(color + line + colors.reset);
+    } else {
+      process.stdout.write(line);
     }
   }
 

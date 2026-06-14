@@ -364,6 +364,8 @@ export class ConsoleReporter {
       // Fallback to root if somehow outside any suite
       this.rootSuite.specs.push(spec);
     }
+
+    this.updateStatusLine();
   }
 
   specDone(result: any) {
@@ -401,6 +403,7 @@ export class ConsoleReporter {
     }
 
     this.currentSpec = null;
+    this.updateStatusLine();
   }
 
   suiteDone(result: any) {
@@ -428,6 +431,8 @@ export class ConsoleReporter {
         : Date.now() - this.startTime;
 
     const totalTime = totalTimeMs / 1000;
+
+    this.clearCurrentLine();
 
     // Filter out stale specs (e.g., retried specs that later passed)
     const actualFailedSpecs = this.failedSpecs.filter(s => s.status === 'failed' || s.overallStatus === 'failed');
@@ -496,6 +501,14 @@ export class ConsoleReporter {
     }
     this.interrupted = true;
 
+    if (this.isTTY) {
+      // Clear the status line (which is on the line above)
+      this.print('\r\x1b[1A'); // Move up one line
+      this.clearCurrentLine();  // Clear that line
+      this.clearCurrentLine();  // Clear current line
+      this.print('\n');
+    }
+
     // Mark all unexecuted specs as skipped
     this.markUnexecutedAsSkipped();
 
@@ -558,6 +571,24 @@ export class ConsoleReporter {
 
   private removeInterruptHandler() {
     // Intentionally no-op: the CLI owns signal handling.
+  }
+
+  private clearCurrentLine() {
+    if (!this.isTTY) return;
+    this.print('\x1b[2K\r');
+  }
+
+  private updateStatusLine() {
+    if (!this.isTTY || !this.currentSuite) return;
+
+    const total = this.specById.size;
+    if (total === 0) return;
+
+    const suiteName = this.currentSuite.description;
+    const statusText = `\n  ${this.colored('dim', SYMBOLS.arrow)} ${suiteName} ${this.colored('gray', `(${this.specCount}/${total})`)}`;
+    this.clearCurrentLine();
+    this.print(statusText);
+    this.print('\r\x1b[1A');
   }
 
   private printSuiteLine(suite: TestSuite) {
