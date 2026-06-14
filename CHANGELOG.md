@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **TTY progress prompt**: Restored the live progress indicator in TTY mode, now showing the current suite name with the executed/total spec count (`-> suiteName (current/total)`).
+
+### Fixed
+- **Log file ANSI artifacts**: Logger output no longer emits ANSI escape sequences (color codes and line-clearing sequences) when stdout is redirected to a file or otherwise not a TTY. Also respects `NO_COLOR` and `FORCE_COLOR`.
+
 ## [1.0.27] - 2026-06-11
 
 ### Fixed
