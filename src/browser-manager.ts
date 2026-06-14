@@ -1,7 +1,7 @@
 import { logger } from './logger';
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import type * as PlayWright from 'playwright';
-import { EXIT_CODES } from './exit-codes';
+import { EXIT_CODES, ExitCodeError } from './exit-codes';
 import { BrowserMessages } from './log-messages';
 
 export class BrowserManager {
@@ -118,7 +118,7 @@ export class BrowserManager {
       if (interrupted || error === interruptError) {
         logger.printRaw('\n\n');
         logger.println(BrowserMessages.testsAbortedByUser());
-        return false;
+        throw new ExitCodeError(EXIT_CODES.SIGINT, 'Tests aborted by user');
       }
       logger.error(BrowserMessages.testExecutionFailed(error));
       throw error;
@@ -133,7 +133,7 @@ export class BrowserManager {
 
   async openBrowser(
     port: number,
-    onBrowserClose?: () => Promise<void>,
+    onBrowserClose?: () => Promise<number | void>,
     options?: { exitOnClose?: boolean }
   ): Promise<void> {
     let browserName = this.config.browser || 'chrome';
@@ -165,9 +165,7 @@ export class BrowserManager {
       const exitOnClose = options?.exitOnClose !== false;
       page.on('close', () => {
         Promise.resolve(onBrowserClose?.()).then(() => {
-          if (exitOnClose && !onBrowserClose) {
-            process.exit(EXIT_CODES.SUCCESS);
-          }
+          // The caller is responsible for process exit; do not kill the process here.
         }).catch(() => {}).finally(() => {
           this.clearBrowserState();
         });

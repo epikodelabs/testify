@@ -5,7 +5,7 @@ import { PackageResolver } from "./package-resolver";
 import { ProcessLock } from "./process-lock";
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { ViteJasmineRunner } from "./vite-jasmine-runner";
-import { EXIT_CODES, getExitCode } from "./exit-codes";
+import { EXIT_CODES, ExitCodeError, getExitCode } from "./exit-codes";
 import { CLIMessages } from "./log-messages";
 import { setAnsiMode } from "./symbols";
 
@@ -23,10 +23,22 @@ export class CLIHandler {
     }
   }
 
-  static async run(): Promise<void> {
+  static async run(): Promise<number> {
+    let shuttingDown = false;
     process.on('SIGINT', async () => {
-      await this.cleanup();
-      process.exit(EXIT_CODES.SIGINT);
+      if (shuttingDown) return;
+      shuttingDown = true;
+
+      const exitCode = this.runner?.abort('SIGINT') ?? EXIT_CODES.SIGINT;
+      try {
+        await Promise.race([
+          this.cleanup(),
+          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('cleanup timeout')), 5000))
+        ]);
+      } catch {
+        // Cleanup timed out or failed; force exit anyway.
+      }
+      process.exit(exitCode);
     });
 
     const args = process.argv.slice(2);
@@ -34,7 +46,7 @@ export class CLIHandler {
 
     if (helpRequested) {
       this.printHelp();
-      return;
+      return EXIT_CODES.SUCCESS;
     }
 
     const initOnly = args.includes('init');
@@ -46,19 +58,21 @@ export class CLIHandler {
     const ansiFlag = args.includes('--ansi');
     const seedIndex = args.findIndex((a) => a === '--seed');
     const projectIndex = args.findIndex((a) => a === '--project');
+    const portIndex = args.findIndex((a) => a === '--port');
     const silentLogs = args.includes('--silent') || args.includes('--quiet');
     const hasBrowserArg = browserIndex !== -1;
     const hasProjectArg = projectIndex !== -1;
     let browserName = 'chrome';
     let seedValue: number | undefined;
     let projectValue: string | undefined;
+    let portValue: number | undefined;
 
     if (seedIndex !== -1) {
       const raw = args[seedIndex + 1];
       const parsed = raw !== undefined && raw !== '' ? Number(raw) : NaN;
       if (!Number.isFinite(parsed)) {
         logger.error(CLIMessages.invalidSeed());
-        process.exit(EXIT_CODES.INVALID_USAGE);
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid seed value');
       }
       seedValue = parsed;
     }
@@ -68,7 +82,7 @@ export class CLIHandler {
         browserName = args[browserIndex + 1];
       } else {
         logger.error(CLIMessages.browserArgMissing());
-        process.exit(EXIT_CODES.INVALID_USAGE);
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Missing browser argument');
       }
     }
 
@@ -76,7 +90,22 @@ export class CLIHandler {
       projectValue = args[projectIndex + 1];
     } else if (hasProjectArg) {
       logger.error(CLIMessages.projectArgMissing());
-      process.exit(EXIT_CODES.INVALID_USAGE);
+      throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Missing project argument');
+    }
+
+    const hasPortArg = portIndex !== -1;
+    if (hasPortArg) {
+      if (portIndex + 1 < args.length && !args[portIndex + 1].startsWith('-')) {
+        const parsed = Number(args[portIndex + 1]);
+        if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535 || !Number.isInteger(parsed)) {
+          logger.error(CLIMessages.invalidPort());
+          throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid port value');
+        }
+        portValue = parsed;
+      } else {
+        logger.error(CLIMessages.portArgMissing());
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Missing port argument');
+      }
     }
 
     const preserveOutputsFlag = args.includes('--preserve');
@@ -84,7 +113,7 @@ export class CLIHandler {
 
     if (initOnly) {
       ConfigManager.initViteJasmineConfig();
-      return;
+      return EXIT_CODES.SUCCESS;
     }
 
     if (watch) {
@@ -95,7 +124,7 @@ export class CLIHandler {
 
       if (invalidFlags.length > 0) {
         logger.error(CLIMessages.watchIncompatibleFlags(invalidFlags));
-        process.exit(EXIT_CODES.INVALID_USAGE);
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, `Incompatible watch flags: ${invalidFlags.join(', ')}`);
       }
     }
 
@@ -120,7 +149,7 @@ export class CLIHandler {
           projectValue = resolved;
         } else {
           logger.error(CLIMessages.couldNotResolveProject(projectValue));
-          process.exit(EXIT_CODES.INVALID_USAGE);
+          throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, `Could not resolve project: ${projectValue}`);
         }
       }
 
@@ -139,6 +168,7 @@ export class CLIHandler {
         testDirs: normalizeDirConfig(config.testDirs, './tests'),
         preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,
         project: projectValue ?? config.project,
+        port: portValue ?? config.port,
         ansi: ansiFlag ? true : config.ansi,
       };
 
@@ -168,16 +198,13 @@ export class CLIHandler {
       const runner = createViteJasmineRunner(config);
       this.runner = runner;
 
-      if (watch) {
-        await runner.watch();
-      } else {
-        await runner.start();
-      }
+      const exitCode = watch ? await runner.watch() : await runner.start();
 
       lock.releaseSync();
+      return exitCode;
     } catch (error) {
       logger.error(CLIMessages.failedToStartTestRunner(error));
-      process.exit(getExitCode(error));
+      return getExitCode(error);
     }
   }
 

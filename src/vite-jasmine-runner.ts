@@ -185,7 +185,11 @@ export class ViteJasmineRunner extends EventEmitter {
     await this.httpServerManager.cleanup();
   }
 
-  async start(): Promise<void> {
+  abort(message?: string): number {
+    return this.consoleReporter.testsAborted(message);
+  }
+
+  async start(): Promise<number> {
     if (this.config.watch) {
       // if watch mode requested, redirect to dedicated watch() entry
       return this.watch();
@@ -197,34 +201,34 @@ export class ViteJasmineRunner extends EventEmitter {
       await this.preprocess();
     } catch (error) {
       logger.error(RunnerMessages.buildFailed(error));
-      process.exit(error instanceof ExitCodeError ? error.exitCode : EXIT_CODES.INTERNAL_ERROR);
+      throw error instanceof ExitCodeError ? error : new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, String(error));
     }
 
     if (this.config.headless && this.config.browser !== 'node') {
-      await this.runHeadlessBrowserMode();
+      return await this.runHeadlessBrowserMode();
     } else if (this.config.headless && this.config.browser === 'node') {
-      await this.runHeadlessNodeMode();
+      return await this.runHeadlessNodeMode();
     } else if (!this.config.headless && this.config.browser === 'node') {
       logger.error(RunnerMessages.invalidNodeHeadedMode());
-      process.exit(EXIT_CODES.CONFIG_ERROR);
+      return EXIT_CODES.CONFIG_ERROR;
     } else {
-      await this.runHeadedBrowserMode();
+      return await this.runHeadedBrowserMode();
     }
   }
 
-  async watch(): Promise<void> {
+  async watch(): Promise<number> {
     if (this.config.headless || this.config.browser === 'node') {
       logger.error(RunnerMessages.watchOnlyHeaded());
-      process.exit(EXIT_CODES.CONFIG_ERROR);
+      return EXIT_CODES.CONFIG_ERROR;
     }
 
     this.config.watch = true;
     logger.println(RunnerMessages.startingWatchMode());
     await this.preprocess();
-    await this.runWatchMode();
+    return await this.runWatchMode();
   }
 
-  private async runWatchMode(): Promise<void> {
+  private async runWatchMode(): Promise<number> {
     logger.println(RunnerMessages.startingHmrWatcher());
 
     const server = await this.httpServerManager.startServer();
@@ -239,22 +243,26 @@ export class ViteJasmineRunner extends EventEmitter {
     logger.println(RunnerMessages.pressCtrlCToStop());
 
     let shuttingDown = false;
+    let watchFinishedResolve: ((code: number) => void) | null = null;
+    const watchFinishedPromise = new Promise<number>((resolve) => {
+      watchFinishedResolve = resolve;
+    });
+
     const onBrowserClose = async () => {
       if (shuttingDown) return;
+      shuttingDown = true;
       logger.println(RunnerMessages.browserWindowClosed());
       await this.cleanup();
-      process.exit(EXIT_CODES.SUCCESS);
+      watchFinishedResolve?.(EXIT_CODES.SUCCESS);
     };
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose, { exitOnClose: false });
 
-    
-
-    // Keep the runner alive until an explicit shutdown signal/browser close.
-    await new Promise(() => {});
+    // Keep the runner alive until an explicit shutdown signal or browser close.
+    return watchFinishedPromise;
   }
 
-  private async runHeadlessBrowserMode(): Promise<void> {
+  private async runHeadlessBrowserMode(): Promise<number> {
     const server = await this.httpServerManager.startServer();
     await this.httpServerManager.waitForServerReady(`http://localhost:${this.config.port}/index.html`, 10000);
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
@@ -262,6 +270,10 @@ export class ViteJasmineRunner extends EventEmitter {
     let testSuccess = false;
     let testHasPending = false;
     let coveragePromise: Promise<void> | undefined;
+    let testsCompletedResolve: (() => void) | null = null;
+    const testsCompletedPromise = new Promise<void>((resolve) => {
+      testsCompletedResolve = resolve;
+    });
     this.webSocketManager.on('testsCompleted', ({ success, hasPending, coverage }) => {
       testSuccess = success;
       testHasPending = hasPending;
@@ -269,6 +281,7 @@ export class ViteJasmineRunner extends EventEmitter {
         const cov = new CoverageReportGenerator();
         coveragePromise = cov.generate(coverage);
       }
+      testsCompletedResolve?.();
     });
 
     const browserType = await this.browserManager.checkBrowser(this.config.browser!);
@@ -278,26 +291,39 @@ export class ViteJasmineRunner extends EventEmitter {
       this.nodeTestRunner.generateTestRunner();
       const exitCode = await this.nodeTestRunner.start();
       await this.cleanup();
-      process.exit(exitCode);
+      return exitCode;
     }
 
     try {
       await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
+      // Wait for the jasmineDone WebSocket message to be processed so the final
+      // summary is printed before we tear down the WebSocket server and exit.
+      const testsCompletedTimeout = new Promise<void>((_, reject) => {
+        setTimeout(() => reject(new Error('Timed out waiting for test completion message')), 5000);
+      });
+      await Promise.race([testsCompletedPromise, testsCompletedTimeout]).catch((error) => {
+        logger.println(RunnerMessages.testsCompletedTimeout(error.message));
+      });
       if (coveragePromise) await coveragePromise;
       await this.cleanup();
       if (!testSuccess) {
-        process.exit(EXIT_CODES.TEST_FAILURES);
+        return EXIT_CODES.TEST_FAILURES;
       }
-      process.exit(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
+      return testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS;
     } catch (error) {
+      if (error instanceof ExitCodeError) {
+        if (coveragePromise) await coveragePromise.catch(() => {});
+        await this.cleanup();
+        return error.exitCode;
+      }
       logger.error(RunnerMessages.browserTestExecutionFailed());
       if (coveragePromise) await coveragePromise.catch(() => {});
       await this.cleanup();
-      process.exit(EXIT_CODES.INTERNAL_ERROR);
+      return EXIT_CODES.INTERNAL_ERROR;
     }
   }
 
-  private async runHeadlessNodeMode(): Promise<void> {
+  private async runHeadlessNodeMode(): Promise<number> {
     try {
       const exitCode = await this.nodeTestRunner.start();
       if (this.config.coverage) {
@@ -305,14 +331,14 @@ export class ViteJasmineRunner extends EventEmitter {
         const cov = new CoverageReportGenerator();
         await cov.generate(coverage);
       }
-      process.exit(exitCode);
+      return exitCode;
     } catch (error: any) {
       logger.error(RunnerMessages.nodeTestExecutionFailed(error.message ?? String(error)));
-      process.exit(EXIT_CODES.INTERNAL_ERROR);
+      return EXIT_CODES.INTERNAL_ERROR;
     }
   }
 
-  private async runHeadedBrowserMode(): Promise<void> {
+  private async runHeadedBrowserMode(): Promise<number> {
     const server = await this.httpServerManager.startServer();
     let testsCompleted = false;
     let testSuccess = false;
@@ -341,8 +367,12 @@ export class ViteJasmineRunner extends EventEmitter {
       finishHeadedRunPromise = finishHeadedRun(coverage);
       finishHeadedRunPromise.catch((error) => {
         logger.error(RunnerMessages.finishHeadedRunFailed(error));
-        process.exit(EXIT_CODES.INTERNAL_ERROR);
       });
+    });
+
+    let runFinishedResolve: ((code: number) => void) | null = null;
+    const runFinishedPromise = new Promise<number>((resolve) => {
+      runFinishedResolve = resolve;
     });
 
     const onBrowserClose = async () => {
@@ -366,23 +396,23 @@ export class ViteJasmineRunner extends EventEmitter {
       await promise;
       // Wait for finishHeadedRun to complete before cleanup and exit
       if (finishHeadedRunPromise) {
-        await finishHeadedRunPromise;
+        await finishHeadedRunPromise.catch(() => {});
       }
       await this.cleanup();
       if (!testsCompleted) {
-        process.exit(EXIT_CODES.SIGINT);
+        runFinishedResolve?.(EXIT_CODES.SIGINT);
+        return;
       }
       if (!testSuccess) {
-        process.exit(EXIT_CODES.TEST_FAILURES);
+        runFinishedResolve?.(EXIT_CODES.TEST_FAILURES);
+        return;
       }
-      process.exit(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
+      runFinishedResolve?.(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
     };
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
 
-    
-
     // Keep the runner alive until the browser closes or an explicit shutdown signal.
-    await new Promise(() => {});
+    return runFinishedPromise;
   }
 }

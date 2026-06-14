@@ -104,6 +104,12 @@ export const CLIMessages = {
   projectArgMissing: () =>
     `%cross% --project requires a package name or path.`,
 
+  portArgMissing: () =>
+    `%cross% --port requires a number between 1 and 65535.`,
+
+  invalidPort: () =>
+    `%cross% Invalid --port value (expected an integer between 1 and 65535).`,
+
   watchIncompatibleFlags: (flags: string[]) =>
     `%cross% The --watch flag cannot be used with: ${flags.join(', ')}`,
 
@@ -130,6 +136,7 @@ export const CLIMessages = {
     '  --watch              Launch browser mode + HMR for rapid feedback (cannot be headless)',
     '  --coverage           Generate Istanbul coverage reports after the run',
     '  --seed <number>      Seed used for randomization order',
+    '  --port <number>      Override the port from testify.json',
     '  --silent / --quiet    Suppress console logs when running in Node.js mode',
     '  --preserve           Skip regenerating index.html and test-runner.js when outputs exist',
     '  --ansi               Use plain ASCII output (no colors, emoji, or cursor control)',
@@ -536,6 +543,9 @@ export const RunnerMessages = {
 
   buildingFiles: (count: number) =>
     `%box% Building ${count} files...`,
+
+  testsCompletedTimeout: (message: string) =>
+    `%warn% ${message}`,
 };
 
 // ─── websocket-manager.ts ────────────────────────────────────────────────────

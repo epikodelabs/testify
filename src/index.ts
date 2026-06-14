@@ -23,5 +23,5 @@ export { ViteJasmineRunner } from './vite-jasmine-runner';
 // === CLI Entry Point ===
 // @vite-ignore
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  CLIHandler.run();
+  CLIHandler.run().then((code) => process.exit(code)).catch(() => process.exit(1));
 }

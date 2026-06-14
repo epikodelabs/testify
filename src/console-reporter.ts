@@ -490,8 +490,10 @@ export class ConsoleReporter {
     }
   }
 
-  testsAborted(message?: string) {
-    if (this.interrupted) return;
+  testsAborted(message?: string): number {
+    if (this.interrupted) {
+      return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
+    }
     this.interrupted = true;
 
     // Mark all unexecuted specs as skipped
@@ -550,16 +552,12 @@ export class ConsoleReporter {
   }
 
   private setupInterruptHandler() {
-    if (this.interruptHandlersRegistered) return;
-    process.once('SIGINT', () => process.exit(this.testsAborted('SIGINT')));
-    process.once('SIGTERM', () => process.exit(this.testsAborted('SIGTERM')));
-    this.interruptHandlersRegistered = true;
+    // Intentionally no-op: process-lifecycle and signal handling are owned by
+    // the CLI entry point so the test runner library never kills the process.
   }
 
   private removeInterruptHandler() {
-    if (!this.interruptHandlersRegistered) return;
-    process.removeAllListeners('SIGINT');
-    process.removeAllListeners('SIGTERM');
+    // Intentionally no-op: the CLI owns signal handling.
   }
 
   private printSuiteLine(suite: TestSuite) {
