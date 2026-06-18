@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL, fileURLToPath } from 'url';
+import util from 'util';
 import { logger } from './logger';
 import { JasmineCLIMessages } from './log-messages';
 import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
@@ -136,6 +137,41 @@ function parseArgs(argv: string[]): RunnerArgs {
     help: false,
     initLaunchConfig: false,
   };
+}
+
+function safeStringify(value: unknown): string {
+  if (value instanceof Error) {
+    return value.stack ?? safeStringify(value.message);
+  }
+
+  try {
+    const str = String(value);
+    if (str !== '[object Object]') {
+      return str;
+    }
+  } catch {
+    // fall through to inspect/JSON fallback
+  }
+
+  if (value && typeof value === 'object') {
+    const constructor = (value as object).constructor?.name ?? 'Object';
+    try {
+      const inspected = util.inspect(value, { depth: 5, showHidden: true });
+      return constructor === 'Object' ? inspected : `${constructor} ${inspected}`;
+    } catch {
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        // fall through
+      }
+    }
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '[object Object]';
+  }
 }
 
 function normalizeCliArgs(args: string[]): string[] {
@@ -330,11 +366,11 @@ async function main() {
   const { jasmineEnv } = await loadJasmine();
 
   process.on('unhandledRejection', (error) => {
-    logger.error(JasmineCLIMessages.unhandledRejection(error));
+    logger.error(JasmineCLIMessages.unhandledRejection(safeStringify(error)));
     process.exit(EXIT_CODES.INTERNAL_ERROR);
   });
   process.on('uncaughtException', (error) => {
-    logger.error(JasmineCLIMessages.uncaughtException(error));
+    logger.error(JasmineCLIMessages.uncaughtException(safeStringify(error)));
     process.exit(EXIT_CODES.INTERNAL_ERROR);
   });
 
@@ -363,6 +399,16 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error(JasmineCLIMessages.failedToRunJasmine(error.stack ?? String(error)));
+  if (error instanceof Error) {
+    logger.error(JasmineCLIMessages.failedToRunJasmine(safeStringify(error)));
+  } else {
+    const stack = new Error().stack ?? '';
+    const value = safeStringify(error);
+    logger.error(
+      JasmineCLIMessages.failedToRunJasmine(
+        `thrown non-Error value: ${value}\n${stack}`,
+      ),
+    );
+  }
   process.exit(EXIT_CODES.INTERNAL_ERROR);
 });

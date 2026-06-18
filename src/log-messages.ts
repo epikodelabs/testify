@@ -458,11 +458,11 @@ export const JasmineCLIMessages = {
   updatedVsCodeLaunchConfig: (path: string) =>
     `%info% Updated VS Code launch config at ${path}`,
 
-  unhandledRejection: (error: unknown) =>
-    `%cross% ${error}`,
+  unhandledRejection: (message: string) =>
+    `%cross% ${message}`,
 
-  uncaughtException: (error: unknown) =>
-    `%cross% ${error}`,
+  uncaughtException: (message: string) =>
+    `%cross% ${message}`,
 
   failedToRunJasmine: (stack: string) =>
     `%cross% Failed to run jasmine: ${stack}`,
