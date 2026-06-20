@@ -86,6 +86,7 @@ export class BrowserManager {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
       });
+      this.currentBrowser = browser;
 
       const page = await browser.newPage();
       page.setDefaultTimeout(0);
@@ -131,12 +132,14 @@ export class BrowserManager {
       if (browser) {
         await browser.close().catch(() => {});
       }
+      this.currentBrowser = null;
     }
   }
 
   abort(signal: NodeJS.Signals): void {
     this.abortCallback?.(signal);
-    // Also close any headed/watch-mode browser immediately.
+    // Also close any browser (headed, watch, or headless) immediately so the
+    // process does not hang on long-running navigation/test execution.
     if (this.currentBrowser) {
       this.closeBrowser().catch(() => {});
     }
