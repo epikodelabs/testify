@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.0.29] - 2026-06-20
+
+### Fixed
+- **Jasmine CLI error reporting**: Errors and rejected values in the `jasmine` CLI are now safely stringified before logging, preventing crashes when handling non-Error objects or circular structures.
+- **Abort signal handling**: A single `Ctrl+C` now more reliably aborts running tests. The CLI tracks repeated `SIGINT`s and force-exits on the second press, the runner propagates the abort signal to the browser manager, and spec result counting uses client-side status values to avoid misreporting failures or pending specs.
+- **Headless browser interruption**: The headless browser is now tracked in `BrowserManager.currentBrowser` so `abort()` closes it immediately, stopping long-running navigation or test execution on the first `Ctrl+C`.
+
 ## [1.0.28] - 2026-06-11
 
 ### Fixed
@@ -48,6 +55,7 @@ Single `Ctrl+C` now aborts the current run and exits cleanly, double `Ctrl+C` ha
 
 Initial public release of `testify` with browser-based Jasmine runner, CLI binaries with shebang support, watch mode with hot module reloading, WebSocket-based event forwarding, Istanbul coverage support, and VS Code debug integration.
 
+[1.0.29]: https://github.com/epikodelabs/testify/compare/1.0.28...1.0.29
 [1.0.27]: https://github.com/epikodelabs/testify/compare/1.0.26...1.0.27
 [1.0.26]: https://github.com/epikodelabs/testify/compare/1.0.25...1.0.26
 [1.0.25]: https://github.com/epikodelabs/testify/compare/1.0.24...1.0.25
