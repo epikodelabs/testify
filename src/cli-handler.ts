@@ -25,7 +25,14 @@ export class CLIHandler {
 
   static async run(): Promise<number> {
     let shuttingDown = false;
+    let sigintCount = 0;
     process.on('SIGINT', async () => {
+      sigintCount += 1;
+      if (sigintCount > 1) {
+        // Second Ctrl+C: cleanup is hung or too slow, force exit now.
+        process.exit(EXIT_CODES.SIGINT);
+        return;
+      }
       if (shuttingDown) return;
       shuttingDown = true;
 

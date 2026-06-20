@@ -16,6 +16,8 @@ export class WebSocketManager extends EventEmitter {
   private hmrManager: HmrManager | null = null;
   private hmrEnabled: boolean = false;
   private jsonCleaner = new JSONCleaner();
+  private failedSpecsCount: number = 0;
+  private pendingSpecsCount: number = 0;
 
   constructor(private fileDiscovery: FileDiscoveryService, private config: ViteJasmineConfig, private server: http.Server, private reporter: Reporter) {
     super();
@@ -68,6 +70,8 @@ export class WebSocketManager extends EventEmitter {
           break;
 
         case 'jasmineStarted':
+          this.failedSpecsCount = 0;
+          this.pendingSpecsCount = 0;
           this.reporter?.jasmineStarted(message);
           break;
         
@@ -80,6 +84,9 @@ export class WebSocketManager extends EventEmitter {
           break;
         
         case 'specDone':
+          const specStatus = message.status ?? message.overallStatus;
+          if (specStatus === 'failed') this.failedSpecsCount++;
+          if (specStatus === 'pending') this.pendingSpecsCount++;
           this.reporter?.specDone(message);
           break;
         
@@ -91,8 +98,8 @@ export class WebSocketManager extends EventEmitter {
           this.reporter?.jasmineDone(message);
           
           const coverage = message.coverage ? this.jsonCleaner.parse(message.coverage) : null;
-          const success = message.overallStatus === 'passed' && message.failedSpecsCount === 0;
-          const hasPending = message.overallStatus === 'incomplete' || (message.pendingSpecsCount > 0);
+          const success = message.overallStatus === 'passed' && this.failedSpecsCount === 0;
+          const hasPending = message.overallStatus === 'incomplete' || this.pendingSpecsCount > 0;
           this.emit('testsCompleted', { success, hasPending, coverage });
           break;
 

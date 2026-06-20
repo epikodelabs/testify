@@ -186,6 +186,10 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   abort(message?: string): number {
+    // Signal the browser manager to stop any running browser immediately.
+    // Node-runner mode has no cooperative cancel; it will exit via the
+    // CLI's process.exit() after cleanup.
+    this.browserManager.abort((message ?? 'SIGINT') as NodeJS.Signals);
     return this.consoleReporter.testsAborted(message);
   }
 

@@ -8,6 +8,7 @@ export class BrowserManager {
   private playwright: typeof PlayWright | null = null;
   private currentBrowser: PlayWright.Browser | null = null;
   private currentPage: PlayWright.Page | null = null;
+  private abortCallback: ((signal: NodeJS.Signals) => void) | null = null;
 
   constructor(private config: ViteJasmineConfig) {}
 
@@ -73,6 +74,7 @@ export class BrowserManager {
         interruptReject = null;
       }
     };
+    this.abortCallback = abortRun;
 
     const sigintHandler = () => abortRun('SIGINT');
     const sigtermHandler = () => abortRun('SIGTERM');
@@ -123,11 +125,20 @@ export class BrowserManager {
       logger.error(BrowserMessages.testExecutionFailed(error));
       throw error;
     } finally {
+      this.abortCallback = null;
       process.removeListener('SIGINT', sigintHandler);
       process.removeListener('SIGTERM', sigtermHandler);
       if (browser) {
         await browser.close().catch(() => {});
       }
+    }
+  }
+
+  abort(signal: NodeJS.Signals): void {
+    this.abortCallback?.(signal);
+    // Also close any headed/watch-mode browser immediately.
+    if (this.currentBrowser) {
+      this.closeBrowser().catch(() => {});
     }
   }
 
