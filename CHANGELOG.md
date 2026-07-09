@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.30] - 2026-07-09
+
+### Fixed
+- **Test filename generation**: Test filenames in the `dist` folder are now generated with a flattened path and a hash (e.g., `my__testfile__${hash}.spec.js`). This approach reduces the possibility of filename collisions in the output directory, ensuring unique and predictable names for test bundles.
 
 ## [1.0.29] - 2026-06-20
 
@@ -54,13 +58,3 @@ Single `Ctrl+C` now aborts the current run and exits cleanly, double `Ctrl+C` ha
 ## [1.0.11] - 2025-10-03
 
 Initial public release of `testify` with browser-based Jasmine runner, CLI binaries with shebang support, watch mode with hot module reloading, WebSocket-based event forwarding, Istanbul coverage support, and VS Code debug integration.
-
-[1.0.29]: https://github.com/epikodelabs/testify/compare/1.0.28...1.0.29
-[1.0.27]: https://github.com/epikodelabs/testify/compare/1.0.26...1.0.27
-[1.0.26]: https://github.com/epikodelabs/testify/compare/1.0.25...1.0.26
-[1.0.25]: https://github.com/epikodelabs/testify/compare/1.0.24...1.0.25
-[1.0.24]: https://github.com/epikodelabs/testify/compare/1.0.23...1.0.24
-[1.0.23]: https://github.com/epikodelabs/testify/compare/1.0.22...1.0.23
-[1.0.22]: https://github.com/epikodelabs/testify/compare/1.0.20...1.0.22
-[1.0.20]: https://github.com/epikodelabs/testify/compare/1.0.11...1.0.20
-[1.0.11]: https://github.com/epikodelabs/testify/releases/tag/1.0.11

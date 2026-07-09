@@ -144,8 +144,8 @@ export class ViteConfigBuilder {
       return null;
     };
 
-    const baseTest = matchDir(testDirs);
     const baseSrc = matchDir(srcDirs) ?? srcDirs[0] ?? norm(path.resolve('./src'));
+    const baseTest = matchDir(testDirs) ?? testDirs[0] ?? baseSrc;
     const base = baseTest ?? baseSrc;
 
     const relativePath = path.relative(base, normalizedPath);
@@ -165,20 +165,15 @@ export class ViteConfigBuilder {
     const segments = stemPath.split('/').filter(Boolean).map(sanitizeSegment);
     const fileName = segments.pop() ?? sanitizeSegment(path.basename(stemPath) || 'index');
 
+    const sanitizedBaseName =
+      segments.length > 0 ? `${segments.join('_')}__${fileName}` : fileName;
+    const hash = createHash('sha1').update(normalizedPath).digest('hex').slice(0, 8);
+
     if (isSpecFile) {
-      const prefix = segments.join('_');
-      const flattened = prefix ? `${prefix}__${fileName}` : fileName;
-      return `${flattened}.spec.js`;
+      return `${sanitizedBaseName}__${hash}.spec.js`;
     }
 
-    const sanitized =
-      segments.length > 0 ? [...segments, fileName].join('_') : fileName;
-    const hash = createHash('sha1')
-      .update(normalizedPath)
-      .digest('hex')
-      .slice(0, 8);
-
-    return `${sanitized}__${hash}.js`;
+    return `${sanitizedBaseName}__${hash}.js`;
   }
 
   private isTypeOnlyModule(filePath: string): boolean {
