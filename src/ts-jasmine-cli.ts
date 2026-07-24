@@ -7,6 +7,7 @@ import util from 'util';
 import { logger } from './logger';
 import { JasmineCLIMessages } from './log-messages';
 import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
+import { initializeNodeJasmineEnvironment } from './jasmine-node-runtime';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
 import { EXIT_CODES, getSignalExitCode } from './exit-codes';
@@ -325,16 +326,7 @@ async function loadJasmine() {
   const jasmineCorePath = norm(packageRequire.resolve('jasmine-core/lib/jasmine-core/jasmine.js'));
   const jasmineCore = await import(pathToFileURL(jasmineCorePath).href);
   const jasmineRequire = jasmineCore.default;
-  const jasmineInstance = jasmineRequire.core(jasmineRequire);
-  const jasmineEnv = jasmineInstance.getEnv();
-
-  Object.assign(globalThis, jasmineRequire.interface(jasmineInstance, jasmineEnv));
-  globalThis.jasmine = {
-    ...(globalThis.jasmine ?? {}),
-    ...jasmineInstance,
-  };
-
-  return { jasmineEnv, jasmineInstance };
+  return initializeNodeJasmineEnvironment(jasmineRequire, { resetReporters: false });
 }
 
 async function main() {

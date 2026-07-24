@@ -170,7 +170,7 @@ node --loader @epikodelabs/testify/esm-loader.mjs \
 
 Path aliases from `tsconfig.json` are resolved automatically.
 
-`htmlOptions.preludeModules` imports browser-side setup modules before specs run without preloading every source entry at startup.
+`htmlOptions.preludeModules` imports setup modules before specs run in both browser and Node runners without preloading every source entry at startup.
 
 ---
 

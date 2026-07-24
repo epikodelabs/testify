@@ -1,14 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { createRequire } from 'module';
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { norm } from './utils';
 import { fileURLToPath } from 'url';
 import { FileDiscoveryService } from './file-discovery-service';
 import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
-
-const packageRequire = createRequire(import.meta.url);
+import { resolveBrowserPreludeModules } from './prelude-modules';
 
 export class HtmlGenerator {
   constructor(private fileDiscovery: FileDiscoveryService, private config: ViteJasmineConfig) { }
@@ -95,42 +93,7 @@ export class HtmlGenerator {
   }
 
   private getPreludeModules(): string[] {
-    const preludeModules = [...(this.config.htmlOptions?.preludeModules ?? [])];
-
-    if (this.config.angularOptions?.enableJitCompiler) {
-      preludeModules.unshift('@angular/compiler');
-    }
-
-    return preludeModules
-      .filter(Boolean)
-      .map(specifier => this.resolvePreludeModuleSpecifier(specifier));
-  }
-
-  private resolvePreludeModuleSpecifier(specifier: string): string {
-    if (/^(?:[a-z]+:)?\/\//i.test(specifier)) {
-      return specifier;
-    }
-
-    if (specifier.startsWith('/') || specifier.startsWith('./') || specifier.startsWith('../')) {
-      return specifier;
-    }
-
-    let resolvedPath: string;
-    try {
-      resolvedPath = norm(packageRequire.resolve(specifier, { paths: [process.cwd()] }));
-    } catch (error) {
-      throw new Error(`Failed to resolve prelude module "${specifier}": ${(error as Error).message}`);
-    }
-
-    const nodeModulesMarker = '/node_modules/';
-    const nodeModulesIndex = resolvedPath.lastIndexOf(nodeModulesMarker);
-    if (nodeModulesIndex === -1) {
-      throw new Error(
-        `Prelude module "${specifier}" resolved outside node_modules and cannot be served to the browser: ${resolvedPath}`
-      );
-    }
-
-    return resolvedPath.slice(nodeModulesIndex);
+    return resolveBrowserPreludeModules(this.config);
   }
 
   private getStaticModuleImports(specFiles: string[]): string {

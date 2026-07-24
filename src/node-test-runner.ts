@@ -10,6 +10,8 @@ import { CoverageReportGenerator } from './coverage-report-generator';
 import { EXIT_CODES } from './exit-codes';
 import { logger } from './logger';
 import { NodeRunnerMessages } from './log-messages';
+import { resolveNodePreludeModules } from './prelude-modules';
+import { getEmbeddedNodeJasmineRuntimeSource } from './jasmine-node-runtime';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -51,21 +53,26 @@ export class NodeTestRunner {
       fs.mkdirSync(outDir, { recursive: true });
     }
 
-    const builtFiles = fs
+    const builtSpecFiles = fs
       .readdirSync(outDir)
-      .filter((f) => f.endsWith('.js') && f !== 'test-runner.js')
+      .filter((f) => /\.spec\.js$/i.test(f))
       .sort();
 
-    if (builtFiles.length === 0) {
+    if (builtSpecFiles.length === 0) {
       logger.println(NodeRunnerMessages.noJsFilesForRunner());
       return;
     }
 
-    const imports = builtFiles.map((f) => `    await import('./${f}');`).join('\n');
+    const imports = [
+      ...resolveNodePreludeModules(this.config, outDir).map(
+        (specifier) => `    await import(${JSON.stringify(specifier)});`
+      ),
+      ...builtSpecFiles.map((file) => `    await import('./${file}');`)
+    ].join('\n');
 
     const runnerContent = this.generateRunnerTemplate(imports);
     const testRunnerPath = norm(path.join(outDir, 'test-runner.js'));
-    fs.writeFileSync(testRunnerPath, runnerContent); 
+    fs.writeFileSync(testRunnerPath, runnerContent);
     logger.println(NodeRunnerMessages.generatedInProcessRunner(norm(path.relative(outDir, testRunnerPath))));
   }
 
@@ -73,8 +80,9 @@ export class NodeTestRunner {
    * Template for the generated ESM runner file.
    * NOTE: This is emitted as JS, so keep syntax JS-friendly.
    */
-  private generateRunnerTemplate(imports: string): string {   
+  private generateRunnerTemplate(imports: string): string {
     const jasmineCoreUrl = this.resolveJasmineCoreUrl();
+    const jasmineRuntimeSource = getEmbeddedNodeJasmineRuntimeSource();
     const messages = {
       unhandledRejection: NodeRunnerMessages.unhandledRejection(''),
       uncaughtException: NodeRunnerMessages.uncaughtException(''),
@@ -82,7 +90,7 @@ export class NodeTestRunner {
       errorDuringExecution: NodeRunnerMessages.errorDuringExecution(''),
       failedToRunTests: NodeRunnerMessages.failedToRunTests(''),
     };
-    
+
     return `// Auto-generated in-process Jasmine test runner
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -99,87 +107,54 @@ function replacePlaceholders(text) {
   if (!text) return text;
   const useEmoji = process.stdout?.isTTY && !process.env.NO_EMOJI;
   return text
-    .replace(/%check%/g, useEmoji ? '✅' : '[OK]')
-    .replace(/%cross%/g, useEmoji ? '❌' : '[ERROR]')
-    .replace(/%warn%/g, useEmoji ? '⚠️' : '[WARN]')
-    .replace(/%info%/g, useEmoji ? 'ℹ️' : '[INFO]')
-    .replace(/%globe%/g, useEmoji ? '🌐' : '[BROWSER]')
-    .replace(/%doc%/g, useEmoji ? '📄' : '[FILE]')
-    .replace(/%puzzle%/g, useEmoji ? '🧩' : '[TREE]')
-    .replace(/%stop%/g, useEmoji ? '🛑' : '[STOP]')
-    .replace(/%bulb%/g, useEmoji ? '💡' : '[TIP]')
-    .replace(/%rocket%/g, useEmoji ? '🚀' : '[START]')
-    .replace(/%hourglass%/g, useEmoji ? '⏳' : '[WAIT]')
-    .replace(/%circle_green%/g, useEmoji ? '🟢' : '[READY]')
-    .replace(/%plus%/g, useEmoji ? '➕' : '[ADD]')
-    .replace(/%minus%/g, useEmoji ? '➖' : '[REM]')
-    .replace(/%folder%/g, useEmoji ? '📁' : '[DIR]')
-    .replace(/%box%/g, useEmoji ? '📦' : '[BUILD]')
-    .replace(/%refresh%/g, useEmoji ? '🔄' : '[RETRY]')
-    .replace(/%broom%/g, useEmoji ? '🧹' : '[CLEAN]')
-    .replace(/%lock%/g, useEmoji ? '🔒' : '[LOCK]')
-    .replace(/%fire%/g, useEmoji ? '🔥' : '[HMR]')
-    .replace(/%satellite%/g, useEmoji ? '📡' : '[WS]')
-    .replace(/%ok%/g, useEmoji ? '👌' : '[OK]')
-    .replace(/%eyes%/g, useEmoji ? '👀' : '[WATCH]')
-    .replace(/%plug%/g, useEmoji ? '🔌' : '[CONN]');
+    .replace(/%check%/g, useEmoji ? 'вњ…' : '[OK]')
+    .replace(/%cross%/g, useEmoji ? 'вќЊ' : '[ERROR]')
+    .replace(/%warn%/g, useEmoji ? 'вљ пёЏ' : '[WARN]')
+    .replace(/%info%/g, useEmoji ? 'в„№пёЏ' : '[INFO]')
+    .replace(/%globe%/g, useEmoji ? 'рџЊђ' : '[BROWSER]')
+    .replace(/%doc%/g, useEmoji ? 'рџ“„' : '[FILE]')
+    .replace(/%puzzle%/g, useEmoji ? 'рџ§©' : '[TREE]')
+    .replace(/%stop%/g, useEmoji ? 'рџ›‘' : '[STOP]')
+    .replace(/%bulb%/g, useEmoji ? 'рџ’Ў' : '[TIP]')
+    .replace(/%rocket%/g, useEmoji ? 'рџљЂ' : '[START]')
+    .replace(/%hourglass%/g, useEmoji ? 'вЏі' : '[WAIT]')
+    .replace(/%circle_green%/g, useEmoji ? 'рџџў' : '[READY]')
+    .replace(/%plus%/g, useEmoji ? 'вћ•' : '[ADD]')
+    .replace(/%minus%/g, useEmoji ? 'вћ–' : '[REM]')
+    .replace(/%folder%/g, useEmoji ? 'рџ“Ѓ' : '[DIR]')
+    .replace(/%box%/g, useEmoji ? 'рџ“¦' : '[BUILD]')
+    .replace(/%refresh%/g, useEmoji ? 'рџ”„' : '[RETRY]')
+    .replace(/%broom%/g, useEmoji ? 'рџ§№' : '[CLEAN]')
+    .replace(/%lock%/g, useEmoji ? 'рџ”’' : '[LOCK]')
+    .replace(/%fire%/g, useEmoji ? 'рџ”Ґ' : '[HMR]')
+    .replace(/%satellite%/g, useEmoji ? 'рџ“Ў' : '[WS]')
+    .replace(/%ok%/g, useEmoji ? 'рџ‘Њ' : '[OK]')
+    .replace(/%eyes%/g, useEmoji ? 'рџ‘Ђ' : '[WATCH]')
+    .replace(/%plug%/g, useEmoji ? 'рџ”Њ' : '[CONN]');
 }
 
-// Jasmine internals
-let jasmineInstance = null;
-let jasmineEnv = null;
+${jasmineRuntimeSource}
+
+// Jasmine runtime
+let jasmineRuntime = null;
 
 // ---------------------------
 // Introspection helpers
 // ---------------------------
 export function getAllSpecs() {
-  const specs = [];
-  const traverse = (suite) => {
-    suite.children?.forEach((child) => {
-      if (child && typeof child.id === 'string' && !child.children) specs.push(child);
-      if (child?.children) traverse(child);
-    });
-  };
-  traverse(jasmineEnv.topSuite());
-  return specs;
+  return jasmineRuntime?.utils.getAllSpecs() ?? [];
 }
 
 export function getAllSuites() {
-  const suites = [];
-  const traverse = (suite) => {
-    suites.push(suite);
-    suite.children?.forEach((child) => {
-      if (child?.children) traverse(child);
-    });
-  };
-  traverse(jasmineEnv.topSuite());
-  return suites;
+  return jasmineRuntime?.utils.getAllSuites() ?? [];
 }
 
 export function getOrderedSpecs(seed, random) {
-  const all = getAllSpecs();
-  if (!random) return all;
-
-  const OrderCtor = jasmineInstance.Order;
-  try {
-    const order = new OrderCtor({ random, seed });
-    return typeof order.sort === "function" ? order.sort(all) : all;
-  } catch {
-    return all;
-  }
+  return jasmineRuntime?.utils.getOrderedSpecs(seed, random) ?? [];
 }
 
 export function getOrderedSuites(seed, random) {
-  const all = getAllSuites();
-  if (!random) return all;
-
-  const OrderCtor = jasmineInstance.Order;
-  try {
-    const order = new OrderCtor({ random, seed });
-    return typeof order.sort === "function" ? order.sort(all) : all;
-  } catch {
-    return all;
-  }
+  return jasmineRuntime?.utils.getOrderedSuites(seed, random) ?? [];
 }
 
 // ---------------------------
@@ -240,26 +215,11 @@ export async function runTests(reporter) {
       try {
         const jasmineCore = await import(${JSON.stringify(jasmineCoreUrl)});
         const jasmineRequire = jasmineCore.default;
-
-        jasmineInstance = jasmineRequire.core(jasmineRequire);
-        jasmineEnv = jasmineInstance.getEnv();
-
-        const utils = {
-          getAllSpecs,
-          getAllSuites,
-          getOrderedSpecs,
-          getOrderedSuites
-        };
-        
-        // Expose jasmine globals (describe, it, beforeEach, etc.)
-        Object.assign(globalThis, jasmineRequire.interface(jasmineInstance, jasmineEnv));
-        globalThis.jasmine = { ...globalThis.jasmine, ...jasmineInstance, ...utils };
-
-        jasmineEnv.clearReporters();
-        jasmineEnv.addReporter(reporter);
+        jasmineRuntime = initializeNodeJasmineEnvironment(jasmineRequire, { reporter });
+        const { jasmineEnv, utils } = jasmineRuntime;
 
 ${imports}
-        
+
         // Configure env from template (inlined from ViteJasmineConfig)
         const random = ${this.config.jasmineConfig?.env?.random ?? false};
         const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
@@ -272,13 +232,13 @@ ${imports}
         });
 
         // Get ordered specs and suites based on configuration
-        const orderedSpecs = getOrderedSpecs(seed, random).map(spec => ({
+        const orderedSpecs = utils.getOrderedSpecs(seed, random).map(spec => ({
           id: spec.id,
           description: spec.description,
           fullName: spec.getFullName ? spec.getFullName() : spec.description
         }));
 
-        const orderedSuites = getOrderedSuites(seed, random).map(suite => ({
+        const orderedSuites = utils.getOrderedSuites(seed, random).map(suite => ({
           id: suite.id,
           description: suite.description,
           fullName: suite.getFullName ? suite.getFullName() : suite.description
@@ -306,6 +266,7 @@ ${imports}
         if (error instanceof Error && error.stack) console.error(error.stack);
         resolve(${EXIT_CODES.INTERNAL_ERROR});
       } finally {
+        jasmineRuntime = null;
         restoreConsole();
         // Remove all tracked handlers to prevent leaks on module re-import
         for (const h of ownedHandlers) {
