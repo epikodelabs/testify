@@ -128,6 +128,7 @@ export class HttpServerManager {
     const types: Record<string, string> = {
       '.html': 'text/html',
       '.js': 'application/javascript',
+      '.mjs': 'application/javascript',
       '.css': 'text/css',
       '.json': 'application/json',
       '.png': 'image/png',

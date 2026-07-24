@@ -32,11 +32,13 @@ export class WebSocketManager extends EventEmitter {
       this.wsClients.push(ws);
       // Send HMR status on connection
       if (this.hmrEnabled) {
-        const files = await this.fileDiscovery.scanDir(this.config.outDir, '/**/*.js');
+        const files = await this.fileDiscovery.scanDir(this.config.outDir, '/**/*.{js,mjs}');
         this.sendToClient(ws, { 
           type: 'hmr:connected',
-          specFiles: files.filter(file => file.endsWith('.spec.js')).map(file => path.basename(file)).sort(),
-          srcFiles: files.filter(file => !file.endsWith('.spec.js') && file.endsWith('.js')).map(file => path.basename(file)).sort(),
+          specFiles: files
+            .filter(file => /\.spec\.(?:js|mjs)$/i.test(file))
+            .map(file => path.basename(file))
+            .sort(),
           enabled: true 
         });
       }

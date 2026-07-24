@@ -74,7 +74,8 @@ export class ConfigManager {
       },
 
       htmlOptions: {
-        title: 'Jasmine Test Runner'
+        title: 'Jasmine Test Runner',
+        preludeModules: []
       },
       suppressConsoleLogs: false
     };

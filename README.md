@@ -137,6 +137,10 @@ node --loader @epikodelabs/testify/esm-loader.mjs \
   "jasmineConfig": {
     "env": { "random": true, "timeout": 120000 }
   },
+  "htmlOptions": {
+    "title": "Jasmine Test Runner",
+    "preludeModules": []
+  },
   "viteConfig": {
     "resolve": { "alias": { "@": "/src" } }
   }
@@ -160,7 +164,11 @@ node --loader @epikodelabs/testify/esm-loader.mjs \
 | `jasmineConfig` | `object` | — | Jasmine env options |
 | `viteConfig` | `object` | — | Custom Vite config |
 
+| `htmlOptions` | `object` | — | Browser runner HTML options like `title` and `preludeModules` |
+
 Path aliases from `tsconfig.json` are resolved automatically.
+
+`htmlOptions.preludeModules` imports browser-side setup modules before specs run without preloading every source entry at startup.
 
 ---
 

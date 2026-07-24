@@ -17,7 +17,7 @@ export class HtmlGenerator {
     }
 
     const builtFiles = fs.readdirSync(htmlDir)
-      .filter(f => f.endsWith('.js'))
+      .filter(f => /\.(?:js|mjs)$/i.test(f))
       .sort();
 
     if (builtFiles.length === 0) {
@@ -25,11 +25,8 @@ export class HtmlGenerator {
       return;
     }
 
-    const sourceFiles = builtFiles.filter(f => !f.endsWith('.spec.js'));
-    const specFiles = builtFiles.filter(f => f.endsWith('.spec.js'));
-    const imports = [...sourceFiles, ...specFiles]
-      .map(f => `import "./${f}";`)
-      .join('\n        ');
+    const specFiles = builtFiles.filter(f => /\.spec\.(?:js|mjs)$/i.test(f));
+    const imports = this.getStaticModuleImports(specFiles);
 
     const faviconTag = this.getFaviconTag();
     const htmlContent = this.generateHtmlTemplate(imports, faviconTag);
@@ -92,6 +89,19 @@ export class HtmlGenerator {
   <div class="jasmine_html-reporter"></div>
 </body>
 </html>`;
+  }
+
+  private getPreludeModules(): string[] {
+    return (this.config.htmlOptions?.preludeModules ?? []).filter(Boolean);
+  }
+
+  private getStaticModuleImports(specFiles: string[]): string {
+    const imports = [
+      ...this.getPreludeModules().map(specifier => `import ${JSON.stringify(specifier)};`),
+      ...specFiles.map(file => `import ${JSON.stringify(`./${file}`)};`)
+    ];
+
+    return imports.join('\n    ');
   }
 
   private generateHtmlTemplateWithHmr(faviconTag: string): string {    
@@ -222,7 +232,7 @@ ${this.getHmrClientScript()}
   }
 
   // Define loadSpecs function in global scope
-  window.loadSpecs = async function(srcFiles, specFiles) {
+  window.loadSpecs = async function(specFiles) {
     // Wait for HMRClient
     let attempts = 0;
     while (!window.HMRClient && attempts < 100) {
@@ -235,15 +245,14 @@ ${this.getHmrClientScript()}
       return;
     }
     
-    console.log('📦 Loading spec files dynamically...');
+    console.log('Loading prelude modules and spec files dynamically...');
     
     try {
-      // Load source files first
-      for (const file of srcFiles) {
-        await import('/' + file);
+      for (const modulePath of ${JSON.stringify(this.getPreludeModules())}) {
+        await import(modulePath);
       }
       
-      // Then load spec files with file path tracking
+      // Load spec files with file path tracking
       for (const file of specFiles) {
         const module = await import('/' + file);
         
@@ -252,9 +261,9 @@ ${this.getHmrClientScript()}
         }
       }
       
-      console.log('✅ All specs loaded and tagged with file paths');
+      console.log('All prelude modules and specs loaded');
     } catch (err) {
-      console.error('❌ Failed to load specs:', err);
+      console.error('Failed to load specs:', err);
     }
   };
 })();
@@ -609,7 +618,7 @@ window.HMRClient = (function() {
     if (message.type === 'hmr:connected') {
       console.log('🔥 HMR enabled on server');
       if (window.loadSpecs) {
-        await window.loadSpecs(message.srcFiles, message.specFiles);
+        await window.loadSpecs(message.specFiles);
       }
       return;
     }

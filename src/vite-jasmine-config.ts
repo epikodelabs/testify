@@ -40,6 +40,7 @@ export interface ViteJasmineConfig {
   };
   htmlOptions?: {
     title?: string;
+    preludeModules?: string[];
   };
   project?: string;
 }
