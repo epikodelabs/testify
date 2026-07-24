@@ -28,6 +28,8 @@ npm install --save-dev @epikodelabs/testify
 npx playwright install        # required for browser testing
 ```
 
+`npm install` only installs the JavaScript dependencies. Browser binaries are installed separately and only when you run `npx playwright install`.
+
 ---
 
 ## Quick Start

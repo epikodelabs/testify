@@ -1,6 +1,6 @@
 import { logger } from './logger';
 import { ViteJasmineConfig } from "./vite-jasmine-config";
-import type * as PlayWright from 'playwright';
+import type * as PlayWright from 'playwright-core';
 import { EXIT_CODES, ExitCodeError } from './exit-codes';
 import { BrowserMessages } from './log-messages';
 
@@ -14,7 +14,7 @@ export class BrowserManager {
 
   private async getPlaywright(): Promise<typeof PlayWright> {
     if (!this.playwright) {
-      this.playwright = await import('playwright');
+      this.playwright = await import('playwright-core');
     }
     return this.playwright!;
   }

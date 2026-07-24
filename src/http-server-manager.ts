@@ -20,6 +20,7 @@ export class HttpServerManager {
     const __filename = norm(fileURLToPath(import.meta.url));
     const __dirname = norm(path.dirname(__filename));
     const vendorDir = path.resolve(path.join(__dirname, '../node_modules'));
+    const workspaceNodeModulesDir = path.resolve(path.join(process.cwd(), 'node_modules'));
 
     return createServer((req, res) => {
       let { pathname } = parse(req.url === '/' ? '/index.html' : req.url!, true);
@@ -45,8 +46,19 @@ export class HttpServerManager {
 
       if (filePath.startsWith('/node_modules/')) {
         const relativePath = filePath.replace(/^\/node_modules\//, '');
-        rootDir = vendorDir;
-        resolvedPath = path.resolve(vendorDir, relativePath);
+        const candidateRoots = [workspaceNodeModulesDir, vendorDir];
+        const resolvedCandidate = candidateRoots
+          .map((candidateRoot) => ({
+            rootDir: candidateRoot,
+            resolvedPath: path.resolve(candidateRoot, relativePath)
+          }))
+          .find((candidate) =>
+            this.isPathInside(candidate.rootDir, candidate.resolvedPath) &&
+            fs.existsSync(candidate.resolvedPath)
+          );
+
+        rootDir = resolvedCandidate?.rootDir ?? workspaceNodeModulesDir;
+        resolvedPath = resolvedCandidate?.resolvedPath ?? path.resolve(workspaceNodeModulesDir, relativePath);
       } else {
         rootDir = outDir;
         resolvedPath = path.resolve(outDir, `.${filePath}`);

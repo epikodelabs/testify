@@ -122,22 +122,6 @@ function installRollup() {
   run(`npm install ${pkg} --no-save`);
 }
 
-// -------------------- PLAYWRIGHT --------------------
-function installPlaywright() {
-  const useBundled = process.env.PLAYWRIGHT_BROWSERS_PATH === "0";
-
-  console.log(
-    `[postinstall] Installing Playwright browsers (${useBundled ? "bundled" : "global"} mode)`
-  );
-
-  // Install browsers
-  if (useBundled) {
-    run("PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install");
-  } else {
-    run("npx playwright install");
-  }
-}
-
 // -------------------- MAIN --------------------
 try {
   const bundleDeps = installBundleDependencies();
@@ -149,11 +133,6 @@ try {
   if (bundleDeps.includes("rollup")) {
     installRollup();
   }
-
-  if (bundleDeps.includes("playwright")) {
-    installPlaywright();
-  }
-
   console.log("[postinstall] Completed successfully.");
 } catch (e) {
   console.error("[postinstall] ERROR:", e);

@@ -35,10 +35,10 @@ export const BrowserMessages = {
     `%warn%  Unknown browser "${name}", falling back to Node.js mode`,
 
   playwrightNotInstalled: (name: string) =>
-    `%info% Playwright not installed. Browser "${name}" not available.`,
+    `%info% Playwright runtime not available. Browser "${name}" not available.`,
 
   playwrightInstallTip: () =>
-    `%bulb% Tip: Install Playwright to enable browser testing:\n   npm install playwright`,
+    `%bulb% Tip: Reinstall dependencies, then install browsers explicitly:\n   npx playwright install`,
 
   browserExecutionFailed: (name: string, message: string) =>
     `%cross% Browser execution failed for "${name}": ${message}`,
@@ -77,10 +77,10 @@ export const BrowserMessages = {
     `%globe% Opening ${name} browser...`,
 
   playwrightNotInstalledManual: (url: string) =>
-    `%info% Playwright not installed. Please open browser manually: ${url}`,
+    `%info% Playwright runtime not available. Please open browser manually: ${url}`,
 
   playwrightAutoOpenTip: () =>
-    `%bulb% Tip: Install Playwright to enable automatic browser opening:\n   npm install playwright`,
+    `%bulb% Tip: Install browsers explicitly to enable automatic browser opening:\n   npx playwright install`,
 
   failedToOpenBrowser: (message: string) =>
     `%cross% Failed to open browser: ${message}`,
@@ -521,7 +521,7 @@ export const RunnerMessages = {
     `%warn%  Headless browser not available. Falling back to Node.js runner.`,
 
   browserTestExecutionFailed: () =>
-    `%cross% Browser test execution failed. Need to install playwright?`,
+    `%cross% Browser test execution failed. Need to install browser binaries?`,
 
   nodeTestExecutionFailed: (message: string) =>
     `%cross% Node test execution failed: ${message}`,

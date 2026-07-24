@@ -42,6 +42,9 @@ export interface ViteJasmineConfig {
     title?: string;
     preludeModules?: string[];
   };
+  angularOptions?: {
+    enableJitCompiler?: boolean;
+  };
   project?: string;
 }
 
