@@ -39,7 +39,10 @@ const distPackage = {
   dependencies: mainPackage.dependencies || {},
   bundleDependencies: Object.keys(mainPackage.dependencies || {}),
   peerDependencies: mainPackage.peerDependencies || {},
-  overrides: mainPackage.overrides || {}
+  overrides: mainPackage.overrides || {},
+  testifyPostinstall: {
+    '@types/jasmine': mainPackage.devDependencies?.['@types/jasmine']
+  }
 };
 
 fs.writeFileSync(
