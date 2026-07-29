@@ -115,12 +115,17 @@ export class ViteJasmineRunner extends EventEmitter {
       const entryFiles = [...srcFiles, ...specFiles];
       const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
       const input: Record<string, string> = {};
-
+ 
       const entryKeyFromOutput = (file: string) =>
         this.fileDiscovery.getOutputName(file).replace(/\.js$/, '');
 
       for (const file of entryFiles) {
         input[entryKeyFromOutput(file)] = file;
+      }
+
+      if (fs.existsSync(this.config.outDir) && !this.shouldPreserve()) {
+        logger.println(RunnerMessages.cleaningOutputDirectory());
+        fs.rmSync(this.config.outDir, { recursive: true, force: true });
       }
 
       if (!fs.existsSync(this.config.outDir)) {

@@ -544,6 +544,9 @@ export const RunnerMessages = {
   buildingFiles: (count: number) =>
     `%box% Building ${count} files...`,
 
+  cleaningOutputDirectory: () =>
+    `%broom% Cleaning output directory...`,
+
   testsCompletedTimeout: (message: string) =>
     `%warn% ${message}`,
 };
