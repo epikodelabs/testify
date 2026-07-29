@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as path from "path";
 import { ConfigManager } from "./config-manager";
 import { logger } from './logger';
 import { PackageResolver } from "./package-resolver";
@@ -8,6 +9,7 @@ import { ViteJasmineRunner } from "./vite-jasmine-runner";
 import { EXIT_CODES, ExitCodeError, getExitCode } from "./exit-codes";
 import { CLIMessages } from "./log-messages";
 import { setAnsiMode } from "./symbols";
+import { initializeProjectForTestify } from "./init-project-setup";
 
 export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineRunner {
   return new ViteJasmineRunner(config);
@@ -119,8 +121,14 @@ export class CLIHandler {
     const preserveOutputsArg = preserveOutputsFlag ? true : undefined;
 
     if (initOnly) {
-      ConfigManager.initViteJasmineConfig();
-      return EXIT_CODES.SUCCESS;
+      try {
+        ConfigManager.initViteJasmineConfig();
+        await initializeProjectForTestify();
+        return EXIT_CODES.SUCCESS;
+      } catch (error) {
+        logger.error(CLIMessages.failedToInitializeProject(error));
+        return getExitCode(error);
+      }
     }
 
     if (watch) {
@@ -154,6 +162,15 @@ export class CLIHandler {
         const resolved = await resolver.resolve(projectValue, config.tsconfig);
         if (resolved) {
           projectValue = resolved;
+          if (!config.tsconfig) {
+            const projectTsconfig = this.findProjectTsconfig(projectValue);
+            if (projectTsconfig) {
+              config = {
+                ...config,
+                tsconfig: projectTsconfig,
+              };
+            }
+          }
         } else {
           logger.error(CLIMessages.couldNotResolveProject(projectValue));
           throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, `Could not resolve project: ${projectValue}`);
@@ -219,5 +236,25 @@ export class CLIHandler {
     for (const line of CLIMessages.helpLines()) {
       logger.println(line);
     }
+  }
+
+  private static findProjectTsconfig(projectDir: string): string | undefined {
+    const candidates = [
+      'tsconfig.spec.json',
+      'tsconfig.test.json',
+      'tsconfig.jasmine.json',
+      'tsconfig.json',
+      'tsconfig.lib.json',
+      'tsconfig.app.json',
+    ];
+
+    for (const candidate of candidates) {
+      const candidatePath = path.join(projectDir, candidate);
+      if (fs.existsSync(candidatePath)) {
+        return candidatePath;
+      }
+    }
+
+    return undefined;
   }
 }

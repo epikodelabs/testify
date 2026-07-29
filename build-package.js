@@ -9,6 +9,17 @@ const mainPackage = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')
 );
 
+const distRoot = path.join(__dirname, 'dist/testify');
+
+function ensureDir(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function copyFile(from, to) {
+  ensureDir(path.dirname(to));
+  fs.copyFileSync(from, to);
+}
+
 const distPackage = {
   name: mainPackage.name,
   version: mainPackage.version,
@@ -40,12 +51,22 @@ const distPackage = {
   bundleDependencies: Object.keys(mainPackage.dependencies || {}),
   peerDependencies: mainPackage.peerDependencies || {},
   overrides: mainPackage.overrides || {},
-  testifyPostinstall: {
-    '@types/jasmine': mainPackage.devDependencies?.['@types/jasmine']
+  testifySetup: {
+    jasmineTypesVersion: mainPackage.devDependencies?.['@types/jasmine']
   }
 };
 
 fs.writeFileSync(
-  path.join(__dirname, 'dist/testify/package.json'),
+  path.join(distRoot, 'package.json'),
   JSON.stringify(distPackage, null, 2)
+);
+
+copyFile(
+  path.join(__dirname, 'postinstall.script'),
+  path.join(distRoot, 'postinstall.mjs')
+);
+
+copyFile(
+  path.join(__dirname, 'assets/favicon.ico'),
+  path.join(distRoot, 'assets/favicon.ico')
 );

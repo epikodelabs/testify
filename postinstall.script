@@ -9,158 +9,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const platform = os.platform();
 const arch = os.arch();
-const SKIP_PROJECT_TYPES_INSTALL = "TESTIFY_SKIP_PROJECT_TYPES_INSTALL";
-const JASMINE_TYPES_PACKAGE = "@types/jasmine";
-const JASMINE_TYPE_NAME = "jasmine";
-
-function readJson(jsonPath) {
-  return JSON.parse(fs.readFileSync(jsonPath, "utf8"));
-}
-
-function detectEol(text) {
-  return text.includes("\r\n") ? "\r\n" : "\n";
-}
-
-function stripJsonComments(text) {
-  let result = "";
-  let inString = false;
-  let escaped = false;
-  let inLineComment = false;
-  let inBlockComment = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (inLineComment) {
-      if (char === "\n" || char === "\r") {
-        inLineComment = false;
-        result += char;
-      }
-      continue;
-    }
-
-    if (inBlockComment) {
-      if (char === "*" && next === "/") {
-        inBlockComment = false;
-        i += 1;
-        continue;
-      }
-
-      if (char === "\n" || char === "\r") {
-        result += char;
-      }
-      continue;
-    }
-
-    if (inString) {
-      result += char;
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === "\\") {
-        escaped = true;
-        continue;
-      }
-
-      if (char === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === "\"") {
-      inString = true;
-      result += char;
-      continue;
-    }
-
-    if (char === "/" && next === "/") {
-      inLineComment = true;
-      i += 1;
-      continue;
-    }
-
-    if (char === "/" && next === "*") {
-      inBlockComment = true;
-      i += 1;
-      continue;
-    }
-
-    result += char;
-  }
-
-  return result;
-}
-
-function stripTrailingCommas(text) {
-  let result = "";
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-
-    if (inString) {
-      result += char;
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === "\\") {
-        escaped = true;
-        continue;
-      }
-
-      if (char === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === "\"") {
-      inString = true;
-      result += char;
-      continue;
-    }
-
-    if (char === ",") {
-      let j = i + 1;
-      while (j < text.length && /\s/.test(text[j])) {
-        j += 1;
-      }
-
-      if (text[j] === "}" || text[j] === "]") {
-        continue;
-      }
-    }
-
-    result += char;
-  }
-
-  return result;
-}
-
-function readJsoncFile(jsonPath) {
-  const raw = fs.readFileSync(jsonPath, "utf8");
-  const normalized = raw.replace(/^\uFEFF/, "");
-  const stripped = stripTrailingCommas(stripJsonComments(normalized));
-  return {
-    raw,
-    data: JSON.parse(stripped)
-  };
-}
-
-function writeJsonFile(jsonPath, value, originalRaw) {
-  const eol = detectEol(originalRaw);
-  const serialized = JSON.stringify(value, null, 2).replace(/\n/g, eol) + eol;
-  fs.writeFileSync(jsonPath, serialized);
-}
 
 // -------------------- Utility --------------------
 function run(cmd, cwd = __dirname, env = process.env) {
@@ -192,9 +40,8 @@ function getPackageVersion(pkgName) {
     throw new Error("package.json not found in postinstall directory");
   }
 
-  const pkg = readJson(pkgPath);
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
   const version =
-    pkg.testifyPostinstall?.[pkgName] ||
     pkg.dependencies?.[pkgName] || pkg.devDependencies?.[pkgName];
 
   if (!version) {
@@ -207,7 +54,7 @@ function getPackageVersion(pkgName) {
 // -------------------- DEPENDENCIES --------------------
 function installBundleDependencies() {
   const pkgPath = path.join(__dirname, "package.json");
-  const pkg = readJson(pkgPath);
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
   const bundleDeps = pkg.bundleDependencies?.length
     ? pkg.bundleDependencies
     : Object.keys(pkg.dependencies || {});
@@ -275,171 +122,20 @@ function installRollup() {
   run(`npm install ${pkg} --no-save`);
 }
 
-// -------------------- PROJECT TYPES --------------------
-function resolveProjectRoot() {
-  const candidates = [
-    process.env.INIT_CWD,
-    process.env.npm_config_local_prefix,
-    process.cwd()
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const packageJsonPath = path.join(candidate, "package.json");
-    if (fs.existsSync(packageJsonPath)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-function projectHasDependency(projectPkg, pkgName) {
-  return Boolean(
-    projectPkg.dependencies?.[pkgName] ||
-    projectPkg.devDependencies?.[pkgName] ||
-    projectPkg.peerDependencies?.[pkgName] ||
-    projectPkg.optionalDependencies?.[pkgName]
-  );
-}
-
-function detectPackageManager() {
-  const userAgent = process.env.npm_config_user_agent || "";
-
-  if (userAgent.startsWith("pnpm/")) return "pnpm";
-  if (userAgent.startsWith("yarn/")) return "yarn";
-  if (userAgent.startsWith("bun/")) return "bun";
-  return "npm";
-}
-
-function installProjectJasmineTypes() {
-  if (process.env[SKIP_PROJECT_TYPES_INSTALL] === "1") {
-    console.log("[postinstall] Skipping project Jasmine types install during nested package-manager run.");
-    return;
-  }
-
-  const projectRoot = resolveProjectRoot();
-
-  if (!projectRoot) {
-    console.log("[postinstall] No project package.json found, skipping Jasmine types install.");
-    return;
-  }
-
-  const projectPackageJsonPath = path.join(projectRoot, "package.json");
-  const projectPkg = readJson(projectPackageJsonPath);
-
-  if (projectHasDependency(projectPkg, JASMINE_TYPES_PACKAGE)) {
-    console.log("[postinstall] Project already declares @types/jasmine, skipping.");
-    return;
-  }
-
-  const version = getPackageVersion(JASMINE_TYPES_PACKAGE);
-  const packageManager = detectPackageManager();
-  const nestedEnv = {
-    ...process.env,
-    [SKIP_PROJECT_TYPES_INSTALL]: "1"
-  };
-
-  if (packageManager === "pnpm") {
-    run(`pnpm add -D ${JASMINE_TYPES_PACKAGE}@${version}`, projectRoot, nestedEnv);
-    return;
-  }
-
-  if (packageManager === "yarn") {
-    run(`yarn add -D ${JASMINE_TYPES_PACKAGE}@${version}`, projectRoot, nestedEnv);
-    return;
-  }
-
-  if (packageManager === "bun") {
-    run(`bun add -d ${JASMINE_TYPES_PACKAGE}@${version}`, projectRoot, nestedEnv);
-    return;
-  }
-
-  run(`npm install --save-dev ${JASMINE_TYPES_PACKAGE}@${version}`, projectRoot, nestedEnv);
-}
-
-function findTsconfigCandidates(projectRoot) {
-  const candidates = [
-    "tsconfig.spec.json",
-    "tsconfig.test.json",
-    "tsconfig.jasmine.json",
-    "tsconfig.json"
-  ];
-
-  return candidates
-    .map((name) => path.join(projectRoot, name))
-    .filter((candidate) => fs.existsSync(candidate));
-}
-
-function ensureJasmineTypeInProjectTsconfig() {
-  const projectRoot = resolveProjectRoot();
-
-  if (!projectRoot) {
-    console.log("[postinstall] No project package.json found, skipping tsconfig update.");
-    return;
-  }
-
-  const tsconfigCandidates = findTsconfigCandidates(projectRoot);
-
-  if (!tsconfigCandidates.length) {
-    console.log("[postinstall] No project tsconfig found, skipping Jasmine type registration.");
-    return;
-  }
-
-  for (const tsconfigPath of tsconfigCandidates) {
-    let parsed;
-
-    try {
-      parsed = readJsoncFile(tsconfigPath);
-    } catch (error) {
-      console.warn(`[postinstall] Failed to parse ${path.basename(tsconfigPath)}, skipping:`, error.message);
-      continue;
-    }
-
-    const config = parsed.data;
-    const types = config.compilerOptions?.types;
-
-    if (!Array.isArray(types)) {
-      continue;
-    }
-
-    if (types.includes(JASMINE_TYPE_NAME)) {
-      console.log(`[postinstall] ${path.basename(tsconfigPath)} already includes "${JASMINE_TYPE_NAME}" types.`);
-      return;
-    }
-
-    config.compilerOptions = config.compilerOptions || {};
-    config.compilerOptions.types = [...types, JASMINE_TYPE_NAME];
-    writeJsonFile(tsconfigPath, config, parsed.raw);
-    console.log(`[postinstall] Added "${JASMINE_TYPE_NAME}" to ${path.basename(tsconfigPath)} compilerOptions.types.`);
-    return;
-  }
-
-  console.log("[postinstall] Project tsconfig does not restrict compilerOptions.types, skipping Jasmine type registration.");
-}
-
 // -------------------- MAIN --------------------
-export function main() {
-  try {
-    const bundleDeps = installBundleDependencies();
+try {
+  const bundleDeps = installBundleDependencies();
 
-    if (bundleDeps.includes("esbuild")) {
-      installEsbuild();
-    }
-
-    if (bundleDeps.includes("rollup")) {
-      installRollup();
-    }
-
-    installProjectJasmineTypes();
-    ensureJasmineTypeInProjectTsconfig();
-    console.log("[postinstall] Completed successfully.");
-  } catch (e) {
-    console.error("[postinstall] ERROR:", e);
-    process.exit(1);
+  if (bundleDeps.includes("esbuild")) {
+    installEsbuild();
   }
-}
 
-if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
-  main();
+  if (bundleDeps.includes("rollup")) {
+    installRollup();
+  }
+
+  console.log("[postinstall] Completed successfully.");
+} catch (e) {
+  console.error("[postinstall] ERROR:", e);
+  process.exit(1);
 }

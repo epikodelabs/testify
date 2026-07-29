@@ -3,7 +3,6 @@ import path from 'path';
 import { builtinModules } from 'module';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
-import copy from 'rollup-plugin-copy';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,16 +31,6 @@ const isExternal = (id: string) => {
 };
 
 export default defineConfig({
-  plugins: [
-    copy({
-      targets: {
-        'postinstall.script': 'dist/testify/postinstall.mjs',
-        'assets/favicon.ico': 'dist/testify/assets/favicon.ico'
-      },
-      hook: 'writeBundle',
-      flatten: false
-    })
-  ],
   build: {
     target: 'node22',
     outDir: 'dist/testify/',

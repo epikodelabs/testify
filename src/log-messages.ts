@@ -35,7 +35,7 @@ export const BrowserMessages = {
     `%warn%  Unknown browser "${name}", falling back to Node.js mode`,
 
   playwrightNotInstalled: (name: string) =>
-    `%info% Playwright runtime not available. Browser "${name}" not available.`,
+    `%info%  Playwright runtime not available. Browser "${name}" not available.`,
 
   playwrightInstallTip: () =>
     `%bulb% Tip: Reinstall dependencies, then install browsers explicitly:\n   npx playwright install`,
@@ -77,7 +77,7 @@ export const BrowserMessages = {
     `%globe% Opening ${name} browser...`,
 
   playwrightNotInstalledManual: (url: string) =>
-    `%info% Playwright runtime not available. Please open browser manually: ${url}`,
+    `%info%  Playwright runtime not available. Please open browser manually: ${url}`,
 
   playwrightAutoOpenTip: () =>
     `%bulb% Tip: Install browsers explicitly to enable automatic browser opening:\n   npx playwright install`,
@@ -98,6 +98,45 @@ export const CLIMessages = {
   invalidSeed: () =>
     `%cross% Invalid --seed value (expected a number).`,
 
+  failedToInitializeProject: (error: unknown) =>
+    `%cross% Failed to initialize project for testify: ${error}`,
+
+  missingTestifyPackageMetadata: () =>
+    `%cross% Could not locate testify package metadata required for init.`,
+
+  missingJasmineTypesVersion: () =>
+    `%cross% Could not determine the bundled @types/jasmine version for init.`,
+
+  projectPackageJsonMissing: (projectRoot: string) =>
+    `%cross% No package.json found in ${projectRoot}. Run your package manager init first, then rerun \`testify init\`.`,
+
+  installingJasmineTypes: (packageManager: string) =>
+    `%box% Installing @types/jasmine via ${packageManager}...`,
+
+  failedToInstallJasmineTypes: (error: unknown) =>
+    `%cross% Failed to install @types/jasmine: ${error}`,
+
+  installedJasmineTypes: (packageName: string, version: string) =>
+    `%check% Installed ${packageName}@${version}.`,
+
+  jasmineTypesAlreadyDeclared: () =>
+    `%info%  Project already declares @types/jasmine.`,
+
+  noProjectTsconfigFound: () =>
+    `%info%  No tsconfig file found for Jasmine type registration.`,
+
+  tsconfigAlreadyIncludesJasmine: (fileName: string) =>
+    `%info%  ${fileName} already includes "jasmine" in compilerOptions.types.`,
+
+  addedJasmineToTsconfig: (fileName: string) =>
+    `%check% Added "jasmine" to ${fileName} compilerOptions.types.`,
+
+  createdTsconfigTypes: (fileName: string, types: string[]) =>
+    `%check% Set ${fileName} compilerOptions.types to ${types.join(', ')}.`,
+
+  tsconfigTypesNotRestricted: () =>
+    `%info%  Project tsconfig does not restrict compilerOptions.types, so Jasmine types should be available without a tsconfig update.`,
+
   browserArgMissing: () =>
     `%cross% --browser requires a browser name (chrome|chromium|firefox|webkit|node).`,
 
@@ -117,7 +156,7 @@ export const CLIMessages = {
     `%cross% Could not resolve project "${name}". It is not a directory and not a known package name.`,
 
   preserveOutputsEnabled: () =>
-    `%info% Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).`,
+    `%info%  Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).`,
 
   failedToStartTestRunner: (error: unknown) =>
     `%cross% Failed to start test runner: ${error}`,
@@ -128,7 +167,7 @@ export const CLIMessages = {
     '',
     'Usage:',
     '  npx testify [options]',
-    '  npx testify init               # scaffold testify.json',
+    '  npx testify init               # scaffold testify.json and set up Jasmine types',
     '',
     'Options:',
     '  --headless           Run tests in the default Playwright browser without UI',
@@ -168,16 +207,16 @@ export const ConfigMessages = {
     `%cross% Failed to create default testify.json: ${error}`,
 
   createdDefaultConfig: (path: string) =>
-    `%info% Created default test runner config at ${path}`,
+    `%info%  Created default test runner config at ${path}`,
 
   configAlreadyExists: (path: string) =>
-    `%info% Config already exists at ${path}`,
+    `%info%  Config already exists at ${path}`,
 
   failedToWriteConfig: (error: unknown) =>
     `%cross% Failed to write testify.json: ${error}`,
 
   generatedDefaultConfig: (path: string) =>
-    `%info% Generated default Vite Jasmine config at ${path}`,
+    `%info%  Generated default Vite Jasmine config at ${path}`,
 };
 
 // ─── console-reporter.ts ─────────────────────────────────────────────────────
@@ -438,10 +477,10 @@ export const JasmineCLIMessages = {
     `%cross% \`npx jasmine init\` is only supported when run from VS Code.`,
 
   openVsCodeTerminalHint: () =>
-    `%info% Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).`,
+    `%info%  Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).`,
 
   createdVsCodeLaunchConfig: (path: string) =>
-    `%info% Created VS Code launch config at ${path}`,
+    `%info%  Created VS Code launch config at ${path}`,
 
   addedVsCodeConfiguration: (name: string) =>
     `Added configuration: ${name}`,
@@ -450,13 +489,13 @@ export const JasmineCLIMessages = {
     `%cross% Failed to parse existing VS Code launch config: ${path}`,
 
   addConfigManually: () =>
-    `%info% Add this configuration manually:`,
+    `%info%  Add this configuration manually:`,
 
   vsCodeConfigAlreadyContains: (name: string) =>
-    `%info% VS Code launch config already contains: ${name}`,
+    `%info%  VS Code launch config already contains: ${name}`,
 
   updatedVsCodeLaunchConfig: (path: string) =>
-    `%info% Updated VS Code launch config at ${path}`,
+    `%info%  Updated VS Code launch config at ${path}`,
 
   unhandledRejection: (message: string) =>
     `%cross% ${message}`,

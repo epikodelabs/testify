@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.34] - 2026-07-29
+
+### Fixed
+- **Published package assembly**: The packaged CLI now reliably includes `postinstall.mjs` and bundled assets such as `assets/favicon.ico`, so installs no longer fail because declared package files are missing from the published artifact.
+- **`init` project setup**: `testify init` now installs `@types/jasmine` into the consumer project, updates the relevant tsconfig to include `"jasmine"` in `compilerOptions.types`, and creates an explicit `types` array when one was missing.
+- **Windows init installs**: Project dependency installation during `testify init` now launches the package manager in a Windows-safe way, avoiding `spawnSync npm.cmd EINVAL` failures.
+- **Path alias resolution**: Vite path aliases now resolve correctly when tsconfig settings are inherited through `extends`, with `baseUrl` and `paths` interpreted relative to the tsconfig file that defines them.
+- **Rolldown compatibility**: The invalid incremental build cache option is no longer passed through to Rolldown, removing the `Invalid key: "cache"` warning during test preprocessing.
+- **Vite build packaging**: CLI packaging no longer depends on the incompatible `rollup-plugin-copy` target shape, and the deprecated `inlineDynamicImports` usage has been replaced with current Vite/Rolldown-compatible output settings.
+
+### Changed
+- **Playwright runtime dependency**: Replaced `playwright-core` with `playwright` for browser automation, simplifying runtime dependency handling and aligning the package with Playwright's standard install surface.
+- **Init config scaffold**: Newly generated `testify.json` files now write `viteBuildOptions.preserveModulesRoot` as `"."` instead of an absolute filesystem path.
+
 ## [1.0.33] - 2026-07-24
 
 ### Fixed

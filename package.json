@@ -1,6 +1,6 @@
 {
   "name": "@epikodelabs/testify",
-  "version": "1.0.33",
+  "version": "1.0.34",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
     "jasmine": "bin/jasmine",
@@ -59,7 +59,7 @@
     "istanbul-reports": "^3.2.0",
     "jasmine-core": "^6.3.0",
     "picomatch": "^4.0.5",
-    "playwright-core": "^1.62.0",
+    "playwright": "^1.62.0",
     "rollup": "^4.62.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
@@ -101,7 +101,7 @@
     "istanbul-reports",
     "jasmine-core",
     "picomatch",
-    "playwright-core",
+    "playwright",
     "rollup",
     "ts-node",
     "vite",

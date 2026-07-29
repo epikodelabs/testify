@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
+import { createRequire } from 'module';
+import { globSync } from 'glob';
 import { InlineConfig } from 'vite';
 import type { WarningHandlerWithDefault } from 'rollup';
 import { ViteJasmineConfig } from './vite-jasmine-config';
@@ -9,6 +11,25 @@ import JSONCleaner from './json-cleaner';
 import { logger } from './logger';
 import { ViteConfigMessages } from './log-messages';
 import { minimatch } from 'minimatch';
+
+const nodeRequire = createRequire(import.meta.url);
+
+interface ResolvedTsconfigAliases {
+  aliases: Record<string, string>;
+  baseUrl: string;
+}
+
+interface ResolvedTsconfigData extends ResolvedTsconfigAliases {
+  compilerOptions: Record<string, any>;
+}
+
+interface PackageManifest {
+  name?: string;
+  main?: string;
+  module?: string;
+  browser?: string;
+  exports?: unknown;
+}
 
 export class ViteConfigBuilder {
   private inputMap: Record<string, string> = {};
@@ -248,6 +269,8 @@ export class ViteConfigBuilder {
       warn(warning);
     };
 
+    const tsconfigData = this.loadResolvedTsconfigData();
+
     return {
       root: process.cwd(),
       configFile: incremental ? false : undefined,
@@ -261,7 +284,6 @@ export class ViteConfigBuilder {
 
         rollupOptions: {
           input,
-          cache: viteCache,
           preserveEntrySignatures: incremental
             ? 'allow-extension'
             : 'strict',
@@ -287,6 +309,7 @@ export class ViteConfigBuilder {
       esbuild: {
         target: 'es2022',
         keepNames: false,
+        tsconfigRaw: tsconfigData ? { compilerOptions: tsconfigData.compilerOptions } : undefined,
       },
       define: { 'process.env.NODE_ENV': '"test"' },
       logLevel: 'warn'
@@ -378,28 +401,351 @@ export class ViteConfigBuilder {
   /* tsconfig aliases                                   */
   /* -------------------------------------------------- */
 
-  private createPathAliases(): Record<string, string> {
-    const aliases: Record<string, string> = {};
-    const cleaner = new JSONCleaner();
-
+  private loadResolvedTsconfigData(): ResolvedTsconfigData | null {
     try {
-      const tsconfigPath = this.config.tsconfig ?? 'tsconfig.json';
-      if (!fs.existsSync(tsconfigPath)) return aliases;
+      const tsconfigPath = path.resolve(this.config.tsconfig ?? 'tsconfig.json');
+      if (!fs.existsSync(tsconfigPath)) return null;
 
-      const tsconfig = cleaner.parse(fs.readFileSync(tsconfigPath, 'utf8'));
-      const baseUrl = tsconfig.compilerOptions?.baseUrl ?? '.';
-      const paths = tsconfig.compilerOptions?.paths ?? {};
-
-      for (const [alias, values] of Object.entries(paths)) {
-        if (!Array.isArray(values) || !values.length) continue;
-        aliases[alias.replace(/\/\*$/, '')] = norm(
-          path.resolve(baseUrl, values[0].replace(/\/\*$/, ''))
-        );
-      }
+      return this.resolveTsconfigData(tsconfigPath);
     } catch (err) {
       logger.error(ViteConfigMessages.tsconfigParseFailed(err));
+      return null;
+    }
+  }
+
+  private createPathAliases(): Record<string, string> {
+    return {
+      ...(this.loadResolvedTsconfigData()?.aliases ?? {}),
+      ...this.createProjectBuildAliases(),
+    };
+  }
+
+  private createProjectBuildAliases(): Record<string, string> {
+    if (!this.config.project) {
+      return {};
+    }
+
+    const projectPackageJsonPath = path.join(
+      path.resolve(this.config.project),
+      'package.json'
+    );
+
+    if (!fs.existsSync(projectPackageJsonPath)) {
+      return {};
+    }
+
+    const cleaner = new JSONCleaner();
+    let projectPackage: PackageManifest;
+
+    try {
+      projectPackage = cleaner.parse<PackageManifest>(
+        fs.readFileSync(projectPackageJsonPath, 'utf8')
+      );
+    } catch {
+      return {};
+    }
+
+    if (!projectPackage.name) {
+      return {};
+    }
+
+    const builtPackageRoot = this.findBuiltPackageRoot(projectPackage.name);
+    if (!builtPackageRoot) {
+      return {};
+    }
+
+    try {
+      const builtPackageJsonPath = path.join(builtPackageRoot, 'package.json');
+      const builtPackage = cleaner.parse<PackageManifest>(
+        fs.readFileSync(builtPackageJsonPath, 'utf8')
+      );
+
+      return this.resolveBuiltPackageAliases(
+        projectPackage.name,
+        builtPackageRoot,
+        builtPackage
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  private findBuiltPackageRoot(packageName: string): string | null {
+    const candidates = globSync('dist/**/package.json', {
+      absolute: true,
+      nodir: true,
+      ignore: ['**/node_modules/**'],
+    }).sort((a, b) => a.length - b.length || a.localeCompare(b));
+
+    const cleaner = new JSONCleaner();
+
+    for (const candidate of candidates) {
+      try {
+        const manifest = cleaner.parse<PackageManifest>(
+          fs.readFileSync(candidate, 'utf8')
+        );
+        if (manifest.name === packageName) {
+          return norm(path.dirname(candidate));
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveBuiltPackageAliases(
+    packageName: string,
+    builtPackageRoot: string,
+    manifest: PackageManifest
+  ): Record<string, string> {
+    const aliases: Record<string, string> = {};
+    const exportsField = manifest.exports;
+
+    if (exportsField && typeof exportsField === 'object' && !Array.isArray(exportsField)) {
+      const exportMap = exportsField as Record<string, unknown>;
+
+      const rootEntry = this.resolvePackageExportTarget(
+        exportMap['.'] ?? exportMap,
+        builtPackageRoot
+      );
+      if (rootEntry) {
+        aliases[packageName] = rootEntry;
+      }
+
+      for (const [key, value] of Object.entries(exportMap)) {
+        if (key === '.' || !key.startsWith('./')) {
+          continue;
+        }
+
+        const resolvedTarget = this.resolvePackageExportTarget(
+          value,
+          builtPackageRoot
+        );
+        if (!resolvedTarget) {
+          continue;
+        }
+
+        aliases[`${packageName}/${key.slice(2)}`] = resolvedTarget;
+      }
+    } else {
+      const rootEntry = this.resolvePackageExportTarget(exportsField, builtPackageRoot);
+      if (rootEntry) {
+        aliases[packageName] = rootEntry;
+      }
+    }
+
+    if (!aliases[packageName]) {
+      const fallbackEntry = this.resolvePackageMainEntry(
+        packageName,
+        builtPackageRoot,
+        manifest
+      );
+      if (fallbackEntry) {
+        aliases[packageName] = fallbackEntry;
+      }
     }
 
     return aliases;
+  }
+
+  private resolvePackageExportTarget(
+    target: unknown,
+    builtPackageRoot: string
+  ): string | null {
+    if (!target) {
+      return null;
+    }
+
+    if (typeof target === 'string') {
+      return this.resolveBuiltFileTarget(target, builtPackageRoot);
+    }
+
+    if (Array.isArray(target)) {
+      for (const candidate of target) {
+        const resolved = this.resolvePackageExportTarget(candidate, builtPackageRoot);
+        if (resolved) {
+          return resolved;
+        }
+      }
+      return null;
+    }
+
+    if (typeof target !== 'object') {
+      return null;
+    }
+
+    const record = target as Record<string, unknown>;
+    const preferredKeys = [
+      'browser',
+      'import',
+      'module',
+      'default',
+      'development',
+      'production',
+      'node',
+      'require',
+    ];
+
+    for (const key of preferredKeys) {
+      if (!(key in record)) {
+        continue;
+      }
+
+      const resolved = this.resolvePackageExportTarget(record[key], builtPackageRoot);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    for (const value of Object.values(record)) {
+      const resolved = this.resolvePackageExportTarget(value, builtPackageRoot);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveBuiltFileTarget(
+    relativeTarget: string,
+    builtPackageRoot: string
+  ): string | null {
+    if (!relativeTarget.startsWith('.')) {
+      return null;
+    }
+
+    const resolvedPath = path.resolve(builtPackageRoot, relativeTarget);
+    if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) {
+      return null;
+    }
+
+    return norm(resolvedPath);
+  }
+
+  private resolvePackageMainEntry(
+    packageName: string,
+    builtPackageRoot: string,
+    manifest: PackageManifest
+  ): string | null {
+    for (const field of [manifest.module, manifest.main, manifest.browser]) {
+      const resolved = this.resolvePackageExportTarget(field, builtPackageRoot);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    const packageBaseName = packageName.split('/').pop() ?? packageName;
+    const fallbacks = [
+      `./fesm2022/${packageBaseName}.mjs`,
+      `./esm2022/${packageBaseName}.mjs`,
+      './index.mjs',
+      './index.js',
+    ];
+
+    for (const candidate of fallbacks) {
+      const resolved = this.resolveBuiltFileTarget(candidate, builtPackageRoot);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveTsconfigData(
+    tsconfigPath: string,
+    seen = new Set<string>()
+  ): ResolvedTsconfigData {
+    const normalizedTsconfigPath = norm(path.resolve(tsconfigPath));
+    if (seen.has(normalizedTsconfigPath)) {
+      return {
+        aliases: {},
+        baseUrl: path.dirname(normalizedTsconfigPath),
+        compilerOptions: {},
+      };
+    }
+
+    seen.add(normalizedTsconfigPath);
+
+    const cleaner = new JSONCleaner();
+    const configDir = path.dirname(normalizedTsconfigPath);
+    const tsconfig = cleaner.parse<any>(fs.readFileSync(normalizedTsconfigPath, 'utf8'));
+    const compilerOptions = tsconfig.compilerOptions ?? {};
+
+    let inherited: ResolvedTsconfigData = {
+      aliases: {},
+      baseUrl: configDir,
+      compilerOptions: {},
+    };
+
+    if (typeof tsconfig.extends === 'string' && tsconfig.extends.trim().length > 0) {
+      const extendsPath = this.resolveExtendedTsconfigPath(tsconfig.extends, configDir);
+      if (extendsPath && fs.existsSync(extendsPath)) {
+        inherited = this.resolveTsconfigData(extendsPath, seen);
+      }
+    }
+
+    const baseUrl = compilerOptions.baseUrl
+      ? path.resolve(configDir, compilerOptions.baseUrl)
+      : inherited.baseUrl;
+
+    const aliases = { ...inherited.aliases };
+    const paths = compilerOptions.paths ?? {};
+
+    for (const [alias, values] of Object.entries(paths)) {
+      if (!Array.isArray(values) || !values.length) continue;
+
+      aliases[alias.replace(/\/\*$/, '')] = norm(
+        path.resolve(baseUrl, String(values[0]).replace(/\/\*$/, ''))
+      );
+    }
+
+    const mergedCompilerOptions = {
+      ...inherited.compilerOptions,
+      ...compilerOptions,
+    };
+
+    delete mergedCompilerOptions.paths;
+    delete mergedCompilerOptions.baseUrl;
+
+    return {
+      aliases,
+      baseUrl,
+      compilerOptions: mergedCompilerOptions,
+    };
+  }
+
+  private resolveExtendedTsconfigPath(extendsRef: string, configDir: string): string | null {
+    const localCandidates = this.candidateTsconfigPaths(path.resolve(configDir, extendsRef));
+    for (const candidate of localCandidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+
+    try {
+      return nodeRequire.resolve(extendsRef);
+    } catch {}
+
+    for (const candidate of this.candidateTsconfigPaths(extendsRef)) {
+      try {
+        return nodeRequire.resolve(candidate);
+      } catch {}
+    }
+
+    return null;
+  }
+
+  private candidateTsconfigPaths(basePath: string): string[] {
+    const candidates = [basePath];
+
+    if (!basePath.endsWith('.json')) {
+      candidates.push(`${basePath}.json`);
+    }
+
+    candidates.push(path.join(basePath, 'tsconfig.json'));
+
+    return [...new Set(candidates.map((candidate) => path.resolve(candidate)))];
   }
 }
