@@ -30,7 +30,7 @@ export default defineConfig({
     rollupOptions: {
       external: (id) => isExternal(id),
       output: {
-        inlineDynamicImports: true,
+        codeSplitting: false,
         manualChunks: undefined,
         // Ensure externals stay as bare specifiers (avoid absolute Windows paths in ESM)
         paths: (id) => {

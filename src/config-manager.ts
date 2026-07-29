@@ -66,7 +66,7 @@ export class ConfigManager {
         sourcemap: true,
         minify: false,
         preserveModules: false,
-        preserveModulesRoot: configDir            // absolute path for stable resolution
+        preserveModulesRoot: '.'
       },
 
       jasmineConfig: {

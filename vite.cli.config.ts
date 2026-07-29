@@ -34,10 +34,10 @@ const isExternal = (id: string) => {
 export default defineConfig({
   plugins: [
     copy({
-      targets: [
-        { src: 'postinstall.script', dest: 'dist/testify/', rename: 'postinstall.mjs' },
-        { src: 'assets/favicon.ico', dest: 'dist/testify/assets/' },
-      ],
+      targets: {
+        'postinstall.script': 'dist/testify/postinstall.mjs',
+        'assets/favicon.ico': 'dist/testify/assets/favicon.ico'
+      },
       hook: 'writeBundle',
       flatten: false
     })
@@ -58,6 +58,7 @@ export default defineConfig({
       output: {
         entryFileNames: 'bin/testify',
         format: 'es',
+        codeSplitting: false,
         banner: `#!/usr/bin/env node
 import { createRequire as ___createRequire } from 'module';
 const require = ___createRequire(import.meta.url);
@@ -68,7 +69,6 @@ const ___path = require('path');
 const __filename = ___fileURLToPath(import.meta.url);
 const __dirname = ___path.dirname(__filename);
 `,
-        inlineDynamicImports: true,
         manualChunks: undefined,
         // Ensure externals stay as bare specifiers (avoid absolute Windows paths in ESM)
         paths: (id) => {

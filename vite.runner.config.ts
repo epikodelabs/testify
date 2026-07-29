@@ -42,6 +42,7 @@ export default defineConfig({
       output: {
         entryFileNames: 'bin/jasmine',
         format: 'es',
+        codeSplitting: false,
         banner: `#!/usr/bin/env node
 import { createRequire as ___createRequire } from 'module';
 const require = ___createRequire(import.meta.url);
@@ -52,7 +53,6 @@ const ___path = require('path');
 const __filename = ___fileURLToPath(import.meta.url);
 const __dirname = ___path.dirname(__filename);
 `,
-        inlineDynamicImports: true,
         manualChunks: undefined
       },
       external: (id) => {
