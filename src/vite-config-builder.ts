@@ -328,7 +328,9 @@ export class ViteConfigBuilder {
       logger.error(ViteConfigMessages.noFilesToBuild());
     }
 
-    return this.mergeUserConfig(this.baseConfig(this.inputMap, false));
+    return this.normalizeAliasConfig(
+      this.mergeUserConfig(this.baseConfig(this.inputMap, false))
+    );
   }
 
   /* -------------------------------------------------- */
@@ -352,8 +354,10 @@ export class ViteConfigBuilder {
 
     logger.println(ViteConfigMessages.incrementalBuild(Object.keys(this.inputMap).length));
 
-    return this.mergeUserConfig(
-      this.baseConfig(this.inputMap, true, cache)
+    return this.normalizeAliasConfig(
+      this.mergeUserConfig(
+        this.baseConfig(this.inputMap, true, cache)
+      )
     );
   }
 
@@ -395,6 +399,52 @@ export class ViteConfigBuilder {
     };
 
     return merge(base, user);
+  }
+
+  private normalizeAliasConfig(config: InlineConfig): InlineConfig {
+    if (!config.resolve?.alias) {
+      return config;
+    }
+
+    return {
+      ...config,
+      resolve: {
+        ...config.resolve,
+        alias: this.normalizeAliasEntries(config.resolve.alias),
+      },
+    };
+  }
+
+  private normalizeAliasEntries(alias: NonNullable<InlineConfig['resolve']>['alias']) {
+    if (Array.isArray(alias)) {
+      return alias.map((entry) => ({
+        ...entry,
+        replacement: this.normalizeAliasReplacement(entry.replacement),
+      }));
+    }
+
+    const normalized: Record<string, string> = {};
+    for (const [find, replacement] of Object.entries(alias)) {
+      normalized[find] = this.normalizeAliasReplacement(replacement);
+    }
+
+    return normalized;
+  }
+
+  private normalizeAliasReplacement(replacement: string): string {
+    if (!replacement) {
+      return replacement;
+    }
+
+    if (path.isAbsolute(replacement)) {
+      return norm(replacement);
+    }
+
+    if (replacement.startsWith('./') || replacement.startsWith('../')) {
+      return norm(path.resolve(process.cwd(), replacement));
+    }
+
+    return replacement;
   }
 
   /* -------------------------------------------------- */
