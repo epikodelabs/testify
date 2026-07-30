@@ -99,43 +99,7 @@ export const CLIMessages = {
     `%cross% Invalid --seed value (expected a number).`,
 
   failedToInitializeProject: (error: unknown) =>
-    `%cross% Failed to initialize project for testify: ${error}`,
-
-  missingTestifyPackageMetadata: () =>
-    `%cross% Could not locate testify package metadata required for init.`,
-
-  missingJasmineTypesVersion: () =>
-    `%cross% Could not determine the bundled @types/jasmine version for init.`,
-
-  projectPackageJsonMissing: (projectRoot: string) =>
-    `%cross% No package.json found in ${projectRoot}. Run your package manager init first, then rerun \`testify init\`.`,
-
-  installingJasmineTypes: (packageManager: string) =>
-    `%box% Installing @types/jasmine via ${packageManager}...`,
-
-  failedToInstallJasmineTypes: (error: unknown) =>
-    `%cross% Failed to install @types/jasmine: ${error}`,
-
-  installedJasmineTypes: (packageName: string, version: string) =>
-    `%check% Installed ${packageName}@${version}.`,
-
-  jasmineTypesAlreadyDeclared: () =>
-    `%info%  Project already declares @types/jasmine.`,
-
-  noProjectTsconfigFound: () =>
-    `%info%  No tsconfig file found for Jasmine type registration.`,
-
-  tsconfigAlreadyIncludesJasmine: (fileName: string) =>
-    `%info%  ${fileName} already includes "jasmine" in compilerOptions.types.`,
-
-  addedJasmineToTsconfig: (fileName: string) =>
-    `%check% Added "jasmine" to ${fileName} compilerOptions.types.`,
-
-  createdTsconfigTypes: (fileName: string, types: string[]) =>
-    `%check% Set ${fileName} compilerOptions.types to ${types.join(', ')}.`,
-
-  tsconfigTypesNotRestricted: () =>
-    `%info%  Project tsconfig does not restrict compilerOptions.types, so Jasmine types should be available without a tsconfig update.`,
+    `%cross% Failed to initialize testify config: ${error}`,
 
   browserArgMissing: () =>
     `%cross% --browser requires a browser name (chrome|chromium|firefox|webkit|node).`,
@@ -167,7 +131,7 @@ export const CLIMessages = {
     '',
     'Usage:',
     '  npx testify [options]',
-    '  npx testify init               # scaffold testify.json and set up Jasmine types',
+    '  npx testify init               # scaffold testify.json',
     '',
     'Options:',
     '  --headless           Run tests in the default Playwright browser without UI',

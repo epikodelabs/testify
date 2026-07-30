@@ -1,6 +1,6 @@
 {
   "name": "@epikodelabs/testify",
-  "version": "1.0.34",
+  "version": "1.0.35",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
     "jasmine": "bin/jasmine",
@@ -88,6 +88,9 @@
     "rimraf": "^6.1.3",
     "rollup-plugin-copy": "^3.5.0",
     "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@types/jasmine": "^6.0.0"
   },
   "bundleDependencies": [
     "chokidar",

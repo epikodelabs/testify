@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.35] - 2026-07-30
+
+### Fixed
+- **Peer dependency declaration**: `@types/jasmine` is now declared as a peer dependency so consumer projects get an explicit type requirement instead of relying on testify's internal dev dependency.
+- **Install-time tsconfig registration**: The published package now updates the consumer project's `tsconfig.json` during `postinstall` to ensure `compilerOptions.types` includes `"jasmine"`.
+
+### Changed
+- **Simplified init command**: `testify init` now only scaffolds `testify.json`, while Jasmine type setup is handled during package installation.
+
 ## [1.0.34] - 2026-07-29
 
 ### Fixed

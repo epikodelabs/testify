@@ -9,7 +9,6 @@ import { ViteJasmineRunner } from "./vite-jasmine-runner";
 import { EXIT_CODES, ExitCodeError, getExitCode } from "./exit-codes";
 import { CLIMessages } from "./log-messages";
 import { setAnsiMode } from "./symbols";
-import { initializeProjectForTestify } from "./init-project-setup";
 
 export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineRunner {
   return new ViteJasmineRunner(config);
@@ -123,7 +122,6 @@ export class CLIHandler {
     if (initOnly) {
       try {
         ConfigManager.initViteJasmineConfig();
-        await initializeProjectForTestify();
         return EXIT_CODES.SUCCESS;
       } catch (error) {
         logger.error(CLIMessages.failedToInitializeProject(error));

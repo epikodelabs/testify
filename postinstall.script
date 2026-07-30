@@ -9,6 +9,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const platform = os.platform();
 const arch = os.arch();
+const JASMINE_TYPE_NAME = "jasmine";
+const TSCONFIG_CANDIDATES = ["tsconfig.json"];
 
 // -------------------- Utility --------------------
 function run(cmd, cwd = __dirname, env = process.env) {
@@ -49,6 +51,236 @@ function getPackageVersion(pkgName) {
   }
 
   return version.replace(/^[^0-9]*/, "");
+}
+
+function detectEol(text) {
+  return text.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function resolveProjectRoot() {
+  const initCwd = process.env.INIT_CWD;
+
+  if (initCwd && fs.existsSync(path.join(initCwd, "package.json"))) {
+    return initCwd;
+  }
+
+  return process.cwd();
+}
+
+function cleanJson(text) {
+  let result = text;
+
+  result = stripComments(result);
+  result = removeTrailingCommas(result);
+
+  return result;
+}
+
+function stripComments(text) {
+  let result = "";
+  let i = 0;
+  const state = {
+    inString: false,
+    stringChar: null,
+  };
+
+  while (i < text.length) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === "\\" && state.inString) {
+      const next = text[i + 1];
+
+      if (next !== undefined) {
+        result += char + next;
+        i += 2;
+      } else {
+        result += char;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      if (!state.inString) {
+        state.inString = true;
+        state.stringChar = char;
+        result += char;
+      } else if (char === state.stringChar) {
+        state.inString = false;
+        state.stringChar = null;
+        result += char;
+      } else {
+        result += char;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (!state.inString) {
+      if (char === "/" && nextChar === "/") {
+        i += 2;
+
+        while (i < text.length && text[i] !== "\n" && text[i] !== "\r") {
+          i += 1;
+        }
+
+        if (i < text.length) {
+          result += text[i];
+        }
+
+        i += 1;
+        continue;
+      }
+
+      if (char === "/" && nextChar === "*") {
+        i += 2;
+        let foundEnd = false;
+        let newlineCount = 0;
+
+        while (i < text.length - 1) {
+          if (text[i] === "\n") {
+            newlineCount += 1;
+          }
+
+          if (text[i] === "*" && text[i + 1] === "/") {
+            i += 2;
+            foundEnd = true;
+            break;
+          }
+
+          i += 1;
+        }
+
+        if (!foundEnd) {
+          throw new Error("Unclosed multi-line comment");
+        }
+
+        if (newlineCount > 0) {
+          result += "\n".repeat(Math.min(newlineCount, 2));
+        }
+
+        continue;
+      }
+    }
+
+    result += char;
+    i += 1;
+  }
+
+  if (state.inString) {
+    throw new Error("Unclosed string in JSON");
+  }
+
+  return result;
+}
+
+function removeTrailingCommas(text) {
+  let result = "";
+  let i = 0;
+  const state = {
+    inString: false,
+    stringChar: null,
+  };
+
+  while (i < text.length) {
+    const char = text[i];
+
+    if (char === "\\" && state.inString) {
+      const next = text[i + 1];
+
+      if (next !== undefined) {
+        result += char + next;
+        i += 2;
+      } else {
+        result += char;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      if (!state.inString) {
+        state.inString = true;
+        state.stringChar = char;
+      } else if (char === state.stringChar) {
+        state.inString = false;
+        state.stringChar = null;
+      }
+      result += char;
+      i += 1;
+      continue;
+    }
+
+    if (!state.inString && char === ",") {
+      let j = i + 1;
+
+      while (j < text.length && /\s/.test(text[j])) {
+        j += 1;
+      }
+
+      if (j < text.length && (text[j] === "]" || text[j] === "}")) {
+        i += 1;
+        continue;
+      }
+    }
+
+    result += char;
+    i += 1;
+  }
+
+  return result;
+}
+
+function parseJsonc(text) {
+  return JSON.parse(cleanJson(text));
+}
+
+function findTsconfigPath(projectRoot) {
+  for (const fileName of TSCONFIG_CANDIDATES) {
+    const candidate = path.join(projectRoot, fileName);
+
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function ensureJasmineTypesInTsconfig(projectRoot) {
+  const tsconfigPath = findTsconfigPath(projectRoot);
+
+  if (!tsconfigPath) {
+    console.log("[postinstall] No tsconfig file found for Jasmine type registration.");
+    return;
+  }
+
+  const raw = fs.readFileSync(tsconfigPath, "utf8");
+  const config = parseJsonc(raw);
+  const currentTypes = config.compilerOptions?.types;
+
+  if (Array.isArray(currentTypes)) {
+    if (currentTypes.includes(JASMINE_TYPE_NAME)) {
+      console.log(
+        `[postinstall] ${path.basename(tsconfigPath)} already includes "${JASMINE_TYPE_NAME}" in compilerOptions.types.`
+      );
+      return;
+    }
+
+    config.compilerOptions.types = [...currentTypes, JASMINE_TYPE_NAME];
+  } else {
+    config.compilerOptions = config.compilerOptions || {};
+    config.compilerOptions.types = [JASMINE_TYPE_NAME];
+  }
+
+  const eol = detectEol(raw);
+  const serialized = JSON.stringify(config, null, 2).replace(/\n/g, eol) + eol;
+  fs.writeFileSync(tsconfigPath, serialized);
+
+  console.log(
+    `[postinstall] Updated ${path.basename(tsconfigPath)} compilerOptions.types with "${JASMINE_TYPE_NAME}".`
+  );
 }
 
 // -------------------- DEPENDENCIES --------------------
@@ -133,6 +365,8 @@ try {
   if (bundleDeps.includes("rollup")) {
     installRollup();
   }
+
+  ensureJasmineTypesInTsconfig(resolveProjectRoot());
 
   console.log("[postinstall] Completed successfully.");
 } catch (e) {
