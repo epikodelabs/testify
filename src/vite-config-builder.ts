@@ -3,6 +3,7 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import { createRequire } from 'module';
 import { globSync } from 'glob';
+import picomatch from 'picomatch';
 import { InlineConfig } from 'vite';
 import type { WarningHandlerWithDefault } from 'rollup';
 import { ViteJasmineConfig } from './vite-jasmine-config';
@@ -10,7 +11,6 @@ import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
 import { logger } from './logger';
 import { ViteConfigMessages } from './log-messages';
-import { minimatch } from 'minimatch';
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -77,9 +77,7 @@ export class ViteConfigBuilder {
       return true;
     }
 
-    if (this.config.exclude?.some(p =>
-      minimatch(dirPath, p, { dot: true })
-    )) {
+    if (this.config.exclude?.some(p => picomatch.isMatch(dirPath, p, { dot: true }))) {
       return true;
     }
 

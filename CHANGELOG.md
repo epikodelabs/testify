@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.36] - 2026-07-31
+
+### Fixed
+- **CLI startup on Node.js 22**: Replaced the `minimatch` import used during Vite config discovery with `picomatch`, so `npx testify` no longer fails at startup with `Named export 'minimatch' not found`.
+
 ## [1.0.35] - 2026-07-30
 
 ### Fixed
