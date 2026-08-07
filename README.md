@@ -28,14 +28,14 @@ npm install --save-dev @epikodelabs/testify
 npx playwright install        # required for browser testing
 ```
 
-`npm install` only installs the JavaScript dependencies. Browser binaries are installed separately and only when you run `npx playwright install`.
+`npm install` does not run a Testify postinstall script or modify your project. Browser binaries are installed separately and only when you run `npx playwright install`.
 
 ---
 
 ## Quick Start
 
 ```bash
-npx testify init              # creates testify.json
+npx testify init              # creates testify.json and configures Jasmine types when needed
 ```
 
 Write tests as normal `.spec.ts` Jasmine specs:
@@ -90,6 +90,8 @@ Generates `coverage/index.html`, `coverage/lcov.info`, and a console text summar
 ---
 
 ## Single Spec Debugging
+
+Run `npx jasmine init` to configure Jasmine typings (when an explicit `compilerOptions.types` list is present) and create/update the VS Code single-spec launch configuration. The command is idempotent.
 
 The Jasmine CLI uses `tsx` with the nearest `tsconfig.json`. Testify also resolves extensionless relative files and directory indexes, so imports such as `../lib`, `../lib/forms`, and `./helper` work like they do in the browser/Vite runner.
 

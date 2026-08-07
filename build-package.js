@@ -34,15 +34,11 @@ const distPackage = {
     'CHANGELOG.md',
     'LICENSE',
     'package.json',
-    'postinstall.mjs',
     'assets/',
     'bin/',
     'lib/',
     'node_modules/'
   ],
-  scripts: {
-    "postinstall": "node postinstall.mjs"
-  },
   keywords: mainPackage.keywords || [],
   author: mainPackage.author,
   license: mainPackage.license,
@@ -61,10 +57,6 @@ fs.writeFileSync(
   JSON.stringify(distPackage, null, 2)
 );
 
-copyFile(
-  path.join(buildDirectory, 'postinstall.script'),
-  path.join(distRoot, 'postinstall.mjs')
-);
 
 copyFile(
   path.join(buildDirectory, 'assets/favicon.ico'),

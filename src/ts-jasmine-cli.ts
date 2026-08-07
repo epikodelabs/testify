@@ -12,6 +12,7 @@ import { initializeNodeJasmineEnvironment } from './jasmine-node-runtime';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
 import { EXIT_CODES } from './exit-codes';
+import { ProjectSetup } from './project-setup';
 
 const packageRequire = createRequire(import.meta.url);
 
@@ -56,7 +57,7 @@ function printHelp(): void {
   logger.println('  npx jasmine init');
   logger.println('');
   logger.println('Commands:');
-  logger.println('  init                Create/update .vscode/launch.json (VS Code debug; requires VS Code)');
+  logger.println('  init                Configure Jasmine types and create/update .vscode/launch.json');
   logger.println('');
   logger.println('Options:');
   logger.println('  --spec <path>        Path to a single spec file');
@@ -303,13 +304,13 @@ async function main() {
   }
 
   if (args.initLaunchConfig) {
-    if (!isRunningInVsCode()) {
-      logger.error(JasmineCLIMessages.notRunningInVsCode());
-      logger.println('');
-      logger.println(JasmineCLIMessages.openVsCodeTerminalHint());
-      process.exit(EXIT_CODES.INVALID_USAGE);
-    }
+    ProjectSetup.configure(process.cwd());
     initVsCodeLaunchConfig();
+
+    if (!isRunningInVsCode()) {
+      logger.println('VS Code was not detected, but .vscode/launch.json was configured successfully.');
+    }
+
     process.exit(EXIT_CODES.SUCCESS);
   }
 

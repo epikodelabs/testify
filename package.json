@@ -12,7 +12,6 @@
     "README.md",
     "CHANGELOG.md",
     "package.json",
-    "postinstall.script",
     "assets/",
     "bin/",
     "lib/",
