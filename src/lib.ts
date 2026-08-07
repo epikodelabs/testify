@@ -45,3 +45,10 @@ export type {
 export {
   getBrowserJasmineRegistrationPatchScript,
 } from './browser-jasmine-runtime';
+
+export {
+  getBrowserWebSocketReporterScript,
+} from './browser-websocket-runtime';
+export {
+  getBrowserHmrClientScript,
+} from './browser-hmr-client';
