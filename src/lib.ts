@@ -73,3 +73,7 @@ export {
 export type {
   StaticBrowserBootstrapOptions,
 } from './browser-static-bootstrap';
+
+export {
+  BrowserPageBuilder,
+} from './browser-page-builder';
