@@ -37,14 +37,12 @@ const distPackage = {
     'assets/',
     'bin/',
     'lib/',
-    'node_modules/'
   ],
   keywords: mainPackage.keywords || [],
   author: mainPackage.author,
   license: mainPackage.license,
   engines: mainPackage.engines || undefined,
   dependencies: mainPackage.dependencies || {},
-  bundleDependencies: Object.keys(mainPackage.dependencies || {}),
   peerDependencies: mainPackage.peerDependencies || {},
   overrides: mainPackage.overrides || {},
   testifySetup: {

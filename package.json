@@ -14,8 +14,7 @@
     "package.json",
     "assets/",
     "bin/",
-    "lib/",
-    "node_modules/"
+    "lib/"
   ],
   "scripts": {
     "clean": "rimraf dist",
@@ -88,24 +87,6 @@
   "peerDependencies": {
     "@types/jasmine": "^6.0.0"
   },
-  "bundleDependencies": [
-    "chokidar",
-    "esbuild",
-    "glob",
-    "istanbul-api",
-    "istanbul-lib-coverage",
-    "istanbul-lib-instrument",
-    "istanbul-lib-report",
-    "istanbul-lib-source-maps",
-    "istanbul-reports",
-    "jasmine-core",
-    "picomatch",
-    "playwright",
-    "rollup",
-    "tsx",
-    "vite",
-    "ws"
-  ],
   "prettier": {
     "singleQuote": true,
     "trailingComma": "es5"
