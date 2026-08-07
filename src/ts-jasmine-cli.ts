@@ -273,17 +273,20 @@ async function loadJasmine() {
 }
 
 function registerSpecRuntime(specPath: string): () => Promise<void> {
-  const unregisterRelativeResolver = registerTestifyRelativeResolver();
   const tsconfig = findNearestTsconfig(path.dirname(specPath));
+
+  // Register tsx first. It installs its own CommonJS resolver; Testify then
+  // wraps that resolver to add bundler-style relative path compatibility.
   const unregisterTsx = register({
     tsconfig: tsconfig ?? false,
   });
+  const unregisterRelativeResolver = registerTestifyRelativeResolver();
 
   return async () => {
     try {
-      await unregisterTsx();
-    } finally {
       unregisterRelativeResolver();
+    } finally {
+      await unregisterTsx();
     }
   };
 }

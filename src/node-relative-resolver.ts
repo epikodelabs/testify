@@ -1,9 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import { registerHooks } from 'node:module';
+import { createRequire, registerHooks } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 const RELATIVE_SPECIFIER_RE = /^\.{1,2}(?:[\\/]|$)/;
+const runtimeRequire = createRequire(import.meta.url);
+const nodeModule = runtimeRequire('node:module') as any;
+const ModuleCtor = nodeModule.Module ?? nodeModule;
 
 export const RELATIVE_IMPORT_EXTENSIONS = [
   '.ts',
@@ -33,52 +36,49 @@ function isDirectory(filePath: string): boolean {
   }
 }
 
+function hasUrlSuffix(specifier: string): boolean {
+  return specifier.includes('?') || specifier.includes('#');
+}
+
 /**
- * Resolve the bundler-style relative imports commonly used by TypeScript projects:
+ * Resolve a local relative specifier using the same conveniences developers
+ * typically get from TypeScript/Vite-style bundler resolution.
  *
+ * Examples:
  *   ../lib           -> ../lib/index.ts
- *   ../lib/forms     -> ../lib/forms.ts
+ *   ../lib/bind-form -> ../lib/bind-form.ts
  *   ./helper         -> ./helper.ts
  *
- * Package imports, tsconfig aliases, URLs, and already-resolvable paths are left to
- * Node/tsx. Testify only fills the extensionless/directory gap between bundler
- * resolution and native Node ESM resolution.
+ * Returns an absolute filesystem path or null.
  */
-export function resolveRelativeImport(
+export function resolveRelativePath(
   specifier: string,
-  parentURL?: string,
+  parentFile: string | undefined,
 ): string | null {
   if (!RELATIVE_SPECIFIER_RE.test(specifier)) return null;
-  if (!parentURL?.startsWith('file:')) return null;
+  if (!parentFile) return null;
+  if (hasUrlSuffix(specifier)) return null;
 
-  // Query/hash imports are valid URL semantics and should remain Node/loader-owned.
-  // This resolver deals only with filesystem-style relative module specifiers.
-  if (specifier.includes('?') || specifier.includes('#')) return null;
-
-  const parentFile = fileURLToPath(parentURL);
   const candidate = path.resolve(path.dirname(parentFile), specifier);
 
-  // Preserve explicit existing file imports exactly as authored.
   if (isFile(candidate)) {
-    return pathToFileURL(candidate).href;
+    return candidate;
   }
 
-  // Extensionless relative file import: ./foo -> ./foo.ts (etc.).
   if (path.extname(candidate) === '') {
     for (const extension of RELATIVE_IMPORT_EXTENSIONS) {
       const filePath = `${candidate}${extension}`;
       if (isFile(filePath)) {
-        return pathToFileURL(filePath).href;
+        return filePath;
       }
     }
   }
 
-  // Directory import: ../lib -> ../lib/index.ts (etc.).
   if (isDirectory(candidate)) {
     for (const extension of RELATIVE_IMPORT_EXTENSIONS) {
       const indexPath = path.join(candidate, `index${extension}`);
       if (isFile(indexPath)) {
-        return pathToFileURL(indexPath).href;
+        return indexPath;
       }
     }
   }
@@ -87,16 +87,40 @@ export function resolveRelativeImport(
 }
 
 /**
- * Install Testify's small compatibility resolver in front of the normal Node/tsx
- * resolver chain. The returned function removes the hook when supported.
+ * ESM-facing helper retained as a public/testing seam.
+ */
+export function resolveRelativeImport(
+  specifier: string,
+  parentURL?: string,
+): string | null {
+  if (!parentURL?.startsWith('file:')) return null;
+
+  const resolved = resolveRelativePath(
+    specifier,
+    fileURLToPath(parentURL),
+  );
+
+  return resolved ? pathToFileURL(resolved).href : null;
+}
+
+/**
+ * Install Testify's compatibility resolution in front of both Node module
+ * systems used by tsx:
+ *
+ *  - ESM: node:module registerHooks()
+ *  - CJS: Module._resolveFilename()
+ *
+ * IMPORTANT: register this AFTER tsx. tsx installs its own CJS resolver shim;
+ * Testify must wrap that resolver rather than be overwritten by it.
  */
 export function registerTestifyRelativeResolver(): () => void {
-  const registration = registerHooks({
+  const esmRegistration = registerHooks({
     resolve(specifier, context, nextResolve) {
       const resolved = resolveRelativeImport(specifier, context.parentURL);
+
       if (resolved) {
-        // Continue the chain with a concrete file URL so tsx can still transpile
-        // TypeScript and apply its normal loader behavior.
+        // Feed a concrete URL back through the remaining chain so tsx can still
+        // transpile TypeScript and apply any other loader behavior it owns.
         return nextResolve(resolved, context);
       }
 
@@ -104,5 +128,41 @@ export function registerTestifyRelativeResolver(): () => void {
     },
   }) as { deregister?: () => void } | undefined;
 
-  return () => registration?.deregister?.();
+  const previousResolveFilename = ModuleCtor._resolveFilename;
+
+  const testifyResolveFilename = function (
+    this: unknown,
+    request: string,
+    parent: { filename?: string } | undefined,
+    isMain: boolean,
+    options: unknown,
+  ) {
+    if (typeof request === 'string' && RELATIVE_SPECIFIER_RE.test(request)) {
+      const resolved = resolveRelativePath(request, parent?.filename);
+
+      if (resolved) {
+        // Returning the concrete absolute path lets the tsx CJS extension hooks
+        // load/transpile .ts/.tsx while avoiding Node's extensionless lookup.
+        return resolved;
+      }
+    }
+
+    return previousResolveFilename.call(
+      this,
+      request,
+      parent,
+      isMain,
+      options,
+    );
+  };
+
+  ModuleCtor._resolveFilename = testifyResolveFilename;
+
+  return () => {
+    if (ModuleCtor._resolveFilename === testifyResolveFilename) {
+      ModuleCtor._resolveFilename = previousResolveFilename;
+    }
+
+    esmRegistration?.deregister?.();
+  };
 }
