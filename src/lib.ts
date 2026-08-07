@@ -193,3 +193,10 @@ export {
 export type {
   NodeProcessHostOptions,
 } from './node-process-host';
+
+export {
+  NodeExecutionEnvironmentHost,
+} from './node-execution-environment-host';
+export type {
+  NodeExecutionEnvironmentHostOptions,
+} from './node-execution-environment-host';

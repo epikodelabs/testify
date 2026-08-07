@@ -24,6 +24,9 @@ import {
 import {
   NodeRunnerHost,
 } from './node-runner-host';
+import {
+  NodeExecutionEnvironmentHost,
+} from './node-execution-environment-host';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -166,40 +169,19 @@ export class NodeTestRunner {
 
     this.isRunning = true;
 
-    if (this.options.env) {
-      for (
-        const [key, value] of
-        Object.entries(
-          this.options.env,
-        )
-      ) {
-        if (value == null) {
-          delete process.env[key];
-        } else {
-          process.env[key] =
-            value;
-        }
-      }
-    }
-
-    process.env.NODE_ENV = 'test';
-
-    const shouldSilenceConsole =
-      !!this.options
-        .suppressConsoleLogs;
-
-    const previousSuppressConsole =
-      process.env
-        .TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;
-
-    if (shouldSilenceConsole) {
-      process.env
-        .TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS =
-        '1';
-    }
+    const environmentHost =
+      new NodeExecutionEnvironmentHost({
+        env: this.options.env,
+        nodeEnv: 'test',
+        suppressConsoleLogs:
+          this.options
+            .suppressConsoleLogs,
+      });
 
     try {
-      const runnerFile =
+      return await environmentHost.run(
+        async () => {
+          const runnerFile =
         path.resolve(
           this.options.cwd ??
             process.cwd(),
@@ -246,7 +228,9 @@ export class NodeTestRunner {
         );
       }
 
-      return result;
+          return result;
+        },
+      );
     } catch (error: any) {
       logger.println(
         NodeRunnerMessages
@@ -257,20 +241,6 @@ export class NodeTestRunner {
 
       throw error;
     } finally {
-      if (shouldSilenceConsole) {
-        if (
-          previousSuppressConsole ===
-          undefined
-        ) {
-          delete process.env
-            .TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;
-        } else {
-          process.env
-            .TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS =
-            previousSuppressConsole;
-        }
-      }
-
       this.isRunning = false;
     }
   }

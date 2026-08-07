@@ -465,7 +465,7 @@ export function getBrowserRuntimeScript(
         );
       };
     })();
-n
+
 
     globalThis.runner = {
       session,

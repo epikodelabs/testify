@@ -210,46 +210,6 @@ export function findFiles(selector) {
 }
 
 export async function runTests(reporter, selector) {
-  const envValue =
-    process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;
-
-  const shouldSilenceConsole =
-    envValue === '1' ||
-    envValue?.toLowerCase() === 'true';
-
-  const originalConsole = {};
-
-  const restoreConsole = () => {
-    for (
-      const [method, value] of
-      Object.entries(originalConsole)
-    ) {
-      console[method] = value;
-    }
-  };
-
-  if (shouldSilenceConsole) {
-    const silentMethods = [
-      'log',
-      'info',
-      'debug',
-      'trace',
-      'warn',
-      'table',
-    ];
-
-    for (const method of silentMethods) {
-      if (
-        typeof console[method] === 'function'
-      ) {
-        originalConsole[method] =
-          console[method];
-
-        console[method] = () => {};
-      }
-    }
-  }
-
   return new Promise((resolve, reject) => {
     (async function () {
       try {
@@ -323,7 +283,6 @@ ${imports}
       } finally {
         currentSession = null;
         jasmineRuntime = null;
-        restoreConsole();
       }
     })();
   });

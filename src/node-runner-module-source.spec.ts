@@ -72,4 +72,39 @@ describe('Node runner module source', () => {
       "reject(error)",
     );
   });
+
+  it('does not read process environment or patch console in generated runtime', () => {
+    const source =
+      createNodeRunnerModuleSource({
+        jasmineCoreUrl:
+          'file:///jasmine.js',
+        imports: '',
+        config: {
+          jasmineConfig: {
+            env: {
+              random: false,
+              seed: 0,
+              stopSpecOnExpectationFailure:
+                false,
+            },
+          },
+        } as unknown as ViteJasmineConfig,
+      });
+
+    expect(source).not.toContain(
+      'TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS',
+    );
+
+    expect(source).not.toContain(
+      'process.env',
+    );
+
+    expect(source).not.toContain(
+      'restoreConsole',
+    );
+
+    expect(source).not.toContain(
+      'console[method] = () => {}',
+    );
+  });
 });
