@@ -29,6 +29,9 @@ import {
 import type {
   CatalogChangeSet,
 } from './catalog-state';
+import {
+  CatalogQuery,
+} from './catalog-query-builder';
 
 export interface RunnerSessionAdapter<TResult> {
   execute(
@@ -93,6 +96,12 @@ export class RunnerSession<TResult> {
     this.planner.invalidate();
   }
 
+
+  query(): CatalogQuery {
+    return new CatalogQuery(
+      this.catalog(),
+    );
+  }
 
   listTests(): TestListRow[] {
     return listCatalogTests(

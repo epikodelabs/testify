@@ -9,8 +9,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, 'src/lib.ts'),
-        v2: resolve(__dirname, 'src/v2.ts'),
-        'v2-internals': resolve(__dirname, 'src/v2-internals.ts'),
+        internals: resolve(__dirname, 'src/internals.ts'),
       },
       formats: ['es'],
       fileName: (_format, entryName) => `${entryName}.js`,

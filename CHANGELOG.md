@@ -1,4 +1,14 @@
+# Changelog
+
 ## 2.0.0
+
+### Root v2 API
+
+- Promoted the stable Testify 2 engine to `@epikodelabs/testify`.
+- Removed the temporary `/v2` package namespace.
+- Moved unstable engine internals to `@epikodelabs/testify/internals`.
+- Added `CatalogQuery` and `RunnerSession.query()` as the stable query surface.
+
 
 ### v2 architecture
 

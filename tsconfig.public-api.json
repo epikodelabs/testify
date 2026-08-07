@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": false,
+    "baseUrl": ".",
+    "paths": {
+      "@epikodelabs/testify": [
+        "./src/lib.ts"
+      ],
+      "@epikodelabs/testify/internals": [
+        "./src/internals.ts"
+      ]
+    }
+  },
+  "include": [
+    "type-tests/**/*.ts"
+  ]
+}

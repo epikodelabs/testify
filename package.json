@@ -1,7 +1,7 @@
 {
   "name": "@epikodelabs/testify",
   "version": "2.0.0",
-  "description": "Serve and run your Jasmine specs in a browser",
+  "description": "A Jasmine test runner for Node and browsers with Vite-powered execution, typed planning, and a programmatic Testify engine.",
   "bin": {
     "jasmine": "bin/jasmine",
     "testify": "bin/testify"
@@ -11,7 +11,6 @@
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
-    "MIGRATION-V2.md",
     "package.json",
     "assets/",
     "bin/",
@@ -24,9 +23,14 @@
     "build:runner": "vite build --config vite.runner.config.ts",
     "build": "npm run clean && npm run build:cli && npm run build:lib && npm run build:runner",
     "start": "node --import tsx ./src/index.ts",
-    "copyfiles": "copyfiles README.md CHANGELOG.md MIGRATION-V2.md LICENSE ./dist/testify",
+    "copyfiles": "copyfiles README.md CHANGELOG.md LICENSE ./dist/testify",
     "test:public-api": "tsc -p tsconfig.public-api.json",
-    "build:types": "tsc -p tsconfig.lib-types.json"
+    "build:types": "tsc -p tsconfig.lib-types.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:source": "npm run typecheck && npm run test:public-api",
+    "verify:package": "node scripts/verify-publish.mjs",
+    "verify:release": "npm run verify:source && npm run build && npm run verify:package",
+    "prepublishOnly": "npm run verify:release"
   },
   "repository": {
     "type": "git",
@@ -103,17 +107,15 @@
       "import": "./lib/index.js",
       "default": "./lib/index.js"
     },
-    "./v2": {
-      "types": "./lib/v2.d.ts",
-      "import": "./lib/v2.js",
-      "default": "./lib/v2.js"
-    },
-    "./v2/internals": {
-      "types": "./lib/v2-internals.d.ts",
-      "import": "./lib/v2-internals.js",
-      "default": "./lib/v2-internals.js"
+    "./internals": {
+      "types": "./lib/internals.d.ts",
+      "import": "./lib/internals.js",
+      "default": "./lib/internals.js"
     },
     "./package.json": "./package.json"
   },
-  "types": "./lib/index.d.ts"
+  "types": "./lib/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  }
 }
