@@ -17,3 +17,5 @@ export {
   resolveTestSelector,
 } from './test-selection';
 export type { TestSelector } from './test-selection';
+
+export { createBrowserTestCatalog } from './browser-test-catalog';
