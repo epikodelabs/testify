@@ -2,8 +2,8 @@ import {
   ViteConfigBuilder,
 } from './vite-config-builder';
 
-describe('ViteConfigBuilder Node mode', () => {
-  it('uses a multi-entry ESM build with Node/SSR resolution semantics', () => {
+describe('ViteConfigBuilder Node resolution', () => {
+  it('uses Node resolution, external packages, and no vendor chunking', () => {
     const builder =
       new ViteConfigBuilder({
         srcDirs: ['./src'],
@@ -26,33 +26,42 @@ describe('ViteConfigBuilder Node mode', () => {
         './src/example.ts',
       ]);
 
-    expect(
-      config.build?.ssr,
-    ).toBeTrue();
-
-    expect(
-      config.build?.modulePreload,
-    ).toBeFalse();
-
     const rolldown =
       config.build
         ?.rolldownOptions as any;
 
     expect(
-      rolldown.input,
-    ).toBeDefined();
+      config.build?.ssr,
+    ).toBeTrue();
 
     expect(
       rolldown.output
-        .entryFileNames,
+        .manualChunks,
+    ).toBeUndefined();
+
+    expect(
+      rolldown.output
+        .chunkFileNames,
     ).toBe(
       '[name].mjs',
     );
 
     expect(
-      typeof rolldown.external,
-    ).toBe(
-      'function',
-    );
+      rolldown.external(
+        'events',
+      ),
+    ).toBeTrue();
+
+    expect(
+      rolldown.external(
+        'playwright',
+      ),
+    ).toBeTrue();
+
+    expect(
+      rolldown.external(
+        './local-module',
+      ),
+    ).toBeFalse();
   });
 });

@@ -75,12 +75,25 @@ export function createTestCatalogFromJasmineEnv(
     includeInCatalog = true,
   ): void => {
     if (includeInCatalog) {
+      const file =
+        getItemFile(
+          suite,
+        );
+
       suites.push({
         id: suite.id,
-        description: getItemDescription(suite),
-        fullName: getItemFullName(suite),
+        description:
+          getItemDescription(
+            suite,
+          ),
+        fullName:
+          getItemFullName(
+            suite,
+          ),
         parentSuiteId,
-        file: getItemFile(suite),
+        ...(file
+          ? { file }
+          : {}),
       });
     }
 
@@ -99,12 +112,29 @@ export function createTestCatalogFromJasmineEnv(
       }
 
       if (isSpec(child)) {
+        const file =
+          getItemFile(
+            child,
+          ) ??
+          getItemFile(
+            suite,
+          );
+
         specs.push({
           id: child.id,
-          description: getItemDescription(child),
-          fullName: getItemFullName(child),
-          suiteId: owningSuiteId,
-          file: getItemFile(child) ?? getItemFile(suite),
+          description:
+            getItemDescription(
+              child,
+            ),
+          fullName:
+            getItemFullName(
+              child,
+            ),
+          suiteId:
+            owningSuiteId,
+          ...(file
+            ? { file }
+            : {}),
         });
       }
     }

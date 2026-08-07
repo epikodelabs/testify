@@ -5,9 +5,6 @@ import { EXIT_CODES } from './exit-codes';
 import { getMaxWidth, isAnsiMode } from './ansi-constants';
 import { ReporterMessages } from './log-messages';
 import { SYMBOLS, replacePlaceholders } from './symbols';
-import type {
-  TestCatalog,
-} from './test-catalog';
 
 export interface EnvironmentInfo {
   node: string;
@@ -54,6 +51,7 @@ export type TestStatus = 'passed' | 'failed' | 'pending' | 'skipped' | 'running'
 
 export interface ConsoleReporterOptions {
   showColors?: boolean;
+  print?: (...args: any[]) => void;
 }
 
 export class ConsoleReporter {
@@ -79,11 +77,15 @@ export class ConsoleReporter {
   private interrupted = false;
   private orderedSuites: any[] | null = null;
   private orderedSpecs: any[] | null = null;
-  private catalog: TestCatalog | null = null;
   private isTTY: boolean;
 
   constructor(options: ConsoleReporterOptions = {}) {
-    this.print = (...args) => process.stdout.write(util.format(...args));
+    this.print =
+      options.print ??
+      ((...args) =>
+        process.stdout.write(
+          util.format(...args),
+        ));
     this.showColors = options.showColors ?? this.detectColorSupport();
     this.isTTY = !isAnsiMode() && (process.stdout.isTTY ?? false);
     this.config = null;
@@ -272,73 +274,10 @@ export class ConsoleReporter {
     return this.rootSuite.id;
   }
 
-  setCatalog(
-    catalog: TestCatalog,
-  ): void {
-    this.catalog = catalog;
-
-    this.orderedSuites =
-      catalog.suites.map(
-        (suite) => ({
-          id: suite.id,
-          description:
-            suite.description,
-          fullName:
-            suite.fullName,
-          parentSuiteId:
-            suite.parentSuiteId,
-          file:
-            suite.file,
-        }),
-      );
-
-    this.orderedSpecs =
-      catalog.specs.map(
-        (spec) => ({
-          id: spec.id,
-          description:
-            spec.description,
-          fullName:
-            spec.fullName,
-          suiteId:
-            spec.suiteId,
-          file:
-            spec.file,
-        }),
-      );
-
-    // The v1 Node reporter received environment information before execution.
-    // Preserve that output even when v2 supplies the catalog directly.
-    this.envInfo =
-      this.gatherEnvironmentInfo();
-  }
-
-  getCatalog():
-    TestCatalog | null {
-    return this.catalog;
-  }
-
   userAgent(message: any, suites: any, specs: any) {
     this.envInfo = this.gatherEnvironmentInfo();
-
-    if (
-      suites &&
-      Array.isArray(
-        suites.suites,
-      ) &&
-      Array.isArray(
-        suites.specs,
-      )
-    ) {
-      this.setCatalog(
-        suites as TestCatalog,
-      );
-    } else {
-      this.orderedSuites =
-        suites ?? null;
-      this.orderedSpecs =
-        specs ?? null;
-    }
+    this.orderedSuites = suites ?? null;
+    this.orderedSpecs = specs ?? null;
 
     if (message) {
       const userAgent = { ...message };
@@ -579,8 +518,15 @@ export class ConsoleReporter {
     // Mark all unexecuted specs as skipped
     this.markUnexecutedAsSkipped();
 
-    // Calculate elapsed time
-    const totalTime = (Date.now() - this.startTime) / 1000;
+    // A reporter may be exercised directly in tests before jasmineStarted().
+    // In that case there is no meaningful elapsed time yet.
+    const totalTime =
+      this.startTime > 0
+        ? (
+            Date.now() -
+            this.startTime
+          ) / 1000
+        : 0;
 
     // Filter out stale specs before printing
     const actualFailedSpecs = this.failedSpecs.filter(s => s.status === 'failed' || s.overallStatus === 'failed');
@@ -1072,10 +1018,21 @@ export class ConsoleReporter {
     const width = visibleWidth(text) + 4;
 
     if (!this.showColors) {
-      const border = '-'.repeat(width);
-      process.stdout.write(`  +${border}+\n`);
-      process.stdout.write(`  |  ${strippedText}  |\n`);
-      process.stdout.write(`  +${border}+\n`);
+      const border =
+        '-'.repeat(width);
+
+      this.print(
+        `  +${border}+\n`,
+      );
+
+      this.print(
+        `  |  ${strippedText}  |\n`,
+      );
+
+      this.print(
+        `  +${border}+\n`,
+      );
+
       return;
     }
 

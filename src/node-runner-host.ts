@@ -83,15 +83,39 @@ export class NodeRunnerHost {
         ? `${fileUrl}?t=${Date.now()}`
         : fileUrl;
 
-    const runnerModule =
-      await import(
-        moduleUrl
-      ) as NodeRunnerModule;
+    console.error(
+      '[Testify debug] importing generated runner:',
+      moduleUrl,
+    );
 
-    this.runnerModule =
-      runnerModule;
+    try {
+      const runnerModule =
+        await import(
+          moduleUrl
+        ) as NodeRunnerModule;
 
-    return runnerModule;
+      console.error(
+        '[Testify debug] generated runner exports:',
+        Object.keys(
+          runnerModule,
+        ).sort(),
+      );
+
+      this.runnerModule =
+        runnerModule;
+
+      return runnerModule;
+    } catch (error) {
+      console.error(
+        '[Testify debug] generated runner import failed:',
+        error instanceof Error
+          ? error.stack ??
+            error.message
+          : error,
+      );
+
+      throw error;
+    }
   }
 
   async execute(

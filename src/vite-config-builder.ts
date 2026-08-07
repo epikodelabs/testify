@@ -117,14 +117,16 @@ export class ViteConfigBuilder {
   private isNodeExternal(
     id: string,
   ): boolean {
+    // Testify-owned/project modules still go through the build.
     if (
       id.startsWith('.') ||
-      path.isAbsolute(id) ||
-      id.startsWith('/')
+      id.startsWith('/') ||
+      path.isAbsolute(id)
     ) {
       return false;
     }
 
+    // Node built-ins must stay native imports.
     if (
       id.startsWith('node:') ||
       builtinModules.includes(id)
@@ -132,24 +134,10 @@ export class ViteConfigBuilder {
       return true;
     }
 
-    const packages =
-      this.getNodeExternalPackages();
-
-    for (
-      const packageName of
-      packages
-    ) {
-      if (
-        id === packageName ||
-        id.startsWith(
-          `${packageName}/`,
-        )
-      ) {
-        return true;
-      }
-    }
-
-    return false;
+    // Any remaining bare specifier is a package import.
+    // In Node mode, Node owns package resolution. Bundling these is what
+    // allowed Vite to substitute browser stubs such as __vite-browser-external.
+    return true;
   }
 
   private preserveRoot(): string {
@@ -380,10 +368,13 @@ export class ViteConfigBuilder {
           sourcemap: true,
           target: 'es2022',
           minify: false,
-          // Node tests are a normal multi-entry ESM build, not an SSR app.
-          // Package dependencies and Node built-ins stay external, so SSR
-          // entry semantics are unnecessary and would make Vite look for an
-          // HTML/dedicated SSR entry.
+          // Node mode must use Node/SSR resolution semantics so Vite never
+          // substitutes browser stubs for built-ins such as `events`.
+          ssr:
+            isNodeTarget
+              ? true
+              : undefined,
+
           modulePreload:
             isNodeTarget
               ? false
@@ -407,8 +398,17 @@ export class ViteConfigBuilder {
             output: {
               format: 'es',
               entryFileNames: '[name].mjs',
-              chunkFileNames: 'vendor.mjs',
-              manualChunks: id => this.vendorChunk(id)
+              chunkFileNames:
+                isNodeTarget
+                  ? '[name].mjs'
+                  : 'vendor.mjs',
+              manualChunks:
+                isNodeTarget
+                  ? undefined
+                  : id =>
+                      this.vendorChunk(
+                        id,
+                      )
             }
           }
         },
@@ -525,41 +525,51 @@ export class ViteConfigBuilder {
   private normalizeGeneratedOutput(
     config: InlineConfig,
   ): InlineConfig {
-    const rollupOptions =
+    const rolldownOptions =
       config.build
         ?.rolldownOptions;
 
-    if (!rollupOptions) {
+    if (!rolldownOptions) {
       return config;
     }
 
+    const normalizeOutput = (
+      entry: NonNullable<
+        typeof rolldownOptions.output
+      > extends readonly (infer T)[]
+        ? T
+        : NonNullable<
+            typeof rolldownOptions.output
+          >,
+    ) => ({
+      ...(entry as any),
+      entryFileNames:
+        '[name].mjs',
+    });
+
     const output =
       Array.isArray(
-        rollupOptions.output,
+        rolldownOptions.output,
       )
-        ? rollupOptions.output.map(
-            (entry) => ({
-              ...entry,
-              entryFileNames:
-                '[name].mjs',
-              chunkFileNames:
-                'vendor.mjs',
-            }),
+        ? rolldownOptions.output.map(
+            (entry) =>
+              normalizeOutput(
+                entry as any,
+              ),
           )
-        : {
-            ...(rollupOptions.output ?? {}),
-            entryFileNames:
-              '[name].mjs',
-            chunkFileNames:
-              'vendor.mjs',
-          };
+        : normalizeOutput(
+            (
+              rolldownOptions.output ??
+              {}
+            ) as any,
+          );
 
     return {
       ...config,
       build: {
         ...config.build,
         rolldownOptions: {
-          ...rollupOptions,
+          ...rolldownOptions,
           output,
         },
       },

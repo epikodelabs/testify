@@ -58,8 +58,8 @@ describe('Catalog query helpers', () => {
 
   it('lists suites', () => {
     expect(
-      listCatalogSuites(catalog),
-    )[0].toEqual({
+      listCatalogSuites(catalog)[0],
+    ).toEqual({
       parentSuiteId: '',
       id: 'suite1',
       name: 'Forms',

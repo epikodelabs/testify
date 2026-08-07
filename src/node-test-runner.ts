@@ -114,11 +114,17 @@ export class NodeTestRunner {
               this.options.selector,
           },
         );
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const details =
+        error instanceof Error
+          ? error.stack ??
+            error.message
+          : String(error);
+
       logger.println(
         NodeRunnerMessages
           .testExecutionError(
-            error.message,
+            details,
           ),
       );
 

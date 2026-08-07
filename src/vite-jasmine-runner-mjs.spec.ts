@@ -2,41 +2,32 @@ import fs from 'fs';
 import path from 'path';
 
 describe('ViteJasmineRunner mjs pipeline', () => {
-  it('strips the final .mjs before assigning Rollup input keys', () => {
-    const source =
-      fs.readFileSync(
-        path.resolve(
-          process.cwd(),
-          'src/vite-jasmine-runner.ts',
-        ),
-        'utf8',
-      );
+  const source =
+    fs.readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/vite-jasmine-runner.ts',
+      ),
+      'utf8',
+    );
 
+  it('strips the final .mjs before assigning Rolldown input keys', () => {
     expect(source).toContain(
-      ".replace(\\n            /\\\\.mjs$/,",
+      '/\\.mjs$/',
     );
 
     expect(source).not.toContain(
-      ".replace(/\\\\.js$/, '')",
+      "/\\.js$/",
     );
   });
 
   it('instruments generated .mjs source modules', () => {
-    const source =
-      fs.readFileSync(
-        path.resolve(
-          process.cwd(),
-          'src/vite-jasmine-runner.ts',
-        ),
-        'utf8',
-      );
-
     expect(source).toContain(
-      "'**/*.mjs'",
+      '**/*.mjs',
     );
 
     expect(source).toContain(
-      '/\\\\.spec\\\\.mjs$/i',
+      '/\\.spec\\.mjs$/i',
     );
   });
 });

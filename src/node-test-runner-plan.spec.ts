@@ -1,26 +1,65 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  createNodeRunnerModuleSource,
+} from './node-runner-module-source';
 
 describe('NodeTestRunner execution-plan integration', () => {
-  it('routes generated execution through ExecutionPlan', () => {
-    const source = fs.readFileSync(
-      path.resolve(
-        process.cwd(),
-        'src/node-test-runner.ts',
-      ),
-      'utf8',
+  it('keeps planning in the generated Node runner and delegates execution through NodeExecutionHost', () => {
+    const runnerSource =
+      fs.readFileSync(
+        path.resolve(
+          process.cwd(),
+          'src/node-test-runner.ts',
+        ),
+        'utf8',
+      );
+
+    expect(
+      runnerSource,
+    ).toContain(
+      'NodeExecutionHost',
     );
 
-    expect(source).toContain(
+    expect(
+      runnerSource,
+    ).toContain(
+      'selector:',
+    );
+
+    const generatedSource =
+      createNodeRunnerModuleSource({
+        jasmineCoreUrl:
+          'file:///jasmine-core.mjs',
+        imports: '',
+        config: {
+          browser: 'node',
+          outDir:
+            './dist/.vite-jasmine-build',
+          srcDirs: ['./src'],
+          testDirs: ['./src'],
+          exclude: [],
+          jasmineConfig: {
+            env: {
+              random: false,
+              seed: 0,
+              stopSpecOnExpectationFailure:
+                false,
+            },
+          },
+        } as any,
+      });
+
+    expect(
+      generatedSource,
+    ).toContain(
       'createExecutionPlan(',
     );
 
-    expect(source).toContain(
+    expect(
+      generatedSource,
+    ).toContain(
       'executeNodePlan(',
-    );
-
-    expect(source).not.toContain(
-      'await jasmineEnv.execute();',
     );
   });
 });

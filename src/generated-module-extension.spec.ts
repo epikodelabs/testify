@@ -79,7 +79,7 @@ describe('generated module extension', () => {
     expect(
       output.chunkFileNames,
     ).toBe(
-      'vendor.mjs',
+      '[name].mjs',
     );
   });
 

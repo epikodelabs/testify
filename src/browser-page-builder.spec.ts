@@ -44,7 +44,7 @@ describe('BrowserPageBuilder', () => {
       '<!DOCTYPE html>',
     );
     expect(html).toContain(
-      'Jasmine Test Runner',
+      '<title>Testify</title>',
     );
   });
 });

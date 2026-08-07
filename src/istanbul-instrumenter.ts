@@ -25,11 +25,24 @@ export class IstanbulInstrumenter {
     // Only instrument if coverage is enabled
     if (!this.config.coverage) return { code: source };
 
-    // Skip test files (*.spec.js or *.spec.map.js)
-    if (/\.spec(\.map)?\.js$/i.test(filename)) return { code: source };
+    // Skip generated test modules and their maps.
+    if (
+      /\.spec(?:\.map)?\.(?:js|mjs)$/i.test(
+        filename,
+      )
+    ) {
+      return { code: source };
+    }
 
-    // Ensure only JS files are instrumented
-    if (!filename.endsWith(".js")) return { code: source };
+    // Testify emits runtime modules as .mjs, while .js remains supported
+    // for compatibility with explicitly supplied JavaScript sources.
+    if (
+      !/\.(?:js|mjs)$/i.test(
+        filename,
+      )
+    ) {
+      return { code: source };
+    }
 
     // Create a fresh instrumenter for each file to avoid internal state mutation
     // (coverage variable counters accumulating across files/spec files)

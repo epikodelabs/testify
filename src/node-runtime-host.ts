@@ -14,11 +14,38 @@ export class NodeRuntimeHost {
     reporter: jasmine.CustomReporter,
     selector?: TestSelector,
   ): Promise<ExecutionResult> {
-    await host.load();
-
-    return host.execute(
-      reporter,
-      selector,
+    console.error(
+      '[Testify debug] runner file:',
+      host.file,
     );
+
+    try {
+      await host.load();
+    } catch (error) {
+      console.error(
+        '[Testify debug] failure occurred while loading test-runner.mjs',
+      );
+      throw error;
+    }
+
+    console.error(
+      '[Testify debug] generated runner loaded; starting runTests()',
+    );
+
+    try {
+      return await host.execute(
+        reporter,
+        selector,
+      );
+    } catch (error) {
+      console.error(
+        '[Testify debug] failure occurred inside runTests():',
+        error instanceof Error
+          ? error.stack ??
+            error.message
+          : error,
+      );
+      throw error;
+    }
   }
 }

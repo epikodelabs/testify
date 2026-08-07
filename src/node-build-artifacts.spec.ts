@@ -19,7 +19,7 @@ describe('NodeBuildArtifacts', () => {
       fs.writeFileSync(
         path.join(
           dir,
-          'shared.js',
+          'shared.mjs',
         ),
         '',
       );
@@ -49,7 +49,7 @@ describe('NodeBuildArtifacts', () => {
         artifacts.files,
       ).toEqual([
         'forms.spec.mjs',
-        'shared.js',
+        'shared.mjs',
       ]);
 
       expect(

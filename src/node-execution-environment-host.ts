@@ -134,9 +134,7 @@ export class NodeExecutionEnvironmentHost {
       SILENT_CONSOLE_METHODS.map(
         (method) => [
           method,
-          console[method].bind(
-            console,
-          ),
+          console[method],
         ],
       ),
     );

@@ -28,8 +28,7 @@ export function normalizeSearchText(
       (value): value is string =>
         !!value,
     )
-    .join('\n')
-    .toLocaleLowerCase();
+    .join('\n');
 }
 
 export function searchIndexEntries(
@@ -43,9 +42,11 @@ export function searchIndexEntries(
     return entries
       .filter(
         (entry) =>
-          entry.text.includes(
-            needle,
-          ),
+          entry.text
+            .toLocaleLowerCase()
+            .includes(
+              needle,
+            ),
       )
       .map(
         (entry) => entry.id,
