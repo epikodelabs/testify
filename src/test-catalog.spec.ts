@@ -1,3 +1,4 @@
+import { setTestifyFile } from './test-metadata';
 import {
   createTestCatalogFromJasmineEnv,
 } from './test-catalog';
@@ -143,7 +144,6 @@ describe('TestCatalog file ownership', () => {
     const spec = {
       id: 'spec1',
       description: 'works',
-      _filePath: 'forms.spec.js',
       getFullName: () => 'Forms works',
     };
 
@@ -154,6 +154,9 @@ describe('TestCatalog file ownership', () => {
       children: [spec],
       getFullName: () => 'Forms',
     };
+
+    setTestifyFile(spec, 'forms.spec.js');
+    setTestifyFile(suite, 'forms.spec.js');
 
     const top = {
       id: 'suite0',

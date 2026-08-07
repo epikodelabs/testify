@@ -1,3 +1,5 @@
+import { getTestifyFile } from './test-metadata';
+
 export interface TestCatalogSuite {
   id: string;
   description: string;
@@ -37,14 +39,7 @@ function getItemFullName(item: any): string {
 }
 
 function getItemFile(item: any): string | undefined {
-  const file =
-    item?._filePath ??
-    item?.filePath ??
-    item?.metadata?.filePath;
-
-  return typeof file === 'string' && file.length > 0
-    ? file
-    : undefined;
+  return getTestifyFile(item);
 }
 
 function isSuite(item: any): boolean {

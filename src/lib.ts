@@ -22,3 +22,11 @@ export {
 export type { TestSelector } from './test-selection';
 
 export { createBrowserTestCatalog } from './browser-test-catalog';
+
+export {
+  getTestifyFile,
+  getTestifyMetadata,
+  setTestifyFile,
+  setTestifyMetadata,
+} from './test-metadata';
+export type { TestifyItemMetadata } from './test-metadata';

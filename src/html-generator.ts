@@ -8,6 +8,9 @@ import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 import { resolveBrowserPreludeModules } from './prelude-modules';
 import { getEmbeddedTestCatalogSource } from './test-catalog';
+import {
+  getEmbeddedTestMetadataSource,
+} from './test-metadata-runtime';
 import { getEmbeddedTestSelectionSource } from './test-selection';
 
 export class HtmlGenerator {
@@ -159,117 +162,10 @@ ${this.getHmrClientScript()}
 
   private getJasminePatchScript(): string {
     return `
-// Patch Jasmine before boot to add metadata backlinks
-(function patchJasmineBeforeBoot() {
-  if (!window.jasmineRequire) {
-    return setTimeout(patchJasmineBeforeBoot, 10);
-  }
-
-  const j$ = jasmineRequire.core(jasmineRequire);
-  const OriginalSuiteFactory = jasmineRequire.Suite || j$.Suite || null;
-  const OriginalEnvFactory = jasmineRequire.Env || j$.Env || null;
-  const root = window.jasmineRequire || jasmineRequire;
-
-  // Helper to attach metadata backref
-  function attachMetadataBackref(suite) {
-    if (!suite || !suite.metadata) return;
-    try {
-      if (!suite.metadata.__suite) {
-        Object.defineProperty(suite.metadata, '__suite', {
-          value: suite,
-          enumerable: false,
-          configurable: true,
-          writable: false
-        });
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  }
-
-  // Recursively attach backlinks
-  function attachMetadataBackrefsRecursive(suite) {
-    try {
-      attachMetadataBackref(suite);
-      if (Array.isArray(suite.children)) {
-        suite.children.forEach(attachMetadataBackrefsRecursive);
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  }
-
-  // Patch Suite factory
-  if (OriginalSuiteFactory) {
-    root.Suite = function(j$local) {
-      const OriginalSuite = OriginalSuiteFactory(j$local);
-      
-      return class PatchedSuite extends OriginalSuite {
-        constructor(attrs) {
-          super(attrs);
-          attachMetadataBackref(this);
-        }
-      };
-    };
-  }
-
-  // Patch Env factory
-  if (OriginalEnvFactory) {
-    root.Env = function(j$local) {
-      const OriginalEnv = OriginalEnvFactory(j$local);
-      
-      return class PatchedEnv extends OriginalEnv {
-        constructor(attrs) {
-          super(attrs);
-          try {
-            if (this.topSuite) {
-              window.__jasmine_real_topSuite = this.topSuite;
-              attachMetadataBackrefsRecursive(this.topSuite);
-            }
-          } catch (e) {
-            // Ignore errors
-          }
-        }
-      };
-    };
-  }
-
-  // Define loadSpecs function in global scope
-  window.loadSpecs = async function(specFiles) {
-    // Wait for HMRClient
-    let attempts = 0;
-    while (!window.HMRClient && attempts < 100) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      attempts++;
-    }
-    
-    if (!window.HMRClient) {
-      console.error('❌ HMRClient not available after waiting');
-      return;
-    }
-    
-    console.log('Loading prelude modules and spec files dynamically...');
-    
-    try {
-      for (const modulePath of ${JSON.stringify(this.getPreludeModules())}) {
-        await import(modulePath);
-      }
-      
-      // Load spec files with file path tracking
-      for (const file of specFiles) {
-        const module = await import('/' + file);
-        
-        if (window.HMRClient?.attachFilePathToSuites) {
-          await window.HMRClient.attachFilePathToSuites(file, module);
-        }
-      }
-      
-      console.log('All prelude modules and specs loaded');
-    } catch (err) {
-      console.error('Failed to load specs:', err);
-    }
-  };
-})();
+/*
+ * Testify v2 no longer decorates Jasmine suite metadata.
+ * Source ownership lives in a Testify-owned WeakMap registry.
+ */
 `;
   }
 
@@ -518,49 +414,33 @@ window.HMRClient = (function() {
   }
 
   function setFilePath(obj, filePath) {
-    if (!obj) return;
-    try {
-      Object.defineProperty(obj, '_filePath', {
-        value: filePath,
-        enumerable: false,
-        configurable: true,
-        writable: true
-      });
-    } catch (e) {
-      obj._filePath = filePath;
-    }
+    setTestifyFile(obj, filePath);
   }
 
   async function attachFilePathToSuites(filePath, moduleExports) {
     const env = getEnv();
     if (!env) return;
     
-    const topSuite = env.topSuite().__suite || env.topSuite();
+    const topSuite = env.topSuite();
     if (!topSuite) return;
 
     function tagSuites(suite) {
       if (!suite) return;
 
-      if (!suite._filePath) {
+      if (!getTestifyFile(suite)) {
         setFilePath(suite, filePath);
       }
 
-      if (suite.metadata && !suite.metadata.__suite) {
-        try {
-          Object.defineProperty(suite.metadata, '__suite', {
-            value: suite,
-            enumerable: false,
-            configurable: true,
-            writable: false
-          });
-        } catch (e) {
-          // Ignore
-        }
-      }
 
       const children = suite.children || [];
-      for (const ch of children) {
-        tagSuites(ch);
+      for (const child of children) {
+        if (!child) continue;
+
+        if (Array.isArray(child.children)) {
+          tagSuites(child);
+        } else {
+          setFilePath(child, filePath);
+        }
       }
     }
 
@@ -571,7 +451,7 @@ window.HMRClient = (function() {
     const env = getEnv();
     if (!env) return;
 
-    const topSuite = env.topSuite().__suite || env.topSuite();
+    const topSuite = env.topSuite();
     if (!topSuite) return;
 
     const catalog =
