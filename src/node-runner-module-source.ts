@@ -136,6 +136,57 @@ export function listFiles() {
   );
 }
 
+export function findTests(selector) {
+  return listCatalogTests(
+    getCatalog(),
+  ).filter(
+    (row) =>
+      findCatalogSpecs(
+        getCatalog(),
+        selector,
+      ).some(
+        (spec) => spec.id === row.id,
+      ),
+  );
+}
+
+export function findSuites(selector) {
+  return listCatalogSuites(
+    getCatalog(),
+  ).filter(
+    (row) =>
+      findCatalogSuites(
+        getCatalog(),
+        selector,
+      ).some(
+        (suite) => suite.id === row.id,
+      ),
+  );
+}
+
+export function findFiles(selector) {
+  const catalog = getCatalog();
+  const index =
+    createTestCatalogIndex(
+      catalog,
+    );
+
+  const files =
+    new Set(
+      searchIndexEntries(
+        index.fileSearch,
+        selector,
+      ),
+    );
+
+  return listCatalogFiles(
+    catalog,
+  ).filter(
+    (row) =>
+      files.has(row.file),
+  );
+}
+
 export async function runTests(reporter, selector) {
   const envValue =
     process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;

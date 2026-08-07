@@ -553,6 +553,12 @@ export function getBrowserRuntimeScript(
       listTests,
       listSuites,
       listFiles,
+      findTests: (selector) =>
+        session.findTests(selector),
+      findSuites: (selector) =>
+        session.findSuites(selector),
+      findFiles: (selector) =>
+        session.findFiles(selector),
       catalog: getCatalog,
       setSeed,
       resetSeed,

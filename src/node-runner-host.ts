@@ -28,6 +28,9 @@ export interface NodeRunnerModule {
   listTests?(): unknown[];
   listSuites?(): unknown[];
   listFiles?(): unknown[];
+  findTests?(selector: string | RegExp): unknown[];
+  findSuites?(selector: string | RegExp): unknown[];
+  findFiles?(selector: string | RegExp): unknown[];
 }
 
 export class NodeRunnerHost {
@@ -166,6 +169,30 @@ export class NodeRunnerHost {
   listFiles(): unknown[] {
     return this.runnerModule
       ?.listFiles?.() ??
+      [];
+  }
+
+  findTests(
+    selector: string | RegExp,
+  ): unknown[] {
+    return this.runnerModule
+      ?.findTests?.(selector) ??
+      [];
+  }
+
+  findSuites(
+    selector: string | RegExp,
+  ): unknown[] {
+    return this.runnerModule
+      ?.findSuites?.(selector) ??
+      [];
+  }
+
+  findFiles(
+    selector: string | RegExp,
+  ): unknown[] {
+    return this.runnerModule
+      ?.findFiles?.(selector) ??
       [];
   }
 

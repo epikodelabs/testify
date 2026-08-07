@@ -153,8 +153,11 @@ export {
   createTestCatalogIndex,
   getDescendantSuiteIdsFromIndex,
   getSpecIdsForSuitesFromIndex,
+  normalizeSearchText,
+  searchIndexEntries,
   getEmbeddedTestCatalogIndexSource,
 } from './test-catalog-index';
 export type {
+  SearchIndexEntry,
   TestCatalogIndex,
 } from './test-catalog-index';

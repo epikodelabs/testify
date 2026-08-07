@@ -134,4 +134,34 @@ describe('RunnerSession', () => {
       )?.description,
     ).toBe('works');
   });
+
+  it('queries indexed text through the session', () => {
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    expect(
+      session.findTests(
+        'works',
+      )[0]?.id,
+    ).toBe('spec1');
+
+    expect(
+      session.findSuites(
+        'Forms',
+      )[0]?.id,
+    ).toBe('suite1');
+
+    expect(
+      session.findFiles(
+        /forms/,
+      )[0]?.file,
+    ).toBe('forms.spec.js');
+  });
 });

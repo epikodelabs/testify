@@ -1,6 +1,7 @@
 import {
   createTestCatalogIndex,
   getSpecIdsForSuitesFromIndex,
+  searchIndexEntries,
 } from './test-catalog-index';
 import type {
   TestCatalog,
@@ -40,28 +41,50 @@ export function findCatalogSpecs(
   catalog: TestCatalog,
   selector: string | RegExp,
 ): TestCatalogSpec[] {
-  return catalog.specs.filter((spec) =>
-    matchesText(
-      selector,
-      spec.id,
-      spec.description,
-      spec.fullName,
-    ),
-  );
+  const index =
+    createTestCatalogIndex(
+      catalog,
+    );
+
+  return searchIndexEntries(
+    index.specSearch,
+    selector,
+  )
+    .map(
+      (id) =>
+        index.specById.get(id),
+    )
+    .filter(
+      (
+        spec,
+      ): spec is TestCatalogSpec =>
+        !!spec,
+    );
 }
 
 export function findCatalogSuites(
   catalog: TestCatalog,
   selector: string | RegExp,
 ): TestCatalogSuite[] {
-  return catalog.suites.filter((suite) =>
-    matchesText(
-      selector,
-      suite.id,
-      suite.description,
-      suite.fullName,
-    ),
-  );
+  const index =
+    createTestCatalogIndex(
+      catalog,
+    );
+
+  return searchIndexEntries(
+    index.suiteSearch,
+    selector,
+  )
+    .map(
+      (id) =>
+        index.suiteById.get(id),
+    )
+    .filter(
+      (
+        suite,
+      ): suite is TestCatalogSuite =>
+        !!suite,
+    );
 }
 
 export function getDescendantSuiteIds(
@@ -110,7 +133,9 @@ export function getSpecIdsForFiles(
   selector: string | RegExp,
 ): string[] {
   const index =
-    createTestCatalogIndex(catalog);
+    createTestCatalogIndex(
+      catalog,
+    );
 
   if (typeof selector === 'string') {
     const exact =
@@ -123,16 +148,18 @@ export function getSpecIdsForFiles(
     }
   }
 
-  return catalog.specs
-    .filter(
-      (spec) =>
-        !!spec.file &&
-        matchesText(
-          selector,
-          spec.file,
-        ),
-    )
-    .map((spec) => spec.id);
+  const matchingFiles =
+    searchIndexEntries(
+      index.fileSearch,
+      selector,
+    );
+
+  return matchingFiles.flatMap(
+    (file) =>
+      index.specIdsByFile.get(
+        file,
+      ) ?? [],
+  );
 }
 
 export function resolveTestSelector(
@@ -207,6 +234,7 @@ export function getEmbeddedTestSelectionSource(): string {
   return [
     createTestCatalogIndex,
     getSpecIdsForSuitesFromIndex,
+    searchIndexEntries,
     matchesText,
     findCatalogSpecs,
     findCatalogSuites,

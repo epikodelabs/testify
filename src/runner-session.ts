@@ -1,8 +1,10 @@
 import type {
   TestCatalog,
 } from './test-catalog';
-import type {
-  TestSelector,
+import {
+  findCatalogSpecs,
+  findCatalogSuites,
+  type TestSelector,
 } from './test-selection';
 import {
   createExecutionPlan,
@@ -22,6 +24,7 @@ import {
 } from './catalog-query';
 import {
   createTestCatalogIndex,
+  searchIndexEntries,
   type TestCatalogIndex,
 } from './test-catalog-index';
 
@@ -90,6 +93,82 @@ export class RunnerSession<TResult> {
   listFiles(): FileListRow[] {
     return listCatalogFiles(
       this.catalog(),
+    );
+  }
+
+  findTests(
+    selector: string | RegExp,
+  ): TestListRow[] {
+    const catalog =
+      this.catalog();
+
+    const selectedIds =
+      new Set(
+        findCatalogSpecs(
+          catalog,
+          selector,
+        ).map(
+          (spec) => spec.id,
+        ),
+      );
+
+    return listCatalogTests(
+      catalog,
+    ).filter(
+      (row) =>
+        selectedIds.has(
+          row.id,
+        ),
+    );
+  }
+
+  findSuites(
+    selector: string | RegExp,
+  ): SuiteListRow[] {
+    const catalog =
+      this.catalog();
+
+    const selectedIds =
+      new Set(
+        findCatalogSuites(
+          catalog,
+          selector,
+        ).map(
+          (suite) => suite.id,
+        ),
+      );
+
+    return listCatalogSuites(
+      catalog,
+    ).filter(
+      (row) =>
+        selectedIds.has(
+          row.id,
+        ),
+    );
+  }
+
+  findFiles(
+    selector: string | RegExp,
+  ): FileListRow[] {
+    const index =
+      this.index();
+
+    const fileIds =
+      new Set(
+        searchIndexEntries(
+          index.fileSearch,
+          selector,
+        ),
+      );
+
+    return listCatalogFiles(
+      this.catalog(),
+    ).filter(
+      (row) =>
+        fileIds.has(
+          row.file,
+        ),
     );
   }
 
