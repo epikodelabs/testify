@@ -91,10 +91,12 @@ Generates `coverage/index.html`, `coverage/lcov.info`, and a console text summar
 
 ## Single Spec Debugging
 
+The Jasmine CLI uses `tsx` with the nearest `tsconfig.json`. Testify also resolves extensionless relative files and directory indexes, so imports such as `../lib`, `../lib/forms`, and `./helper` work like they do in the browser/Vite runner.
+
 Run one spec with the bundled Jasmine CLI:
 
 ```bash
-node --loader @epikodelabs/testify/esm-loader.mjs \
+node --enable-source-maps \
   ./node_modules/@epikodelabs/testify/bin/jasmine \
   --spec ./tests/example.spec.ts
 ```
@@ -107,13 +109,9 @@ node --loader @epikodelabs/testify/esm-loader.mjs \
   "request": "launch",
   "name": "Debug current spec",
   "runtimeExecutable": "node",
-  "runtimeArgs": [
-    "--loader", "@epikodelabs/testify/esm-loader.mjs",
-    "--enable-source-maps"
-  ],
+  "runtimeArgs": ["--enable-source-maps"],
   "program": "${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine",
   "args": ["--spec", "${file}"],
-  "env": { "TS_NODE_PROJECT": "${workspaceFolder}/tsconfig.json" },
   "cwd": "${workspaceFolder}",
   "console": "integratedTerminal",
   "skipFiles": ["<node_internals>/**"]

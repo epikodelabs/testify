@@ -46,6 +46,7 @@ const distPackage = {
   keywords: mainPackage.keywords || [],
   author: mainPackage.author,
   license: mainPackage.license,
+  engines: mainPackage.engines || undefined,
   dependencies: mainPackage.dependencies || {},
   bundleDependencies: Object.keys(mainPackage.dependencies || {}),
   peerDependencies: mainPackage.peerDependencies || {},

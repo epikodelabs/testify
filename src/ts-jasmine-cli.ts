@@ -4,6 +4,7 @@ import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 import util from 'util';
 import { register } from 'tsx/esm/api';
+import { registerTestifyRelativeResolver } from './node-relative-resolver';
 import { logger } from './logger';
 import { JasmineCLIMessages } from './log-messages';
 import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
@@ -176,10 +177,6 @@ function safeStringify(value: unknown): string {
   }
 }
 
-function isTypeScriptLike(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase();
-  return ext === '.ts' || ext === '.tsx' || ext === '.mts' || ext === '.cts';
-}
 
 
 function findNearestTsconfig(startDir: string): string | null {
@@ -275,24 +272,24 @@ async function loadJasmine() {
   return initializeNodeJasmineEnvironment(jasmineRequire, { resetReporters: false });
 }
 
-async function loadSpec(specPath: string): Promise<void> {
-  const specUrl = pathToFileURL(specPath).href;
-
-  if (!isTypeScriptLike(specPath)) {
-    await nativeImport(specUrl);
-    return;
-  }
-
+function registerSpecRuntime(specPath: string): () => Promise<void> {
+  const unregisterRelativeResolver = registerTestifyRelativeResolver();
   const tsconfig = findNearestTsconfig(path.dirname(specPath));
-  const unregister = register({
+  const unregisterTsx = register({
     tsconfig: tsconfig ?? false,
   });
 
-  try {
-    await nativeImport(specUrl);
-  } finally {
-    await unregister();
-  }
+  return async () => {
+    try {
+      await unregisterTsx();
+    } finally {
+      unregisterRelativeResolver();
+    }
+  };
+}
+
+async function loadSpec(specPath: string): Promise<void> {
+  await nativeImport(pathToFileURL(specPath).href);
 }
 
 async function main() {
@@ -334,10 +331,17 @@ async function main() {
   const reporter = new AwaitableJasmineConsoleReporter();
   jasmineEnv.addReporter(reporter);
 
-  await loadSpec(args.spec);
-  await jasmineEnv.execute();
-  
-  const result = await reporter.complete;
+  const unregisterRuntime = registerSpecRuntime(args.spec);
+  let result: Awaited<typeof reporter.complete> | undefined;
+
+  try {
+    await loadSpec(args.spec);
+    await jasmineEnv.execute();
+    result = await reporter.complete;
+  } finally {
+    await unregisterRuntime();
+  }
+
   let exitCode: number;
   if (result?.overallStatus === 'failed') {
     exitCode = EXIT_CODES.TEST_FAILURES;
