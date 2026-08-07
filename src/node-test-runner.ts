@@ -12,6 +12,9 @@ import { resolveNodePreludeModules } from './prelude-modules';
 import {
   createNodeRunnerModuleSource,
 } from './node-runner-module-source';
+import {
+  discoverNodeBuildArtifacts,
+} from './node-build-artifacts';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -54,27 +57,52 @@ export class NodeTestRunner {
       fs.mkdirSync(outDir, { recursive: true });
     }
 
-    const builtSpecFiles = fs
-      .readdirSync(outDir)
-      .filter((f) => /\.spec\.js$/i.test(f))
-      .sort();
+    const artifacts =
+      discoverNodeBuildArtifacts(
+        outDir,
+      );
 
-    if (builtSpecFiles.length === 0) {
-      logger.println(NodeRunnerMessages.noJsFilesForRunner());
+    if (artifacts.specFiles.length === 0) {
+      logger.println(
+        NodeRunnerMessages.noJsFilesForRunner(),
+      );
       return;
     }
 
     const imports = [
-      ...resolveNodePreludeModules(this.config, outDir).map(
-        (specifier) => `    await import(${JSON.stringify(specifier)});`
+      ...resolveNodePreludeModules(
+        this.config,
+        outDir,
+      ).map(
+        (specifier) =>
+          `    await import(${JSON.stringify(specifier)});`,
       ),
-      ...builtSpecFiles.map((file) => `    await import('./${file}');`)
+      ...artifacts.specFiles.map(
+        (file) =>
+          `    await import('./${file}');`,
+      ),
     ].join('\n');
 
-    const runnerContent = this.generateRunnerTemplate(imports);
-    const testRunnerPath = norm(path.join(outDir, 'test-runner.js'));
-    fs.writeFileSync(testRunnerPath, runnerContent);
-    logger.println(NodeRunnerMessages.generatedInProcessRunner(norm(path.relative(outDir, testRunnerPath))));
+    const runnerContent =
+      this.generateRunnerTemplate(
+        imports,
+      );
+
+    fs.writeFileSync(
+      artifacts.runnerFile,
+      runnerContent,
+    );
+
+    logger.println(
+      NodeRunnerMessages.generatedInProcessRunner(
+        norm(
+          path.relative(
+            outDir,
+            artifacts.runnerFile,
+          ),
+        ),
+      ),
+    );
   }
 
   /**

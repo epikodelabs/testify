@@ -112,3 +112,10 @@ export {
 export type {
   NodeRunnerModuleSourceOptions,
 } from './node-runner-module-source';
+
+export {
+  discoverNodeBuildArtifacts,
+} from './node-build-artifacts';
+export type {
+  NodeBuildArtifacts,
+} from './node-build-artifacts';
