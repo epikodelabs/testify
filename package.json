@@ -24,7 +24,8 @@
     "build:runner": "vite build --config vite.runner.config.ts",
     "build": "npm run clean && npm run build:cli && npm run build:lib && npm run build:runner",
     "start": "node --import tsx ./src/index.ts",
-    "copyfiles": "copyfiles README.md CHANGELOG.md MIGRATION-V2.md LICENSE ./dist/testify"
+    "copyfiles": "copyfiles README.md CHANGELOG.md MIGRATION-V2.md LICENSE ./dist/testify",
+    "test:public-api": "tsc -p tsconfig.public-api.json"
   },
   "repository": {
     "type": "git",
@@ -96,8 +97,17 @@
     "node": ">=22.15.0"
   },
   "exports": {
-    ".": "./lib/index.js",
-    "./v2": "./lib/v2.js",
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "default": "./lib/index.js"
+    },
+    "./v2": {
+      "types": "./lib/v2.d.ts",
+      "import": "./lib/v2.js",
+      "default": "./lib/v2.js"
+    },
     "./package.json": "./package.json"
-  }
+  },
+  "types": "./lib/index.d.ts"
 }
