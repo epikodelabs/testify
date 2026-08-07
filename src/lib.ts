@@ -200,3 +200,22 @@ export {
 export type {
   NodeExecutionEnvironmentHostOptions,
 } from './node-execution-environment-host';
+
+export {
+  CoverageHost,
+} from './coverage-host';
+
+export {
+  NodeArtifactHost,
+} from './node-artifact-host';
+
+export {
+  NodeRuntimeHost,
+} from './node-runtime-host';
+
+export {
+  NodeExecutionHost,
+} from './node-execution-host';
+export type {
+  NodeExecutionHostOptions,
+} from './node-execution-host';

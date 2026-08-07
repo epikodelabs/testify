@@ -1,32 +1,33 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { createRequire } from 'module';
-import { pathToFileURL } from 'url';
-import type { TestSelector } from './test-selection';
+import type {
+  TestSelector,
+} from './test-selection';
 import type {
   ExecutionResult,
 } from './execution-result';
-import { ViteJasmineConfig } from './vite-jasmine-config';
-import { norm } from './utils';
-import { ConsoleReporter } from './console-reporter';
-import { CoverageReportGenerator } from './coverage-report-generator';
-import { logger } from './logger';
-import { NodeRunnerMessages } from './log-messages';
+import type {
+  ViteJasmineConfig,
+} from './vite-jasmine-config';
 import {
-  resolveNodePreludeModules,
-} from './prelude-modules';
+  ConsoleReporter,
+} from './console-reporter';
 import {
-  createNodeRunnerModuleSource,
-} from './node-runner-module-source';
+  logger,
+} from './logger';
 import {
-  discoverNodeBuildArtifacts,
-} from './node-build-artifacts';
+  NodeRunnerMessages,
+} from './log-messages';
 import {
-  NodeRunnerHost,
-} from './node-runner-host';
+  NodeArtifactHost,
+} from './node-artifact-host';
 import {
-  NodeExecutionEnvironmentHost,
-} from './node-execution-environment-host';
+  NodeRuntimeHost,
+} from './node-runtime-host';
+import {
+  NodeExecutionHost,
+} from './node-execution-host';
+import {
+  CoverageHost,
+} from './coverage-host';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -42,195 +43,77 @@ export class NodeTestRunner {
   private readonly reporter:
     jasmine.CustomReporter;
 
-  private readonly options:
-    TestRunnerOptions;
+  private readonly artifacts:
+    NodeArtifactHost;
 
-  private readonly config:
-    ViteJasmineConfig;
+  private readonly execution:
+    NodeExecutionHost;
 
   private isRunning = false;
 
-  private runnerHost:
-    NodeRunnerHost | null = null;
-
   constructor(
     config: ViteJasmineConfig,
-    options: TestRunnerOptions = {},
+    private readonly options:
+      TestRunnerOptions = {},
   ) {
-    this.config = config;
-    this.options = options;
     this.reporter =
       options.reporter ??
       new ConsoleReporter();
-  }
 
-  private resolveJasmineCoreUrl():
-    string {
-    const require =
-      createRequire(
-        import.meta.url,
+    this.artifacts =
+      new NodeArtifactHost(
+        config,
       );
 
-    const jasmineCorePath =
-      require.resolve(
-        'jasmine-core/lib/jasmine-core/jasmine.js',
+    this.execution =
+      new NodeExecutionHost(
+        this.artifacts,
+        new NodeRuntimeHost(),
+        new CoverageHost(
+          !!options.coverage,
+        ),
       );
-
-    return pathToFileURL(
-      jasmineCorePath,
-    ).href;
   }
 
   generateTestRunner(): void {
-    const outDir =
-      this.config.outDir;
-
-    if (!fs.existsSync(outDir)) {
-      fs.mkdirSync(
-        outDir,
-        { recursive: true },
-      );
-    }
-
-    const artifacts =
-      discoverNodeBuildArtifacts(
-        outDir,
-      );
-
-    if (
-      artifacts.specFiles.length === 0
-    ) {
-      logger.println(
-        NodeRunnerMessages
-          .noJsFilesForRunner(),
-      );
-
-      return;
-    }
-
-    const imports = [
-      ...resolveNodePreludeModules(
-        this.config,
-        outDir,
-      ).map(
-        (specifier) =>
-          `    await import(${JSON.stringify(specifier)});`,
-      ),
-
-      ...artifacts.specFiles.map(
-        (file) =>
-          `    await import('./${file}');`,
-      ),
-    ].join('\n');
-
-    const source =
-      createNodeRunnerModuleSource({
-        jasmineCoreUrl:
-          this.resolveJasmineCoreUrl(),
-        imports,
-        config: this.config,
-      });
-
-    this.runnerHost =
-      new NodeRunnerHost(
-        artifacts.runnerFile,
-      );
-
-    this.runnerHost.write(
-      source,
-    );
-
-    logger.println(
-      NodeRunnerMessages
-        .generatedInProcessRunner(
-          norm(
-            path.relative(
-              outDir,
-              this.runnerHost.file,
-            ),
-          ),
-        ),
-    );
+    this.artifacts.generate();
   }
 
-  async start(): Promise<ExecutionResult> {
+  async start():
+    Promise<ExecutionResult> {
     if (this.isRunning) {
       logger.println(
         NodeRunnerMessages
           .testProcessAlreadyRunning(),
       );
 
-      return Promise.reject(
-        new Error(
-          'Test process already running',
-        ),
+      throw new Error(
+        'Test process already running',
       );
     }
 
     this.isRunning = true;
 
-    const environmentHost =
-      new NodeExecutionEnvironmentHost({
-        env: this.options.env,
-        nodeEnv: 'test',
-        suppressConsoleLogs:
-          this.options
-            .suppressConsoleLogs,
-      });
-
     try {
-      return await environmentHost.run(
-        async () => {
-          const runnerFile =
-        path.resolve(
-          this.options.cwd ??
-            process.cwd(),
-
-          this.options.file ??
-            discoverNodeBuildArtifacts(
-              this.config.outDir,
-            ).runnerFile,
-        );
-
       logger.println(
         NodeRunnerMessages
           .startingTestRunner(),
       );
 
-      const host =
-        this.runnerHost?.file ===
-          norm(runnerFile)
-          ? this.runnerHost
-          : new NodeRunnerHost(
-              runnerFile,
-            );
-
-      this.runnerHost = host;
-
-      await host.load();
-
-      const result =
-        await host.execute(
+      return await this.execution
+        .execute(
           this.reporter,
-          this.options.selector,
+          {
+            cwd: this.options.cwd,
+            env: this.options.env,
+            file: this.options.file,
+            suppressConsoleLogs:
+              this.options
+                .suppressConsoleLogs,
+            selector:
+              this.options.selector,
+          },
         );
-
-      const coverage =
-        (globalThis as any)
-          .__coverage__;
-
-      if (coverage) {
-        const generator =
-          new CoverageReportGenerator();
-
-        await generator.generate(
-          coverage,
-        );
-      }
-
-          return result;
-        },
-      );
     } catch (error: any) {
       logger.println(
         NodeRunnerMessages
@@ -247,8 +130,7 @@ export class NodeTestRunner {
 
   async stop(): Promise<void> {
     this.isRunning = false;
-
-    this.runnerHost?.clear();
+    this.artifacts.clear();
   }
 
   async restart(): Promise<void> {

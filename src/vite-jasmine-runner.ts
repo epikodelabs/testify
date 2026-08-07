@@ -13,7 +13,7 @@ import { ViteJasmineConfig } from './vite-jasmine-config';
 import { ConsoleReporter } from './console-reporter';
 import { IstanbulInstrumenter } from './istanbul-instrumenter';
 import { WebSocketManager } from './websocket-manager';
-import { CoverageReportGenerator } from './coverage-report-generator';
+import { CoverageHost } from './coverage-host';
 import { HmrManager } from './hmr-manager';
 import { logger } from './logger';
 import { setAnsiMode } from './symbols';
@@ -35,6 +35,7 @@ export class ViteJasmineRunner extends EventEmitter {
   private webSocketManager: WebSocketManager | null = null;
   private consoleReporter: ConsoleReporter;
   private instrumenter: IstanbulInstrumenter;
+  private coverageHost: CoverageHost;
   private hmrManager: HmrManager | null = null;
   private completePromiseResolve: (() => void) | null = null;
   private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
@@ -94,6 +95,9 @@ export class ViteJasmineRunner extends EventEmitter {
     this.browserManager = new BrowserManager(this.config);
     this.httpServerManager = new HttpServerManager(this.config);
     this.instrumenter = new IstanbulInstrumenter(this.config);
+    this.coverageHost = new CoverageHost(
+      !!this.config.coverage,
+    );
     this.consoleReporter = new ConsoleReporter();
     this.nodeTestRunner = new NodeTestRunner(this.config, {
       reporter: this.consoleReporter,
@@ -287,10 +291,10 @@ export class ViteJasmineRunner extends EventEmitter {
     this.webSocketManager.on('testsCompleted', ({ success, hasPending, coverage }) => {
       testSuccess = success;
       testHasPending = hasPending;
-      if (this.config.coverage) {
-        const cov = new CoverageReportGenerator();
-        coveragePromise = cov.generate(coverage);
-      }
+      coveragePromise =
+        this.coverageHost.generate(
+          coverage,
+        );
       testsCompletedResolve?.();
     });
 
@@ -343,19 +347,6 @@ export class ViteJasmineRunner extends EventEmitter {
       const result =
         await this.nodeTestRunner.start();
 
-      if (this.config.coverage) {
-        const coverage =
-          (globalThis as any)
-            .__coverage__;
-
-        const cov =
-          new CoverageReportGenerator();
-
-        await cov.generate(
-          coverage,
-        );
-      }
-
       return getExecutionExitCode(
         result,
       );
@@ -377,10 +368,9 @@ export class ViteJasmineRunner extends EventEmitter {
     logger.println(RunnerMessages.pressCtrlCToStop());
 
     const finishHeadedRun = async (coverage: Record<string, any> | undefined): Promise<void> => {
-      if (this.config.coverage) {
-        const cov = new CoverageReportGenerator();
-        await cov.generate(coverage!);
-      }
+      await this.coverageHost.generate(
+        coverage,
+      );
       await this.browserManager.closeBrowser();
     };
 
