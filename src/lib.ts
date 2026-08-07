@@ -135,3 +135,16 @@ export type {
   RunnerSessionAdapter,
   RunnerSessionOptions,
 } from './runner-session';
+
+export {
+  listCatalogFiles,
+  listCatalogSuites,
+  listCatalogTests,
+  orderCatalogRows,
+  getEmbeddedCatalogQuerySource,
+} from './catalog-query';
+export type {
+  FileListRow,
+  SuiteListRow,
+  TestListRow,
+} from './catalog-query';

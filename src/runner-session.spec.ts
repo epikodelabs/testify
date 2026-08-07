@@ -79,4 +79,33 @@ describe('RunnerSession', () => {
     expect(plan.random).toBeTrue();
     expect(plan.seed).toBe(42);
   });
+
+  it('queries catalog through the shared session', () => {
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    expect(
+      session.listTests(),
+    ).toHaveSize(1);
+
+    expect(
+      session.listSuites(),
+    ).toHaveSize(1);
+
+    expect(
+      session.listFiles(),
+    ).toEqual([
+      {
+        file: 'forms.spec.js',
+        specs: 1,
+      },
+    ]);
+  });
 });

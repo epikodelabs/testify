@@ -13,6 +13,9 @@ import {
 import {
   getEmbeddedRunnerSessionSource,
 } from './runner-session';
+import {
+  getEmbeddedCatalogQuerySource,
+} from './catalog-query';
 
 export interface NodeRunnerModuleSourceOptions {
   jasmineCoreUrl: string;
@@ -37,6 +40,9 @@ export function createNodeRunnerModuleSource(
 
   const nodeExecutionAdapterSource =
     getEmbeddedNodeExecutionAdapterSource();
+
+  const catalogQuerySource =
+    getEmbeddedCatalogQuerySource();
 
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
@@ -75,6 +81,8 @@ ${executionPlanSource}
 
 ${nodeExecutionAdapterSource}
 
+${catalogQuerySource}
+
 ${runnerSessionSource}
 
 let jasmineRuntime = null;
@@ -100,6 +108,24 @@ export function getOrderedSpecs(seed, random) {
 
 export function getOrderedSuites(seed, random) {
   return jasmineRuntime?.utils.getOrderedSuites(seed, random) ?? [];
+}
+
+export function listTests() {
+  return listCatalogTests(
+    getCatalog(),
+  );
+}
+
+export function listSuites() {
+  return listCatalogSuites(
+    getCatalog(),
+  );
+}
+
+export function listFiles() {
+  return listCatalogFiles(
+    getCatalog(),
+  );
 }
 
 export async function runTests(reporter, selector) {

@@ -10,6 +10,9 @@ import {
 import {
   getEmbeddedRunnerSessionSource,
 } from './runner-session';
+import {
+  getEmbeddedCatalogQuerySource,
+} from './catalog-query';
 
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
@@ -35,6 +38,9 @@ export function getBrowserRuntimeScript(
   const executionPlanSource =
     getEmbeddedExecutionPlanSource();
 
+  const catalogQuerySource =
+    getEmbeddedCatalogQuerySource();
+
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
 
@@ -45,6 +51,8 @@ export function getBrowserRuntimeScript(
   ${selectionSource}
 
   ${executionPlanSource}
+
+  ${catalogQuerySource}
 
   ${runnerSessionSource}
 
@@ -456,17 +464,7 @@ export function getBrowserRuntimeScript(
 
     function listTests() {
       const rows =
-        getOrderedSpecs(
-          seed,
-          random,
-        ).map((spec) => ({
-          suiteId:
-            spec.suiteId ?? '',
-          id: spec.id,
-          name: spec.description,
-          fullName: spec.fullName,
-          file: spec.file ?? '',
-        }));
+        session.listTests();
 
       console.table(rows);
       return rows;
@@ -474,48 +472,15 @@ export function getBrowserRuntimeScript(
 
     function listSuites() {
       const rows =
-        getOrderedSuites(
-          seed,
-          random,
-        ).map((suite) => ({
-          parentSuiteId:
-            suite.parentSuiteId ?? '',
-          id: suite.id,
-          name: suite.description,
-          fullName: suite.fullName,
-          file: suite.file ?? '',
-        }));
+        session.listSuites();
 
       console.table(rows);
       return rows;
     }
 
     function listFiles() {
-      const counts = new Map();
-
-      for (
-        const spec of
-        getCatalog().specs
-      ) {
-        if (!spec.file) continue;
-
-        counts.set(
-          spec.file,
-          (counts.get(spec.file) ?? 0) + 1,
-        );
-      }
-
       const rows =
-        [...counts.entries()]
-          .sort(([a], [b]) =>
-            a.localeCompare(b),
-          )
-          .map(
-            ([file, specs]) => ({
-              file,
-              specs,
-            }),
-          );
+        session.listFiles();
 
       console.table(rows);
       return rows;

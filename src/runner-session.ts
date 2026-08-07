@@ -12,6 +12,14 @@ import {
   type ExecutionPlan,
   type ExecutionPlanOptions,
 } from './execution-plan';
+import {
+  listCatalogFiles,
+  listCatalogSuites,
+  listCatalogTests,
+  type FileListRow,
+  type SuiteListRow,
+  type TestListRow,
+} from './catalog-query';
 
 export interface RunnerSessionAdapter<TResult> {
   execute(
@@ -35,6 +43,24 @@ export class RunnerSession<TResult> {
 
   catalog(): TestCatalog {
     return this.getCatalogValue();
+  }
+
+  listTests(): TestListRow[] {
+    return listCatalogTests(
+      this.catalog(),
+    );
+  }
+
+  listSuites(): SuiteListRow[] {
+    return listCatalogSuites(
+      this.catalog(),
+    );
+  }
+
+  listFiles(): FileListRow[] {
+    return listCatalogFiles(
+      this.catalog(),
+    );
   }
 
   plan(

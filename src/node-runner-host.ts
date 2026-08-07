@@ -25,6 +25,9 @@ export interface NodeRunnerModule {
   ): Promise<number>;
 
   getCatalog?(): unknown;
+  listTests?(): unknown[];
+  listSuites?(): unknown[];
+  listFiles?(): unknown[];
 }
 
 export class NodeRunnerHost {
@@ -146,6 +149,24 @@ export class NodeRunnerHost {
       reporter,
       { file: selector },
     );
+  }
+
+  listTests(): unknown[] {
+    return this.runnerModule
+      ?.listTests?.() ??
+      [];
+  }
+
+  listSuites(): unknown[] {
+    return this.runnerModule
+      ?.listSuites?.() ??
+      [];
+  }
+
+  listFiles(): unknown[] {
+    return this.runnerModule
+      ?.listFiles?.() ??
+      [];
   }
 
   clear(): void {
