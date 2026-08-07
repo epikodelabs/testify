@@ -186,3 +186,10 @@ export {
 export {
   runNodeCli,
 } from './node-cli-runner';
+
+export {
+  NodeProcessHost,
+} from './node-process-host';
+export type {
+  NodeProcessHostOptions,
+} from './node-process-host';

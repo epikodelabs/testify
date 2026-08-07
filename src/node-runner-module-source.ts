@@ -1,6 +1,4 @@
 import type { ViteJasmineConfig } from './vite-jasmine-config';
-import { EXIT_CODES } from './exit-codes';
-import { NodeRunnerMessages } from './log-messages';
 import {
   getEmbeddedNodeJasmineRuntimeSource,
 } from './jasmine-node-runtime';
@@ -53,34 +51,7 @@ export function createNodeRunnerModuleSource(
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
 
-  const messages = {
-    unhandledRejection:
-      NodeRunnerMessages.unhandledRejection(''),
-    uncaughtException:
-      NodeRunnerMessages.uncaughtException(''),
-    caughtSignal:
-      NodeRunnerMessages.caughtSignal(''),
-    errorDuringExecution:
-      NodeRunnerMessages.errorDuringExecution(''),
-  };
-
   return `// Auto-generated in-process Jasmine test runner
-import { pathToFileURL } from 'url';
-
-function replacePlaceholders(text) {
-  if (!text) return text;
-
-  const useEmoji =
-    process.stdout?.isTTY &&
-    !process.env.NO_EMOJI;
-
-  return text
-    .replace(/%check%/g, useEmoji ? '✅' : '[OK]')
-    .replace(/%cross%/g, useEmoji ? '❌' : '[ERROR]')
-    .replace(/%warn%/g, useEmoji ? '⚠️' : '[WARN]')
-    .replace(/%info%/g, useEmoji ? 'ℹ️' : '[INFO]');
-}
-
 ${jasmineRuntimeSource}
 
 ${catalogIndexSource}
@@ -110,7 +81,7 @@ function warnDeprecated(
   warnedDeprecated.add(name);
 
   console.warn(
-    `[Testify v2] ${name}() is deprecated. Use ${replacement}.`,
+    \`[Testify v2] \${name}() is deprecated. Use \${replacement}.\`,
   );
 }
 
@@ -279,97 +250,7 @@ export async function runTests(reporter, selector) {
     }
   }
 
-  return new Promise((resolve) => {
-    const ownedHandlers = [];
-
-    const onUnhandledRejection = (error) => {
-      console.error(
-        replacePlaceholders(
-          ${JSON.stringify("UNHANDLED_REJECTION_PLACEHOLDER")}
-        ) +
-        (
-          error instanceof Error
-            ? error.message
-            : String(error)
-        )
-      );
-
-      process.exit(
-        ${EXIT_CODES.INTERNAL_ERROR}
-      );
-    };
-
-    const onUncaughtException = (error) => {
-      console.error(
-        replacePlaceholders(
-          ${JSON.stringify("UNCAUGHT_EXCEPTION_PLACEHOLDER")}
-        ) +
-        (
-          error instanceof Error
-            ? error.message
-            : String(error)
-        )
-      );
-
-      process.exit(
-        ${EXIT_CODES.INTERNAL_ERROR}
-      );
-    };
-
-    process.on(
-      'unhandledRejection',
-      onUnhandledRejection,
-    );
-
-    process.on(
-      'uncaughtException',
-      onUncaughtException,
-    );
-
-    ownedHandlers.push(
-      {
-        event: 'unhandledRejection',
-        handler: onUnhandledRejection,
-      },
-      {
-        event: 'uncaughtException',
-        handler: onUncaughtException,
-      },
-    );
-
-    if (
-      import.meta.url ===
-      pathToFileURL(process.argv[1]).href
-    ) {
-      const onExit = (signal) => {
-        console.log(
-          replacePlaceholders(
-            ${JSON.stringify("CAUGHT_SIGNAL_PLACEHOLDER")}
-          ) + signal
-        );
-
-        process.exit(
-          signal === 'SIGTERM'
-            ? ${EXIT_CODES.SIGTERM}
-            : ${EXIT_CODES.SIGINT}
-        );
-      };
-
-      process.on('SIGINT', onExit);
-      process.on('SIGTERM', onExit);
-
-      ownedHandlers.push(
-        {
-          event: 'SIGINT',
-          handler: onExit,
-        },
-        {
-          event: 'SIGTERM',
-          handler: onExit,
-        },
-      );
-    }
-
+  return new Promise((resolve, reject) => {
     (async function () {
       try {
         const jasmineCore =
@@ -438,40 +319,11 @@ ${imports}
 
         resolve(result);
       } catch (error) {
-        console.error(
-          replacePlaceholders(
-            ${JSON.stringify("ERROR_DURING_EXECUTION_PLACEHOLDER")}
-          ) +
-          (
-            error instanceof Error
-              ? error.message
-              : String(error)
-          )
-        );
-
-        if (
-          error instanceof Error &&
-          error.stack
-        ) {
-          console.error(
-            error.stack,
-          );
-        }
-
-        resolve(
-          ${EXIT_CODES.INTERNAL_ERROR}
-        );
+        reject(error);
       } finally {
         currentSession = null;
         jasmineRuntime = null;
         restoreConsole();
-
-        for (const h of ownedHandlers) {
-          process.off(
-            h.event,
-            h.handler,
-          );
-        }
       }
     })();
   });
@@ -507,22 +359,6 @@ export async function runFile(
   );
 }
 `
-    .replace(
-      'UNHANDLED_REJECTION_PLACEHOLDER',
-      messages.unhandledRejection,
-    )
-    .replace(
-      'UNCAUGHT_EXCEPTION_PLACEHOLDER',
-      messages.uncaughtException,
-    )
-    .replace(
-      'CAUGHT_SIGNAL_PLACEHOLDER',
-      messages.caughtSignal,
-    )
-    .replace(
-      'ERROR_DURING_EXECUTION_PLACEHOLDER',
-      messages.errorDuringExecution,
-    )
     .replace(
       'JASMINE_CORE_URL_PLACEHOLDER',
       jasmineCoreUrl,

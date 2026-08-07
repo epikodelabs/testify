@@ -65,7 +65,7 @@ window.HMRClient = (function() {
     }
 
     cleanSuite(topSuite);
-    console.log(`🧹 Detached catalog entries for file: ${filePath}`);
+    console.log(\`🧹 Detached catalog entries for file: \${filePath}\`);
   }
 
   async function hotUpdateSpec(filePath) {
@@ -73,7 +73,7 @@ window.HMRClient = (function() {
 
     await withTestifyRegistrationScope(
       filePath,
-      () => import('/' + filePath + `?t=${Date.now()}`),
+      () => import('/' + filePath + \`?t=\${Date.now()}\`),
     );
 
     console.log('✅ Hot updated Jasmine registrations from:', filePath);
@@ -127,4 +127,3 @@ window.HMRClient = (function() {
 })();
 `;
   }
-

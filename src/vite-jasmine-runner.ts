@@ -19,6 +19,7 @@ import { logger } from './logger';
 import { setAnsiMode } from './symbols';
 import { RunnerMessages } from './log-messages';
 import { ExitCodeError, EXIT_CODES } from './exit-codes';
+import { getExecutionExitCode } from './cli-result-adapter';
 
 const { build: viteBuild } = await import('vite');
 
@@ -298,9 +299,14 @@ export class ViteJasmineRunner extends EventEmitter {
     if (!browserType) {
       logger.println(RunnerMessages.headlessBrowserUnavailable());
       this.nodeTestRunner.generateTestRunner();
-      const exitCode = await this.nodeTestRunner.start();
+      const result =
+        await this.nodeTestRunner.start();
+
       await this.cleanup();
-      return exitCode;
+
+      return getExecutionExitCode(
+        result,
+      );
     }
 
     try {
@@ -334,13 +340,25 @@ export class ViteJasmineRunner extends EventEmitter {
 
   private async runHeadlessNodeMode(): Promise<number> {
     try {
-      const exitCode = await this.nodeTestRunner.start();
+      const result =
+        await this.nodeTestRunner.start();
+
       if (this.config.coverage) {
-        const coverage = (globalThis as any).__coverage__;
-        const cov = new CoverageReportGenerator();
-        await cov.generate(coverage);
+        const coverage =
+          (globalThis as any)
+            .__coverage__;
+
+        const cov =
+          new CoverageReportGenerator();
+
+        await cov.generate(
+          coverage,
+        );
       }
-      return exitCode;
+
+      return getExecutionExitCode(
+        result,
+      );
     } catch (error: any) {
       logger.error(RunnerMessages.nodeTestExecutionFailed(error.message ?? String(error)));
       return EXIT_CODES.INTERNAL_ERROR;

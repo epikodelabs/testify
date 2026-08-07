@@ -461,11 +461,11 @@ export function getBrowserRuntimeScript(
         shown.add(name);
 
         console.warn(
-          `[Testify v2] runner.${name}() is deprecated. Use ${replacement}.`,
+          \`[Testify v2] runner.\${name}() is deprecated. Use \${replacement}.\`,
         );
       };
     })();
-
+n
 
     globalThis.runner = {
       session,

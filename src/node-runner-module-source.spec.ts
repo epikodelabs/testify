@@ -37,4 +37,39 @@ describe('Node runner module source', () => {
       "./forms.spec.js",
     );
   });
+
+  it('keeps process lifecycle concerns out of the generated runner', () => {
+    const source =
+      createNodeRunnerModuleSource({
+        jasmineCoreUrl:
+          'file:///jasmine.js',
+        imports: '',
+        config: {
+          jasmineConfig: {
+            env: {
+              random: false,
+              seed: 0,
+              stopSpecOnExpectationFailure:
+                false,
+            },
+          },
+        } as unknown as ViteJasmineConfig,
+      });
+
+    expect(source).not.toContain(
+      "process.on(",
+    );
+
+    expect(source).not.toContain(
+      "process.exit(",
+    );
+
+    expect(source).not.toContain(
+      "pathToFileURL",
+    );
+
+    expect(source).toContain(
+      "reject(error)",
+    );
+  });
 });
