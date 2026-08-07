@@ -57,3 +57,48 @@ export function getTestifyFile(
 ): string | undefined {
   return getTestifyMetadata(item)?.file;
 }
+
+
+const registrationScopes: string[] = [];
+
+export function beginTestifyRegistrationScope(
+  file: string,
+): void {
+  registrationScopes.push(file);
+}
+
+export function endTestifyRegistrationScope(): void {
+  registrationScopes.pop();
+}
+
+export function getCurrentTestifyRegistrationFile():
+  | string
+  | undefined {
+  return registrationScopes[
+    registrationScopes.length - 1
+  ];
+}
+
+export async function withTestifyRegistrationScope<T>(
+  file: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  beginTestifyRegistrationScope(file);
+
+  try {
+    return await work();
+  } finally {
+    endTestifyRegistrationScope();
+  }
+}
+
+export function captureTestifyRegistration(
+  item: unknown,
+): void {
+  const file =
+    getCurrentTestifyRegistrationFile();
+
+  if (file) {
+    setTestifyFile(item, file);
+  }
+}

@@ -162,10 +162,42 @@ ${this.getHmrClientScript()}
 
   private getJasminePatchScript(): string {
     return `
-/*
- * Testify v2 no longer decorates Jasmine suite metadata.
- * Source ownership lives in a Testify-owned WeakMap registry.
- */
+(function patchJasmineRegistrationCapture() {
+  if (!window.jasmineRequire) {
+    return setTimeout(patchJasmineRegistrationCapture, 10);
+  }
+
+  const root = window.jasmineRequire || jasmineRequire;
+  const j$ = jasmineRequire.core(jasmineRequire);
+  const OriginalSuiteFactory = jasmineRequire.Suite || j$.Suite || null;
+  const OriginalSpecFactory = jasmineRequire.Spec || j$.Spec || null;
+
+  if (OriginalSuiteFactory) {
+    root.Suite = function(j$local) {
+      const OriginalSuite = OriginalSuiteFactory(j$local);
+
+      return class TestifySuite extends OriginalSuite {
+        constructor(attrs) {
+          super(attrs);
+          captureTestifyRegistration(this);
+        }
+      };
+    };
+  }
+
+  if (OriginalSpecFactory) {
+    root.Spec = function(j$local) {
+      const OriginalSpec = OriginalSpecFactory(j$local);
+
+      return class TestifySpec extends OriginalSpec {
+        constructor(attrs) {
+          super(attrs);
+          captureTestifyRegistration(this);
+        }
+      };
+    };
+  }
+})();
 `;
   }
 
@@ -413,40 +445,6 @@ window.HMRClient = (function() {
     return window.jasmine?.getEnv?.();
   }
 
-  function setFilePath(obj, filePath) {
-    setTestifyFile(obj, filePath);
-  }
-
-  async function attachFilePathToSuites(filePath, moduleExports) {
-    const env = getEnv();
-    if (!env) return;
-    
-    const topSuite = env.topSuite();
-    if (!topSuite) return;
-
-    function tagSuites(suite) {
-      if (!suite) return;
-
-      if (!getTestifyFile(suite)) {
-        setFilePath(suite, filePath);
-      }
-
-
-      const children = suite.children || [];
-      for (const child of children) {
-        if (!child) continue;
-
-        if (Array.isArray(child.children)) {
-          tagSuites(child);
-        } else {
-          setFilePath(child, filePath);
-        }
-      }
-    }
-
-    tagSuites(topSuite);
-  }
-
   function detachFilePathSuites(filePath) {
     const env = getEnv();
     if (!env) return;
@@ -507,10 +505,15 @@ window.HMRClient = (function() {
     console.log(`🧹 Detached catalog entries for file: ${filePath}`);
   }
 
-  async function hotUpdateSpec(filePath, moduleExports) {
+  async function hotUpdateSpec(filePath) {
     detachFilePathSuites(filePath);
-    await attachFilePathToSuites(filePath, moduleExports);
-    console.log('✅ Hot updated Jasmine suites from:', filePath);
+
+    await withTestifyRegistrationScope(
+      filePath,
+      () => import('/' + filePath + `?t=${Date.now()}`),
+    );
+
+    console.log('✅ Hot updated Jasmine registrations from:', filePath);
   }
 
   async function handleMessage(message) {
@@ -552,7 +555,6 @@ window.HMRClient = (function() {
 
   return {
     handleMessage,
-    attachFilePathToSuites,
     detachFilePathSuites,
     clearCache: (filePath) => {
       if (filePath) moduleRegistry.delete(filePath);

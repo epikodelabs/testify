@@ -1,6 +1,7 @@
 export function getEmbeddedTestMetadataSource(): string {
   return `
 const __testifyMetadataByItem = new WeakMap();
+const __testifyRegistrationScopes = [];
 
 function setTestifyMetadata(item, metadata) {
   if (!item || (typeof item !== 'object' && typeof item !== 'function')) {
@@ -30,6 +31,38 @@ function setTestifyFile(item, file) {
 
 function getTestifyFile(item) {
   return getTestifyMetadata(item)?.file;
+}
+
+function beginTestifyRegistrationScope(file) {
+  __testifyRegistrationScopes.push(file);
+}
+
+function endTestifyRegistrationScope() {
+  __testifyRegistrationScopes.pop();
+}
+
+function getCurrentTestifyRegistrationFile() {
+  return __testifyRegistrationScopes[
+    __testifyRegistrationScopes.length - 1
+  ];
+}
+
+async function withTestifyRegistrationScope(file, work) {
+  beginTestifyRegistrationScope(file);
+
+  try {
+    return await work();
+  } finally {
+    endTestifyRegistrationScope();
+  }
+}
+
+function captureTestifyRegistration(item) {
+  const file = getCurrentTestifyRegistrationFile();
+
+  if (file) {
+    setTestifyFile(item, file);
+  }
 }
 `;
 }

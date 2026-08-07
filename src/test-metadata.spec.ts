@@ -1,8 +1,13 @@
 import {
+  beginTestifyRegistrationScope,
+  captureTestifyRegistration,
+  endTestifyRegistrationScope,
+  getCurrentTestifyRegistrationFile,
   getTestifyFile,
   getTestifyMetadata,
   setTestifyFile,
   setTestifyMetadata,
+  withTestifyRegistrationScope,
 } from './test-metadata';
 
 describe('Testify metadata registry', () => {
@@ -35,5 +40,49 @@ describe('Testify metadata registry', () => {
     expect(getTestifyMetadata(target)).toEqual({
       file: 'second.spec.ts',
     });
+  });
+
+  it('captures registrations within a file scope', () => {
+    const suite = {};
+    const test = {};
+
+    beginTestifyRegistrationScope('forms.spec.ts');
+
+    try {
+      captureTestifyRegistration(suite);
+      captureTestifyRegistration(test);
+    } finally {
+      endTestifyRegistrationScope();
+    }
+
+    expect(getTestifyFile(suite)).toBe('forms.spec.ts');
+    expect(getTestifyFile(test)).toBe('forms.spec.ts');
+    expect(getCurrentTestifyRegistrationFile()).toBeUndefined();
+  });
+
+  it('restores nested registration scopes', async () => {
+    const outer = {};
+    const inner = {};
+    const after = {};
+
+    await withTestifyRegistrationScope(
+      'outer.spec.ts',
+      async () => {
+        captureTestifyRegistration(outer);
+
+        await withTestifyRegistrationScope(
+          'inner.spec.ts',
+          async () => {
+            captureTestifyRegistration(inner);
+          },
+        );
+
+        captureTestifyRegistration(after);
+      },
+    );
+
+    expect(getTestifyFile(outer)).toBe('outer.spec.ts');
+    expect(getTestifyFile(inner)).toBe('inner.spec.ts');
+    expect(getTestifyFile(after)).toBe('outer.spec.ts');
   });
 });

@@ -24,9 +24,14 @@ export type { TestSelector } from './test-selection';
 export { createBrowserTestCatalog } from './browser-test-catalog';
 
 export {
+  beginTestifyRegistrationScope,
+  captureTestifyRegistration,
+  endTestifyRegistrationScope,
+  getCurrentTestifyRegistrationFile,
   getTestifyFile,
   getTestifyMetadata,
   setTestifyFile,
   setTestifyMetadata,
+  withTestifyRegistrationScope,
 } from './test-metadata';
 export type { TestifyItemMetadata } from './test-metadata';
