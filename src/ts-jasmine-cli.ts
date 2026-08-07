@@ -3,7 +3,6 @@ import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 import util from 'util';
-import { register } from 'tsx/esm/api';
 import { registerTestifyRelativeResolver } from './node-relative-resolver';
 import { logger } from './logger';
 import { JasmineCLIMessages } from './log-messages';
@@ -273,15 +272,41 @@ async function loadJasmine() {
   return initializeNodeJasmineEnvironment(jasmineRequire, { resetReporters: false });
 }
 
-function registerSpecRuntime(specPath: string): () => Promise<void> {
-  const tsconfig = findNearestTsconfig(path.dirname(specPath));
+async function registerSpecRuntime(
+  specPath: string,
+): Promise<() => Promise<void>> {
+  const tsconfig =
+    findNearestTsconfig(
+      path.dirname(
+        specPath,
+      ),
+    );
+
+  type TsxRegister = (
+    options: {
+      tsconfig: string | false;
+    },
+  ) =>
+    | (() => void)
+    | (() => Promise<void>);
+
+  const tsxApi =
+    await nativeImport(
+      'tsx/esm/api',
+    ) as {
+      register: TsxRegister;
+    };
 
   // Register tsx first. It installs its own CommonJS resolver; Testify then
   // wraps that resolver to add bundler-style relative path compatibility.
-  const unregisterTsx = register({
-    tsconfig: tsconfig ?? false,
-  });
-  const unregisterRelativeResolver = registerTestifyRelativeResolver();
+  const unregisterTsx =
+    tsxApi.register({
+      tsconfig:
+        tsconfig ?? false,
+    });
+
+  const unregisterRelativeResolver =
+    registerTestifyRelativeResolver();
 
   return async () => {
     try {
@@ -335,7 +360,10 @@ async function main() {
   const reporter = new AwaitableJasmineConsoleReporter();
   jasmineEnv.addReporter(reporter);
 
-  const unregisterRuntime = registerSpecRuntime(args.spec);
+  const unregisterRuntime =
+    await registerSpecRuntime(
+      args.spec,
+    );
   let result: Awaited<typeof reporter.complete> | undefined;
 
   try {

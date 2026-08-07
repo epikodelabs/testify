@@ -83,10 +83,15 @@ export class NodeRunnerHost {
         ? `${fileUrl}?t=${Date.now()}`
         : fileUrl;
 
-    this.runnerModule =
-      await import(moduleUrl);
+    const runnerModule =
+      await import(
+        moduleUrl
+      ) as NodeRunnerModule;
 
-    return this.runnerModule;
+    this.runnerModule =
+      runnerModule;
+
+    return runnerModule;
   }
 
   async execute(

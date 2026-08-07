@@ -45,7 +45,14 @@ export class BrowserPageBuilder {
       faviconTag: this.getFaviconTag(),
       inlineScripts: [
         getBrowserJasmineRegistrationPatchScript(),
-        getBrowserWebSocketReporterScript(),
+        getBrowserWebSocketReporterScript({
+          initialSeed:
+            (this.config.jasmineConfig?.env as any)
+              ?.seed ?? 0,
+          initialRandom:
+            this.config.jasmineConfig?.env
+              ?.random ?? false,
+        }),
         getBrowserHmrClientScript(),
         getBrowserBootstrapScript({
           preludeModules:

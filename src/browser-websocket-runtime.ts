@@ -1,8 +1,17 @@
-export function getBrowserWebSocketReporterScript(): string {
-    const seed = (this.config.jasmineConfig?.env as any)?.seed ?? 0;
-    const random = (this.config.jasmineConfig?.env as any)?.random ?? false;
-    
-    return `
+export interface BrowserWebSocketReporterScriptOptions {
+  initialSeed: number;
+  initialRandom: boolean;
+}
+
+export function getBrowserWebSocketReporterScript(
+  options: BrowserWebSocketReporterScriptOptions,
+): string {
+  const {
+    initialSeed: seed,
+    initialRandom: random,
+  } = options;
+
+  return `
 function WebSocketEventForwarder() {
   this.ws = null;
   this.connected = false;

@@ -20,12 +20,13 @@
   "scripts": {
     "clean": "rimraf dist",
     "build:cli": "vite build --config vite.cli.config.ts && node build-package.js && npm run copyfiles",
-    "build:lib": "vite build --config vite.lib.config.ts",
+    "build:lib": "vite build --config vite.lib.config.ts && npm run build:types",
     "build:runner": "vite build --config vite.runner.config.ts",
     "build": "npm run clean && npm run build:cli && npm run build:lib && npm run build:runner",
     "start": "node --import tsx ./src/index.ts",
     "copyfiles": "copyfiles README.md CHANGELOG.md MIGRATION-V2.md LICENSE ./dist/testify",
-    "test:public-api": "tsc -p tsconfig.public-api.json"
+    "test:public-api": "tsc -p tsconfig.public-api.json",
+    "build:types": "tsc -p tsconfig.lib-types.json"
   },
   "repository": {
     "type": "git",
@@ -106,6 +107,11 @@
       "types": "./lib/v2.d.ts",
       "import": "./lib/v2.js",
       "default": "./lib/v2.js"
+    },
+    "./v2/internals": {
+      "types": "./lib/v2-internals.d.ts",
+      "import": "./lib/v2-internals.js",
+      "default": "./lib/v2-internals.js"
     },
     "./package.json": "./package.json"
   },

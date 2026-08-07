@@ -1,14 +1,18 @@
+/**
+ * Stable Testify v2 public API.
+ *
+ * Runtime hosts, generated-source helpers, process adapters, and planning
+ * implementation details intentionally stay outside this surface.
+ */
+
 export {
   RunnerSession,
 } from './runner-session';
 
 export type {
-  TestifyRunnerSession,
-} from './runner-session';
-
-export type {
   RunnerSessionAdapter,
   RunnerSessionOptions,
+  TestifyRunnerSession,
 } from './runner-session';
 
 export {
@@ -16,6 +20,8 @@ export {
   createFileExecutionPlan,
   createSpecExecutionPlan,
   createSuiteExecutionPlan,
+  partitionExecutionPlan,
+  shardExecutionPlan,
 } from './execution-plan';
 
 export type {
@@ -24,13 +30,19 @@ export type {
 } from './execution-plan';
 
 export {
+  summarizeExecutionResults,
+} from './execution-result';
+
+export type {
+  ExecutionResult,
+  ExecutionSpecResult,
+} from './execution-result';
+
+export {
   createTestCatalogIndex,
-  normalizeSearchText,
-  searchIndexEntries,
 } from './test-catalog-index';
 
 export type {
-  SearchIndexEntry,
   TestCatalogIndex,
 } from './test-catalog-index';
 
@@ -62,40 +74,3 @@ export type {
   TestCatalogSpec,
   TestCatalogSuite,
 } from './test-catalog';
-
-export {
-  summarizeExecutionResults,
-} from './execution-result';
-
-export type {
-  ExecutionResult,
-  ExecutionSpecResult,
-} from './execution-result';
-
-export {
-  applyExecutionExitCode,
-  getExecutionExitCode,
-} from './cli-result-adapter';
-
-export {
-  CatalogState,
-  diffTestCatalogs,
-  fingerprintTestCatalog,
-} from './catalog-state';
-
-export type {
-  CatalogChangeSet,
-} from './catalog-state';
-
-export {
-  PlanningEngine,
-} from './planning-engine';
-
-export type {
-  PlanningEngineStats,
-} from './planning-engine';
-
-export {
-  partitionExecutionPlan,
-  shardExecutionPlan,
-} from './execution-plan';

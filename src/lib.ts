@@ -49,6 +49,9 @@ export {
 export {
   getBrowserWebSocketReporterScript,
 } from './browser-websocket-runtime';
+export type {
+  BrowserWebSocketReporterScriptOptions,
+} from './browser-websocket-runtime';
 export {
   getBrowserHmrClientScript,
 } from './browser-hmr-client';
@@ -64,7 +67,6 @@ export {
 } from './browser-page';
 export type {
   BrowserPage,
-  BrowserPageScripts,
 } from './browser-page';
 
 export {

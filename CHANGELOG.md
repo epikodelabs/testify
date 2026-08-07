@@ -1,3 +1,14 @@
+## 2.0.0
+
+### v2 architecture
+
+- Added the stable `@epikodelabs/testify/v2` runtime API.
+- Added `RunnerSession`, `ExecutionPlan`, `ExecutionResult`, typed catalog
+  queries, and deterministic plan partitioning.
+- Added opt-in unstable `@epikodelabs/testify/v2/internals` planning APIs.
+- Added real declaration generation for root and v2 package entries.
+- Added compile-time package-surface tests and a 1.x → 2.0 migration guide.
+
 # Changelog
 
 All notable changes to this project are documented in this file.

@@ -320,6 +320,25 @@ export class ConsoleReporter {
     this.currentSuite = this.suiteStack[this.suiteStack.length - 1] ?? null;
   }
 
+  testsAborted(
+    _message?: string,
+  ): number {
+    if (!this.interrupted) {
+      this.interrupted = true;
+
+      this.print(
+        this.colored(
+          'brightYellow',
+          `
+  ${ReporterMessages.testsInterrupted()}
+`,
+        ),
+      );
+    }
+
+    return EXIT_CODES.SIGINT;
+  }
+
   jasmineDone(result: any) {
     const duration = Date.now() - this.startTime;
     const failed = this.failureCount;
