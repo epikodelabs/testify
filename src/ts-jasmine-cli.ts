@@ -12,9 +12,9 @@ import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
 import { EXIT_CODES, getSignalExitCode } from './exit-codes';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const packageRoot = norm(path.resolve(__dirname, '..'));
+const cliFilePath = fileURLToPath(import.meta.url);
+const cliDirectory = path.dirname(cliFilePath);
+const packageRoot = norm(path.resolve(cliDirectory, '..'));
 const packageRequire = createRequire(import.meta.url);
 
 interface RunnerArgs {

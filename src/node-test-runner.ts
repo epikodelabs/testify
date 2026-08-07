@@ -95,10 +95,9 @@ export class NodeTestRunner {
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 
-// __dirname / __filename for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const __cwd = process.cwd();
+// Generated runner module location for ESM
+const runnerFilePath = fileURLToPath(import.meta.url);
+const runnerDirectory = dirname(runnerFilePath);
 
 // ---------------------------
 // Symbol/emoji replacement (embedded in generated runner)
@@ -283,7 +282,7 @@ ${imports}
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   (async () => {
     try {
-      const consoleReporterPath = join(__dirname, '../lib/console-reporter.js');
+      const consoleReporterPath = join(runnerDirectory, '../lib/console-reporter.js');
       const consoleReporterModule = await import(pathToFileURL(consoleReporterPath).href);
       const ConsoleReporter = consoleReporterModule.ConsoleReporter;
 

@@ -890,36 +890,64 @@ window.HMRClient = (function() {
       return runTests(filter);
     }
 
-    async function runSuite(name) {
+    async function runSuite(selector) {
       const suites = getAllSuites();
-      const matching = suites.filter(s => 
-        name instanceof RegExp ? name.test(s.description) : s.description.includes(name)
-      );
+      const matching = suites.filter(suite => {
+        if (selector instanceof RegExp) {
+          selector.lastIndex = 0;
+          const idMatches = selector.test(suite.id);
+          selector.lastIndex = 0;
+          const descriptionMatches = selector.test(suite.description);
+          return idMatches || descriptionMatches;
+        }
+
+        return suite.id === selector || suite.description.includes(selector);
+      });
       
       if (!matching.length) {
-        console.warn('No matching suites found for:', name);
+        console.warn('No matching suites found for:', selector);
         return [];
       }
 
-      const allSpecs = matching.flatMap(suite => {
-        const specs = [];
-        const traverse = s => {
-          (s.children || []).forEach(child => {
-            if (isSpec(child)) specs.push(child);
+      const specsById = new Map();
+      for (const suite of matching) {
+        const traverse = currentSuite => {
+          (currentSuite.children || []).forEach(child => {
+            if (isSpec(child)) specsById.set(child.id, child);
             if (isSuite(child)) traverse(child);
           });
         };
         traverse(suite);
-        return specs;
-      });
+      }
 
+      const allSpecs = [...specsById.values()];
       console.log(\`🎯 Executing \${allSpecs.length} spec(s) from suite\`);
       return await executeSpecsByIds(allSpecs.map(s => s.id).sort());
     }
 
+    function getSuiteIdBySpecId() {
+      const suiteIdBySpecId = new Map();
+
+      const traverse = suite => {
+        (suite.children || []).forEach(child => {
+          if (isSpec(child)) {
+            suiteIdBySpecId.set(child.id, suite.id);
+          } else if (isSuite(child)) {
+            traverse(child);
+          }
+        });
+      };
+
+      traverse(env.topSuite());
+      return suiteIdBySpecId;
+    }
+
     function listTests() {
       const specs = getOrderedSpecs(seed, random);
+      const suiteIdBySpecId = getSuiteIdBySpecId();
+
       console.table(specs.map(s => ({
+        suiteId: suiteIdBySpecId.get(s.id) ?? '',
         id: s.id,
         name: s.description
       })));
