@@ -148,3 +148,13 @@ export type {
   SuiteListRow,
   TestListRow,
 } from './catalog-query';
+
+export {
+  createTestCatalogIndex,
+  getDescendantSuiteIdsFromIndex,
+  getSpecIdsForSuitesFromIndex,
+  getEmbeddedTestCatalogIndexSource,
+} from './test-catalog-index';
+export type {
+  TestCatalogIndex,
+} from './test-catalog-index';

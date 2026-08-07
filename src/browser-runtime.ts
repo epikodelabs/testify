@@ -2,6 +2,9 @@ import {
   getEmbeddedTestCatalogSource,
 } from './test-catalog';
 import {
+  getEmbeddedTestCatalogIndexSource,
+} from './test-catalog-index';
+import {
   getEmbeddedTestSelectionSource,
 } from './test-selection';
 import {
@@ -32,6 +35,9 @@ export function getBrowserRuntimeScript(
   const catalogSource =
     getEmbeddedTestCatalogSource();
 
+  const catalogIndexSource =
+    getEmbeddedTestCatalogIndexSource();
+
   const selectionSource =
     getEmbeddedTestSelectionSource();
 
@@ -47,6 +53,8 @@ export function getBrowserRuntimeScript(
   return `
 (function(globalThis) {
   ${catalogSource}
+
+  ${catalogIndexSource}
 
   ${selectionSource}
 

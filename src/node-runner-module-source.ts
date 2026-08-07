@@ -8,6 +8,9 @@ import {
   getEmbeddedExecutionPlanSource,
 } from './execution-plan';
 import {
+  getEmbeddedTestCatalogIndexSource,
+} from './test-catalog-index';
+import {
   getEmbeddedNodeExecutionAdapterSource,
 } from './node-execution-adapter';
 import {
@@ -34,6 +37,9 @@ export function createNodeRunnerModuleSource(
 
   const jasmineRuntimeSource =
     getEmbeddedNodeJasmineRuntimeSource();
+
+  const catalogIndexSource =
+    getEmbeddedTestCatalogIndexSource();
 
   const executionPlanSource =
     getEmbeddedExecutionPlanSource();
@@ -76,6 +82,8 @@ function replacePlaceholders(text) {
 }
 
 ${jasmineRuntimeSource}
+
+${catalogIndexSource}
 
 ${executionPlanSource}
 

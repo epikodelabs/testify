@@ -108,4 +108,30 @@ describe('RunnerSession', () => {
       },
     ]);
   });
+
+  it('memoizes an index for the current catalog instance', () => {
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    const first =
+      session.index();
+
+    const second =
+      session.index();
+
+    expect(second).toBe(first);
+
+    expect(
+      first.specById.get(
+        'spec1',
+      )?.description,
+    ).toBe('works');
+  });
 });

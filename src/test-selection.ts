@@ -1,3 +1,7 @@
+import {
+  createTestCatalogIndex,
+  getSpecIdsForSuitesFromIndex,
+} from './test-catalog-index';
 import type {
   TestCatalog,
   TestCatalogSpec,
@@ -105,11 +109,28 @@ export function getSpecIdsForFiles(
   catalog: TestCatalog,
   selector: string | RegExp,
 ): string[] {
+  const index =
+    createTestCatalogIndex(catalog);
+
+  if (typeof selector === 'string') {
+    const exact =
+      index.specIdsByFile.get(
+        selector,
+      );
+
+    if (exact) {
+      return [...exact];
+    }
+  }
+
   return catalog.specs
     .filter(
       (spec) =>
         !!spec.file &&
-        matchesText(selector, spec.file),
+        matchesText(
+          selector,
+          spec.file,
+        ),
     )
     .map((spec) => spec.id);
 }
@@ -119,17 +140,22 @@ export function resolveTestSelector(
   selector: TestSelector,
 ): string[] {
   if (typeof selector === 'string') {
-    const exactSpec = catalog.specs.find(
-      (spec) => spec.id === selector,
-    );
-    if (exactSpec) return [exactSpec.id];
+    const index =
+      createTestCatalogIndex(catalog);
 
-    const exactSuite = catalog.suites.find(
-      (suite) => suite.id === selector,
-    );
+    const exactSpec =
+      index.specById.get(selector);
+
+    if (exactSpec) {
+      return [exactSpec.id];
+    }
+
+    const exactSuite =
+      index.suiteById.get(selector);
+
     if (exactSuite) {
-      return getSpecIdsForSuites(
-        catalog,
+      return getSpecIdsForSuitesFromIndex(
+        index,
         [exactSuite.id],
       );
     }
@@ -160,8 +186,8 @@ export function resolveTestSelector(
       selector.suite,
     );
 
-    return getSpecIdsForSuites(
-      catalog,
+    return getSpecIdsForSuitesFromIndex(
+      createTestCatalogIndex(catalog),
       suites.map((suite) => suite.id),
     );
   }
@@ -179,6 +205,8 @@ export function resolveTestSelector(
 
 export function getEmbeddedTestSelectionSource(): string {
   return [
+    createTestCatalogIndex,
+    getSpecIdsForSuitesFromIndex,
     matchesText,
     findCatalogSpecs,
     findCatalogSuites,

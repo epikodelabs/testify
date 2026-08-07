@@ -20,6 +20,10 @@ import {
   type SuiteListRow,
   type TestListRow,
 } from './catalog-query';
+import {
+  createTestCatalogIndex,
+  type TestCatalogIndex,
+} from './test-catalog-index';
 
 export interface RunnerSessionAdapter<TResult> {
   execute(
@@ -31,6 +35,12 @@ export interface RunnerSessionOptions
   extends ExecutionPlanOptions {}
 
 export class RunnerSession<TResult> {
+  private indexedCatalog:
+    TestCatalog | null = null;
+
+  private catalogIndexValue:
+    TestCatalogIndex | null = null;
+
   constructor(
     private readonly getCatalogValue:
       () => TestCatalog,
@@ -43,6 +53,26 @@ export class RunnerSession<TResult> {
 
   catalog(): TestCatalog {
     return this.getCatalogValue();
+  }
+
+  index(): TestCatalogIndex {
+    const catalog =
+      this.catalog();
+
+    if (
+      catalog !== this.indexedCatalog ||
+      !this.catalogIndexValue
+    ) {
+      this.indexedCatalog =
+        catalog;
+
+      this.catalogIndexValue =
+        createTestCatalogIndex(
+          catalog,
+        );
+    }
+
+    return this.catalogIndexValue;
   }
 
   listTests(): TestListRow[] {
