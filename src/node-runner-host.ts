@@ -75,6 +75,79 @@ export class NodeRunnerHost {
     );
   }
 
+  async run(
+    reporter: jasmine.CustomReporter,
+    selector?: TestSelector,
+  ): Promise<number> {
+    return this.execute(
+      reporter,
+      selector,
+    );
+  }
+
+  async runSpec(
+    reporter: jasmine.CustomReporter,
+    selector: string | RegExp,
+  ): Promise<number> {
+    const runner =
+      this.runnerModule ??
+      await this.load();
+
+    if (runner.runTest) {
+      return runner.runTest(
+        reporter,
+        selector,
+      );
+    }
+
+    return runner.runTests(
+      reporter,
+      { spec: selector },
+    );
+  }
+
+  async runSuite(
+    reporter: jasmine.CustomReporter,
+    selector: string | RegExp,
+  ): Promise<number> {
+    const runner =
+      this.runnerModule ??
+      await this.load();
+
+    if (runner.runSuite) {
+      return runner.runSuite(
+        reporter,
+        selector,
+      );
+    }
+
+    return runner.runTests(
+      reporter,
+      { suite: selector },
+    );
+  }
+
+  async runFile(
+    reporter: jasmine.CustomReporter,
+    selector: string | RegExp,
+  ): Promise<number> {
+    const runner =
+      this.runnerModule ??
+      await this.load();
+
+    if (runner.runFile) {
+      return runner.runFile(
+        reporter,
+        selector,
+      );
+    }
+
+    return runner.runTests(
+      reporter,
+      { file: selector },
+    );
+  }
+
   clear(): void {
     this.runnerModule = null;
   }

@@ -7,6 +7,9 @@ import {
 import {
   getEmbeddedExecutionPlanSource,
 } from './execution-plan';
+import {
+  getEmbeddedRunnerSessionSource,
+} from './runner-session';
 
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
@@ -32,6 +35,9 @@ export function getBrowserRuntimeScript(
   const executionPlanSource =
     getEmbeddedExecutionPlanSource();
 
+  const runnerSessionSource =
+    getEmbeddedRunnerSessionSource();
+
   return `
 (function(globalThis) {
   ${catalogSource}
@@ -39,6 +45,8 @@ export function getBrowserRuntimeScript(
   ${selectionSource}
 
   ${executionPlanSource}
+
+  ${runnerSessionSource}
 
   async function waitForJasmine(
     maxAttempts = 50,
@@ -547,13 +555,28 @@ export function getBrowserRuntimeScript(
       return seed;
     }
 
+    const session =
+      new RunnerSession(
+        getCatalog,
+        {
+          execute: executePlan,
+        },
+        currentPlanOptions,
+      );
+
     globalThis.runner = {
-      execute: executePlan,
-      run,
+      session,
+      execute: (plan) =>
+        session.execute(plan),
+      run: (selector) =>
+        session.run(selector),
       runTests,
-      runTest,
-      runSuite,
-      runFile,
+      runTest: (selector) =>
+        session.runSpec(selector),
+      runSuite: (selector) =>
+        session.runSuite(selector),
+      runFile: (selector) =>
+        session.runFile(selector),
       listTests,
       listSuites,
       listFiles,

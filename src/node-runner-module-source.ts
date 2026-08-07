@@ -10,6 +10,9 @@ import {
 import {
   getEmbeddedNodeExecutionAdapterSource,
 } from './node-execution-adapter';
+import {
+  getEmbeddedRunnerSessionSource,
+} from './runner-session';
 
 export interface NodeRunnerModuleSourceOptions {
   jasmineCoreUrl: string;
@@ -34,6 +37,9 @@ export function createNodeRunnerModuleSource(
 
   const nodeExecutionAdapterSource =
     getEmbeddedNodeExecutionAdapterSource();
+
+  const runnerSessionSource =
+    getEmbeddedRunnerSessionSource();
 
   const messages = {
     unhandledRejection:
@@ -68,6 +74,8 @@ ${jasmineRuntimeSource}
 ${executionPlanSource}
 
 ${nodeExecutionAdapterSource}
+
+${runnerSessionSource}
 
 let jasmineRuntime = null;
 
@@ -267,23 +275,28 @@ ${imports}
           );
         }
 
-        const plan =
-          createExecutionPlan(
-            catalog,
-            selector,
+        const session =
+          new RunnerSession(
+            () => catalog,
             {
+              execute: (plan) =>
+                executeNodePlan(
+                  jasmineEnv,
+                  plan,
+                ),
+            },
+            () => ({
               random:
                 ${config.jasmineConfig?.env?.random ?? false},
               seed:
                 ${(config.jasmineConfig?.env as any)?.seed ?? 0},
               stopOnFailure:
                 ${config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false}
-            }
+            }),
           );
 
-        await executeNodePlan(
-          jasmineEnv,
-          plan,
+        await session.run(
+          selector,
         );
 
         const failures =

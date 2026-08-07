@@ -126,3 +126,12 @@ export {
 export type {
   NodeRunnerModule,
 } from './node-runner-host';
+
+export {
+  RunnerSession,
+  getEmbeddedRunnerSessionSource,
+} from './runner-session';
+export type {
+  RunnerSessionAdapter,
+  RunnerSessionOptions,
+} from './runner-session';
