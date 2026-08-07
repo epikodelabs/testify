@@ -97,3 +97,11 @@ export {
 export type {
   BrowserBuildArtifacts,
 } from './browser-build-artifacts';
+
+export {
+  executeNodePlan,
+  getEmbeddedNodeExecutionAdapterSource,
+} from './node-execution-adapter';
+export type {
+  NodeExecutionEnvironment,
+} from './node-execution-adapter';

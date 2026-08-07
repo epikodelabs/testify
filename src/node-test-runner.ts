@@ -12,6 +12,10 @@ import { logger } from './logger';
 import { NodeRunnerMessages } from './log-messages';
 import { resolveNodePreludeModules } from './prelude-modules';
 import { getEmbeddedNodeJasmineRuntimeSource } from './jasmine-node-runtime';
+import { getEmbeddedExecutionPlanSource } from './execution-plan';
+import {
+  getEmbeddedNodeExecutionAdapterSource,
+} from './node-execution-adapter';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -20,6 +24,7 @@ export interface TestRunnerOptions {
   file?: string; // test runner entry file (generated)
   coverage?: boolean;
   suppressConsoleLogs?: boolean;
+  selector?: import('./test-selection').TestSelector;
 }
 
 export class NodeTestRunner {
@@ -83,6 +88,10 @@ export class NodeTestRunner {
   private generateRunnerTemplate(imports: string): string {
     const jasmineCoreUrl = this.resolveJasmineCoreUrl();
     const jasmineRuntimeSource = getEmbeddedNodeJasmineRuntimeSource();
+    const executionPlanSource = getEmbeddedExecutionPlanSource();
+    const nodeExecutionAdapterSource =
+      getEmbeddedNodeExecutionAdapterSource();
+
     const messages = {
       unhandledRejection: NodeRunnerMessages.unhandledRejection(''),
       uncaughtException: NodeRunnerMessages.uncaughtException(''),
@@ -134,12 +143,23 @@ function replacePlaceholders(text) {
 
 ${jasmineRuntimeSource}
 
+${executionPlanSource}
+
+${nodeExecutionAdapterSource}
+
 // Jasmine runtime
 let jasmineRuntime = null;
 
 // ---------------------------
 // Introspection helpers
 // ---------------------------
+export function getCatalog() {
+  return jasmineRuntime?.utils.getCatalog() ?? {
+    suites: [],
+    specs: []
+  };
+}
+
 export function getAllSpecs() {
   return jasmineRuntime?.utils.getAllSpecs() ?? [];
 }
@@ -159,7 +179,7 @@ export function getOrderedSuites(seed, random) {
 // ---------------------------
 // Main runTests entrypoint
 // ---------------------------
-export async function runTests(reporter) {
+export async function runTests(reporter, selector) {
   const envValue = process.env.TS_TEST_RUNNER_SUPPRESS_CONSOLE_LOGS;
   const shouldSilenceConsole =
     envValue === '1' || envValue?.toLowerCase() === 'true';
@@ -219,31 +239,30 @@ export async function runTests(reporter) {
 
 ${imports}
 
-        // Configure env from template (inlined from ViteJasmineConfig)
-        const random = ${this.config.jasmineConfig?.env?.random ?? false};
-        const stopOnSpecFailure = ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false};
-        const seed = ${(this.config.jasmineConfig?.env as any)?.seed ?? 0};
-
-        jasmineEnv.configure({
-          random,
-          stopOnSpecFailure,
-          seed
-        });
-
-        // Build the authoritative hierarchy after spec modules have registered
-        // themselves with Jasmine. Ordering is an execution concern; hierarchy
-        // comes exclusively from TestCatalog.
+        // Discovery is complete only after all spec modules are imported.
         const catalog = utils.getCatalog();
 
         if (typeof reporter?.setCatalog === 'function') {
           reporter.setCatalog(catalog);
         } else if (typeof reporter?.userAgent === 'function') {
-          // Compatibility bridge for reporters that receive environment data
-          // through the historical userAgent callback.
           reporter.userAgent(undefined, catalog);
         }
 
-        await jasmineEnv.execute();
+        const plan = createExecutionPlan(
+          catalog,
+          selector,
+          {
+            random: ${this.config.jasmineConfig?.env?.random ?? false},
+            seed: ${(this.config.jasmineConfig?.env as any)?.seed ?? 0},
+            stopOnFailure:
+              ${this.config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false}
+          }
+        );
+
+        await executeNodePlan(
+          jasmineEnv,
+          plan
+        );
 
         const failures = reporter && typeof reporter === 'object'
           ? reporter.failureCount || 0
@@ -272,6 +291,36 @@ ${imports}
       }
     })();
   });
+}
+
+export async function runTest(
+  reporter,
+  selector
+) {
+  return runTests(
+    reporter,
+    { spec: selector }
+  );
+}
+
+export async function runSuite(
+  reporter,
+  selector
+) {
+  return runTests(
+    reporter,
+    { suite: selector }
+  );
+}
+
+export async function runFile(
+  reporter,
+  selector
+) {
+  return runTests(
+    reporter,
+    { file: selector }
+  );
 }
 
 // ---------------------------
@@ -333,7 +382,11 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       this.runnerModule = await import(`${fileUrl}?t=${Date.now()}`);
 
       if (typeof this.runnerModule.runTests === 'function') {
-        const exitCode: number = await this.runnerModule.runTests(this.reporter);
+        const exitCode: number =
+          await this.runnerModule.runTests(
+            this.reporter,
+            this.options.selector,
+          );
         const coverage = (globalThis as any).__coverage__;
         if (coverage) {
           const cov = new CoverageReportGenerator();
