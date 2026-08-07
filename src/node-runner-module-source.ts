@@ -436,16 +436,6 @@ ${imports}
             selector,
           );
 
-        const exitCode =
-          result.failed > 0
-            ? ${EXIT_CODES.TEST_FAILURES}
-            : result.pending > 0
-              ? ${EXIT_CODES.SUCCESS_WITH_PENDING}
-              : ${EXIT_CODES.SUCCESS};
-
-        result.exitCode =
-          exitCode;
-
         resolve(result);
       } catch (error) {
         console.error(

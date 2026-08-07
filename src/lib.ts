@@ -177,3 +177,12 @@ export type {
   ExecutionResult,
   ExecutionSpecResult,
 } from './execution-result';
+
+export {
+  applyExecutionExitCode,
+  getExecutionExitCode,
+} from './cli-result-adapter';
+
+export {
+  runNodeCli,
+} from './node-cli-runner';
