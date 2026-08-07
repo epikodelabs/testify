@@ -35,3 +35,13 @@ export {
   withTestifyRegistrationScope,
 } from './test-metadata';
 export type { TestifyItemMetadata } from './test-metadata';
+
+export {
+  getBrowserRuntimeScript,
+} from './browser-runtime';
+export type {
+  BrowserRuntimeScriptOptions,
+} from './browser-runtime';
+export {
+  getBrowserJasmineRegistrationPatchScript,
+} from './browser-jasmine-runtime';
