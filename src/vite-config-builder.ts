@@ -251,68 +251,61 @@ export class ViteConfigBuilder {
   /* Base config factory                                */
   /* -------------------------------------------------- */
 
-  private baseConfig(
-    input: Record<string, string>,
-    incremental: boolean,
-    viteCache?: any
-  ): InlineConfig {
-    const onwarn: WarningHandlerWithDefault = (warning, warn) => {
-      // Ignore empty bundle warnings
-      if (warning.code === 'EMPTY_BUNDLE') return;
-      
-      // Optionally suppress circular dependency warnings
-      if (warning.code === 'CIRCULAR_DEPENDENCY') return;
-      
-      // Pass through all other warnings
-      warn(warning);
-    };
+    private baseConfig(
+      input: Record<string, string>,
+      incremental: boolean,
+      viteCache?: any
+    ): InlineConfig {
+      const onwarn: WarningHandlerWithDefault = (warning, warn) => {
+        if (warning.code === 'EMPTY_BUNDLE') return;
+        if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+        warn(warning);
+      };
 
-    const tsconfigData = this.loadResolvedTsconfigData();
+      const tsconfigData = this.loadResolvedTsconfigData();
+      const isNodeTarget = this.config.browser === 'node';
 
-    return {
-      root: process.cwd(),
-      configFile: incremental ? false : undefined,
+      return {
+        root: process.cwd(),
+        configFile: incremental ? false : undefined,
 
-      build: {
-        outDir: this.config.outDir,
-        emptyOutDir: !incremental,
-        sourcemap: true,
-        target: 'es2022',
-        minify: false,
+        build: {
+          outDir: this.config.outDir,
+          emptyOutDir: !incremental,
+          sourcemap: true,
+          target: 'es2022',
+          minify: false,
+          // Enable SSR build for Node.js target to bypass browser dynamic import wrappers
+          ssr: isNodeTarget ? true : undefined,
+          modulePreload: isNodeTarget ? false : true,
 
-        rollupOptions: {
-          input,
-          preserveEntrySignatures: incremental
-            ? 'allow-extension'
-            : 'strict',
+          rollupOptions: {
+            input,
+            preserveEntrySignatures: incremental
+              ? 'allow-extension'
+              : 'strict',
 
-          // 🔥 Suppress empty bundle warnings
-          onwarn,
+            onwarn,
 
-          output: {
-            format: 'es',
-
-            // 🔥 flattened local outputs
-            entryFileNames: '[name].js',
-
-            // 🔥 single vendor bundle
-            chunkFileNames: 'vendor.js',
-
-            manualChunks: id => this.vendorChunk(id)
+            output: {
+              format: 'es',
+              entryFileNames: '[name].js',
+              chunkFileNames: 'vendor.js',
+              manualChunks: id => this.vendorChunk(id)
+            }
           }
-        }
-      },
+        },
 
-      resolve: { alias: this.createPathAliases() },
-      esbuild: {
-        target: 'es2022',
-        keepNames: false,
-        tsconfigRaw: tsconfigData ? { compilerOptions: tsconfigData.compilerOptions } : undefined,
-      },
-      define: { 'process.env.NODE_ENV': '"test"' },
-      logLevel: 'warn'
-    };
-  }
+        resolve: { alias: this.createPathAliases() },
+        esbuild: {
+          target: 'es2022',
+          keepNames: false,
+          tsconfigRaw: tsconfigData ? { compilerOptions: tsconfigData.compilerOptions } : undefined,
+        },
+        define: { 'process.env.NODE_ENV': '"test"' },
+        logLevel: 'warn'
+      };
+    }
 
   /* -------------------------------------------------- */
   /* FULL BUILD                                         */
@@ -422,7 +415,7 @@ export class ViteConfigBuilder {
     }
 
     const normalized: Record<string, string> = {};
-    for (const [find, replacement] of Object.entries(alias)) {
+    for (const [find, replacement] of Object.entries(alias!)) {
       normalized[find] = this.normalizeAliasReplacement(replacement);
     }
 

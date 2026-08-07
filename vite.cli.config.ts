@@ -4,8 +4,8 @@ import { builtinModules } from 'module';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const configFilePath = fileURLToPath(import.meta.url);
+const configDirectory = path.dirname(configFilePath);
 
 const pkg = JSON.parse(
   fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')
@@ -33,33 +33,23 @@ const isExternal = (id: string) => {
 export default defineConfig({
   build: {
     target: 'node22',
+    ssr: true,
+    modulePreload: false,
     outDir: 'dist/testify/',
     emptyOutDir: false,
-    lib: {
-      entry: path.resolve('index.ts'),
-      formats: ['es'],
-      fileName: () => 'lib/index.js'
-    },
     minify: false,
     chunkSizeWarningLimit: 5000,
     rollupOptions: {
-      input: path.resolve(__dirname, './src/index.ts'),
+      input: path.resolve(configDirectory, './src/index.ts'),
       output: {
         entryFileNames: 'bin/testify',
         format: 'es',
-        codeSplitting: false,
+        inlineDynamicImports: true,
         banner: `#!/usr/bin/env node
 import { createRequire as ___createRequire } from 'module';
 const require = ___createRequire(import.meta.url);
-
-const ___fileURLToPath = require('url').fileURLToPath;
-const ___path = require('path');
-
-const __filename = ___fileURLToPath(import.meta.url);
-const __dirname = ___path.dirname(__filename);
 `,
         manualChunks: undefined,
-        // Ensure externals stay as bare specifiers (avoid absolute Windows paths in ESM)
         paths: (id) => {
           const match = id.match(/node_modules[\\/](.+?)([\\/]|$)/);
           return match ? match[1] : id;

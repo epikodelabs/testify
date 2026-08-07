@@ -1,21 +1,25 @@
-import { once } from 'events';
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
-import { pathToFileURL, fileURLToPath } from 'url';
+import { pathToFileURL } from 'url';
 import util from 'util';
+import { register } from 'tsx/esm/api';
 import { logger } from './logger';
 import { JasmineCLIMessages } from './log-messages';
 import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
 import { initializeNodeJasmineEnvironment } from './jasmine-node-runtime';
 import JSONCleaner from './json-cleaner';
 import { norm } from './utils';
-import { EXIT_CODES, getSignalExitCode } from './exit-codes';
+import { EXIT_CODES } from './exit-codes';
 
-const cliFilePath = fileURLToPath(import.meta.url);
-const cliDirectory = path.dirname(cliFilePath);
-const packageRoot = norm(path.resolve(cliDirectory, '..'));
 const packageRequire = createRequire(import.meta.url);
+
+// Keep runtime imports opaque to Vite. These paths are selected at runtime and
+// must be handled by Node/tsx rather than Vite's browser preload transform.
+const nativeImport = new Function(
+  'specifier',
+  'return import(specifier);',
+) as (specifier: string) => Promise<any>;
 
 interface RunnerArgs {
   spec: string;
@@ -60,10 +64,7 @@ function printHelp(): void {
   logger.println('  --stop-on-fail       Stop on first expectation failure');
   logger.println('  --help               Show this help');
   logger.println('');
-  logger.println('TypeScript + tsconfig paths (recommended):');
-  logger.println(
-    '  node --loader @epikodelabs/testify/esm-loader.mjs ./node_modules/@epikodelabs/testify/bin/jasmine --spec <file>',
-  );
+  logger.println('TypeScript specs are loaded through tsx using the nearest tsconfig.json.');
   logger.println('');
   logger.println('VS Code debug config name:');
   logger.println(`  ${vscodeLaunchConfigName}`);
@@ -175,27 +176,11 @@ function safeStringify(value: unknown): string {
   }
 }
 
-function normalizeCliArgs(args: string[]): string[] {
-  const normalized = [...args];
-  for (let i = 0; i < normalized.length; i += 1) {
-    if (normalized[i] === '--spec' && typeof normalized[i + 1] === 'string') {
-      normalized[i + 1] = norm(normalized[i + 1]);
-      i += 1;
-    }
-  }
-  return normalized;
-}
-
 function isTypeScriptLike(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return ext === '.ts' || ext === '.tsx' || ext === '.mts' || ext === '.cts';
 }
 
-function hasEsmLoader(): boolean {
-  const fromNodeOptions = (getRuntimeEnv().NODE_OPTIONS ?? '').split(/\s+/g).filter(Boolean);
-  const argv = [...process.execArgv, ...fromNodeOptions];
-  return argv.includes('--loader') || argv.some((a) => a.startsWith('--loader='));
-}
 
 function findNearestTsconfig(startDir: string): string | null {
   let current = norm(path.resolve(startDir));
@@ -214,12 +199,9 @@ function getDefaultVsCodeLaunchConfiguration(): Record<string, unknown> {
     request: 'launch',
     name: vscodeLaunchConfigName,
     runtimeExecutable: 'node',
-    runtimeArgs: ['--loader', '@epikodelabs/testify/esm-loader.mjs', '--enable-source-maps'],
+    runtimeArgs: ['--enable-source-maps'],
     program: '${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine',
     args: ['--spec', '${file}'],
-    env: {
-      TS_NODE_PROJECT: '${workspaceFolder}/tsconfig.json',
-    },
     cwd: '${workspaceFolder}',
     console: 'integratedTerminal',
     skipFiles: ['<node_internals>/**'],
@@ -262,7 +244,7 @@ function initVsCodeLaunchConfig(): void {
   if (!Array.isArray(parsed.configurations)) parsed.configurations = [];
 
   const programSuffix = '/bin/jasmine';
-  const alreadyHasConfig = parsed.configurations.some((c: any) => {
+  const existingIndex = parsed.configurations.findIndex((c: any) => {
     if (!c || typeof c !== 'object') return false;
     if (c.name === vscodeLaunchConfigName) return true;
 
@@ -271,62 +253,46 @@ function initVsCodeLaunchConfig(): void {
     return program.endsWith(programSuffix) && args.includes('--spec');
   });
 
-  if (alreadyHasConfig) {
-    logger.println(JasmineCLIMessages.vsCodeConfigAlreadyContains(vscodeLaunchConfigName));
+  parsed.version ??= '0.2.0';
+
+  if (existingIndex !== -1) {
+    parsed.configurations[existingIndex] = config;
+    fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
+    logger.println(JasmineCLIMessages.updatedVsCodeLaunchConfig(launchJsonPath));
     return;
   }
 
-  parsed.version ??= '0.2.0';
   parsed.configurations.unshift(config);
   fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
   logger.println(JasmineCLIMessages.updatedVsCodeLaunchConfig(launchJsonPath));
   logger.println(JasmineCLIMessages.addedVsCodeConfiguration(vscodeLaunchConfigName));
 }
 
-async function respawnWithLoader(args: RunnerArgs): Promise<void> {
-  const { spawn } = await import('child_process');
-
-  const tsconfig = findNearestTsconfig(path.dirname(args.spec));
-  const env: NodeJS.ProcessEnv = { ...getRuntimeEnv() };
-  if (tsconfig) env.TS_NODE_PROJECT = tsconfig;
-  env.TS_NODE_TRANSPILE_ONLY ??= 'true';
-
-  const loaderPath = norm(path.join(packageRoot, 'esm-loader.mjs'));
-  const loaderSpecifier = fs.existsSync(loaderPath)
-    ? pathToFileURL(loaderPath).href
-    : '@epikodelabs/testify/esm-loader.mjs';
-
-  const child = spawn(
-    process.execPath,
-    [
-      '--loader',
-      loaderSpecifier,
-      '--enable-source-maps',
-      process.argv[1],
-      ...normalizeCliArgs(process.argv.slice(2)),
-    ],
-    { stdio: 'inherit', env, cwd: process.cwd() },
-  );
-
-  let onCtrlC: NodeJS.SignalsListener | undefined;
-  if (child.pid) {
-    onCtrlC = () => child.kill('SIGINT');
-    process.on('SIGINT', onCtrlC);
-  }
-
-  child.on('exit', (code, signal) => {
-    if (onCtrlC) process.off('SIGINT', onCtrlC);
-    process.exit(code ?? getSignalExitCode(signal));
-  });
-
-  await once(child, 'exit');
-}
-
 async function loadJasmine() {
   const jasmineCorePath = norm(packageRequire.resolve('jasmine-core/lib/jasmine-core/jasmine.js'));
-  const jasmineCore = await import(pathToFileURL(jasmineCorePath).href);
+  const jasmineCore = await nativeImport(pathToFileURL(jasmineCorePath).href);
   const jasmineRequire = jasmineCore.default;
   return initializeNodeJasmineEnvironment(jasmineRequire, { resetReporters: false });
+}
+
+async function loadSpec(specPath: string): Promise<void> {
+  const specUrl = pathToFileURL(specPath).href;
+
+  if (!isTypeScriptLike(specPath)) {
+    await nativeImport(specUrl);
+    return;
+  }
+
+  const tsconfig = findNearestTsconfig(path.dirname(specPath));
+  const unregister = register({
+    tsconfig: tsconfig ?? false,
+  });
+
+  try {
+    await nativeImport(specUrl);
+  } finally {
+    await unregister();
+  }
 }
 
 async function main() {
@@ -347,13 +313,6 @@ async function main() {
     process.exit(EXIT_CODES.SUCCESS);
   }
 
-  // `npx jasmine --spec test.spec.ts` starts Node without an ESM loader, so TS (and tsconfig paths)
-  // won't resolve. For normal CLI runs, transparently re-spawn with the packaged loader.
-  // For debugging, launch Node with the loader explicitly so breakpoints stay in one process.
-  if (isTypeScriptLike(args.spec) && !hasEsmLoader() && !process.execArgv.join(' ').includes('--inspect')) {
-    await respawnWithLoader(args);
-    return; // Parent process must not continue after respawning child
-  }
 
   const { jasmineEnv } = await loadJasmine();
 
@@ -375,7 +334,7 @@ async function main() {
   const reporter = new AwaitableJasmineConsoleReporter();
   jasmineEnv.addReporter(reporter);
 
-  await import(pathToFileURL(args.spec).href);
+  await loadSpec(args.spec);
   await jasmineEnv.execute();
   
   const result = await reporter.complete;

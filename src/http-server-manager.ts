@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { parse } from 'url';
 import { createServer } from 'http';
 import { extname } from 'path';
+import { exec } from 'child_process';   // ✅ new top‑level import
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import { logger } from './logger';
@@ -30,7 +31,6 @@ export class HttpServerManager {
       res.setHeader("Pragma", "no-cache");
       res.setHeader("Expires", "0");
       
-      // Handle CORS preflight requests
       if (req.method === 'OPTIONS') {
         res.writeHead(200, {
           'Access-Control-Allow-Origin': '*',
@@ -100,19 +100,18 @@ export class HttpServerManager {
         });
 
         this.server!.on('error', (error: any) => {
-          if (error.code === 'EADDRINUSE' && attempt < 3) { // try 2 times
+          if (error.code === 'EADDRINUSE' && attempt < 3) {
             logger.println(HttpServerMessages.portBusyRetrying(port));
 
             this.server!.close(() => {
               setTimeout(() => {
-                const { exec } = require('child_process');
-
                 const isWindows = process.platform === 'win32';
                 const killCommand = isWindows
                   ? `powershell -command "Get-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess | Stop-Process -Force"`
                   : `lsof -ti:${port} | xargs -r kill -9`;
 
-                exec(killCommand, (err: Error, stdout: string, stderr: string) => {
+                // ✅ Fixed: pass empty options object as second argument
+                exec(killCommand, {}, (err, stdout, stderr) => {
                   if (err) {
                     logger.error(HttpServerMessages.failedToKillProcess(port, err.message, stderr));
                   } else {

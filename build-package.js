@@ -2,14 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const buildFilePath = fileURLToPath(import.meta.url);
+const buildDirectory = path.dirname(buildFilePath);
 
 const mainPackage = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')
+  fs.readFileSync(path.join(buildDirectory, 'package.json'), 'utf8')
 );
 
-const distRoot = path.join(__dirname, 'dist/testify');
+const distRoot = path.join(buildDirectory, 'dist/testify');
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -33,7 +33,6 @@ const distPackage = {
     'README.md',
     'CHANGELOG.md',
     'LICENSE',
-    'esm-loader.mjs',
     'package.json',
     'postinstall.mjs',
     'assets/',
@@ -62,11 +61,11 @@ fs.writeFileSync(
 );
 
 copyFile(
-  path.join(__dirname, 'postinstall.script'),
+  path.join(buildDirectory, 'postinstall.script'),
   path.join(distRoot, 'postinstall.mjs')
 );
 
 copyFile(
-  path.join(__dirname, 'assets/favicon.ico'),
+  path.join(buildDirectory, 'assets/favicon.ico'),
   path.join(distRoot, 'assets/favicon.ico')
 );

@@ -17,22 +17,19 @@ const isExternal = (id: string) => {
 export default defineConfig({
   build: {
     target: 'node22',
+    ssr: true,
     outDir: 'dist',
     emptyOutDir: false,
-    lib: {
-      entry: path.resolve(__dirname, './src/lib.ts'),
-      name: 'TsTestRunner',
-      formats: ['es'],
-      fileName: () => `testify/lib/index.js`
-    },
     minify: false,
     sourcemap: false,
     rollupOptions: {
+      input: path.resolve(__dirname, './src/lib.ts'),
       external: (id) => isExternal(id),
       output: {
-        codeSplitting: false,
+        entryFileNames: 'testify/lib/index.js',
+        format: 'es',
+        inlineDynamicImports: true,
         manualChunks: undefined,
-        // Ensure externals stay as bare specifiers (avoid absolute Windows paths in ESM)
         paths: (id) => {
           const match = id.match(/node_modules[\\/](.+?)([\\/]|$)/);
           return match ? match[1] : id;
@@ -40,9 +37,7 @@ export default defineConfig({
       }
     }
   },
-  // Ensure TypeScript declarations are generated
   esbuild: {
-    // Keep class names for better debugging
     keepNames: true,
   }
 });
