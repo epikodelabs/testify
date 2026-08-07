@@ -94,11 +94,24 @@ ${catalogQuerySource}
 ${runnerSessionSource}
 
 let jasmineRuntime = null;
+let currentSession = null;
 
 export function getCatalog() {
   return jasmineRuntime?.utils.getCatalog() ?? {
     suites: [],
     specs: []
+  };
+}
+
+export function getSession() {
+  return currentSession;
+}
+
+export function getStats() {
+  return currentSession?.stats?.() ?? {
+    specs: 0,
+    suites: 0,
+    files: 0,
   };
 }
 
@@ -360,7 +373,7 @@ ${imports}
           );
         }
 
-        const session =
+        currentSession =
           new RunnerSession(
             () => catalog,
             {
@@ -380,7 +393,7 @@ ${imports}
             }),
           );
 
-        await session.run(
+        await currentSession.run(
           selector,
         );
 
@@ -437,6 +450,7 @@ ${imports}
           ${EXIT_CODES.INTERNAL_ERROR}
         );
       } finally {
+        currentSession = null;
         jasmineRuntime = null;
         restoreConsole();
 

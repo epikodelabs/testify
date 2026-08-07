@@ -164,4 +164,24 @@ describe('RunnerSession', () => {
       )[0]?.file,
     ).toBe('forms.spec.js');
   });
+
+  it('reports session stats', () => {
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    expect(
+      session.stats(),
+    ).toEqual({
+      specs: 1,
+      suites: 1,
+      files: 1,
+    });
+  });
 });

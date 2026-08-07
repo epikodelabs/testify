@@ -161,3 +161,5 @@ export type {
   SearchIndexEntry,
   TestCatalogIndex,
 } from './test-catalog-index';
+
+export * as v2 from './v2';

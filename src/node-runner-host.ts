@@ -25,6 +25,12 @@ export interface NodeRunnerModule {
   ): Promise<number>;
 
   getCatalog?(): unknown;
+  getSession?(): unknown;
+  getStats?(): {
+    specs: number;
+    suites: number;
+    files: number;
+  };
   listTests?(): unknown[];
   listSuites?(): unknown[];
   listFiles?(): unknown[];
@@ -152,6 +158,24 @@ export class NodeRunnerHost {
       reporter,
       { file: selector },
     );
+  }
+
+  getSession(): unknown {
+    return this.runnerModule
+      ?.getSession?.();
+  }
+
+  getStats(): {
+    specs: number;
+    suites: number;
+    files: number;
+  } {
+    return this.runnerModule
+      ?.getStats?.() ?? {
+        specs: 0,
+        suites: 0,
+        files: 0,
+      };
   }
 
   listTests(): unknown[] {

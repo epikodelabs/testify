@@ -397,103 +397,6 @@ export function getBrowserRuntimeScript(
       });
     }
 
-    async function runTest(filter) {
-      if (Array.isArray(filter)) {
-        throw new Error(
-          'runTest() only accepts a single spec or RegExp, not an array.',
-        );
-      }
-
-      return executePlan(
-        createSpecExecutionPlan(
-          getCatalog(),
-          filter,
-          currentPlanOptions(),
-        ),
-      );
-    }
-
-    async function runSuite(selector) {
-      const plan =
-        createSuiteExecutionPlan(
-          getCatalog(),
-          selector,
-          currentPlanOptions(),
-        );
-
-      if (!plan.specIds.length) {
-        console.warn(
-          'No matching suites found for:',
-          selector,
-        );
-        return [];
-      }
-
-      return executePlan(plan);
-    }
-
-    async function runFile(selector) {
-      const plan =
-        createFileExecutionPlan(
-          getCatalog(),
-          selector,
-          currentPlanOptions(),
-        );
-
-      if (!plan.specIds.length) {
-        console.warn(
-          'No matching spec files found for:',
-          selector,
-        );
-        return [];
-      }
-
-      return executePlan(plan);
-    }
-
-    async function run(selector) {
-      const plan =
-        createExecutionPlan(
-          getCatalog(),
-          selector,
-          currentPlanOptions(),
-        );
-
-      if (!plan.specIds.length) {
-        console.warn(
-          'No matching tests found for:',
-          selector,
-        );
-        return [];
-      }
-
-      return executePlan(plan);
-    }
-
-    function listTests() {
-      const rows =
-        session.listTests();
-
-      console.table(rows);
-      return rows;
-    }
-
-    function listSuites() {
-      const rows =
-        session.listSuites();
-
-      console.table(rows);
-      return rows;
-    }
-
-    function listFiles() {
-      const rows =
-        session.listFiles();
-
-      console.table(rows);
-      return rows;
-    }
-
     function setSeed(nextSeed) {
       const parsed =
         Number(nextSeed);
@@ -539,29 +442,79 @@ export function getBrowserRuntimeScript(
 
     globalThis.runner = {
       session,
-      execute: (plan) =>
-        session.execute(plan),
-      run: (selector) =>
-        session.run(selector),
-      runTests,
-      runTest: (selector) =>
-        session.runSpec(selector),
-      runSuite: (selector) =>
-        session.runSuite(selector),
-      runFile: (selector) =>
-        session.runFile(selector),
-      listTests,
-      listSuites,
-      listFiles,
+
+      catalog: () =>
+        session.catalog(),
+
+      index: () =>
+        session.index(),
+
+      stats: () =>
+        session.stats(),
+
+      listTests: () => {
+        const rows =
+          session.listTests();
+        console.table(rows);
+        return rows;
+      },
+
+      listSuites: () => {
+        const rows =
+          session.listSuites();
+        console.table(rows);
+        return rows;
+      },
+
+      listFiles: () => {
+        const rows =
+          session.listFiles();
+        console.table(rows);
+        return rows;
+      },
+
       findTests: (selector) =>
         session.findTests(selector),
+
       findSuites: (selector) =>
         session.findSuites(selector),
+
       findFiles: (selector) =>
         session.findFiles(selector),
-      catalog: getCatalog,
+
+      plan: (selector) =>
+        session.plan(selector),
+
+      planSpec: (selector) =>
+        session.planSpec(selector),
+
+      planSuite: (selector) =>
+        session.planSuite(selector),
+
+      planFile: (selector) =>
+        session.planFile(selector),
+
+      execute: (plan) =>
+        session.execute(plan),
+
+      run: (selector) =>
+        session.run(selector),
+
+      runTest: (selector) =>
+        session.runSpec(selector),
+
+      runSuite: (selector) =>
+        session.runSuite(selector),
+
+      runFile: (selector) =>
+        session.runFile(selector),
+
+      // Compatibility helper retained for v1 callers.
+      runTests,
+
       setSeed,
       resetSeed,
+
       reload: () =>
         location.reload(),
     };

@@ -148,6 +148,20 @@ export class RunnerSession<TResult> {
     );
   }
 
+  stats(): {
+    specs: number;
+    suites: number;
+    files: number;
+  } {
+    const catalog = this.catalog();
+
+    return {
+      specs: catalog.specs.length,
+      suites: catalog.suites.length,
+      files: this.listFiles().length,
+    };
+  }
+
   findFiles(
     selector: string | RegExp,
   ): FileListRow[] {
