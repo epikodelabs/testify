@@ -66,3 +66,10 @@ export type {
   BrowserPage,
   BrowserPageScripts,
 } from './browser-page';
+
+export {
+  getStaticBrowserBootstrapScript,
+} from './browser-static-bootstrap';
+export type {
+  StaticBrowserBootstrapOptions,
+} from './browser-static-bootstrap';

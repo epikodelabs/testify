@@ -1,20 +1,23 @@
-export interface BrowserPageScripts {
-  jasminePatch: string;
-  websocketReporter: string;
-  hmrClient: string;
-  bootstrap: string;
-  runtime: string;
-}
-
 export interface BrowserPage {
   title: string;
   faviconTag: string;
-  scripts: BrowserPageScripts;
+  headScripts?: string[];
+  bodyHtml?: string;
+  inlineScripts?: string[];
 }
 
 export function createBrowserPage(
   page: BrowserPage,
 ): string {
+  const headScripts = (page.headScripts ?? [])
+    .filter(Boolean)
+    .join('\n');
+
+  const inlineScripts = (page.inlineScripts ?? [])
+    .filter(Boolean)
+    .map((script) => `<script>\n${script}\n</script>`)
+    .join('\n');
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -24,21 +27,11 @@ export function createBrowserPage(
   <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css">
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
   <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
-
-  <script>
-${page.scripts.jasminePatch}
-
-${page.scripts.websocketReporter}
-
-${page.scripts.hmrClient}
-
-${page.scripts.bootstrap}
-
-${page.scripts.runtime}
-  </script>
+  ${headScripts}
 </head>
 <body>
-  <div class="jasmine_html-reporter"></div>
+  ${page.bodyHtml ?? '<div class="jasmine_html-reporter"></div>'}
+  ${inlineScripts}
 </body>
 </html>`;
 }

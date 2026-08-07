@@ -10,6 +10,7 @@ import { getBrowserWebSocketReporterScript } from './browser-websocket-runtime';
 import { getBrowserHmrClientScript } from './browser-hmr-client';
 import { getBrowserBootstrapScript } from './browser-bootstrap-runtime';
 import { createBrowserPage } from './browser-page';
+import { getStaticBrowserBootstrapScript } from './browser-static-bootstrap';
 import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 import { resolveBrowserPreludeModules } from './prelude-modules';
@@ -71,31 +72,21 @@ export class HtmlGenerator {
   }
 
   private generateHtmlTemplate(imports: string, faviconTag: string): string {
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  ${faviconTag}
-  <title>${this.config.htmlOptions?.title || 'Jasmine Test Runner'}</title>
-  <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css">
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/boot0.js"></script>
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/boot1.js"></script>
-  <script type="module">
-    ${this.getWebSocketEventForwarderScript()}
-    
-    const forwarder = new WebSocketEventForwarder();
-    forwarder.connect();
-    jasmine.getEnv().addReporter(forwarder);
-    
-    ${imports}
-  </script>
-</head>
-<body>
-  <div class="jasmine_html-reporter"></div>
-</body>
-</html>`;
+    return createBrowserPage({
+      title:
+        this.config.htmlOptions?.title ||
+        'Jasmine Test Runner',
+      faviconTag: faviconTag,
+      inlineScripts: [
+        getStaticBrowserBootstrapScript({
+          preludeModules:
+            this.getPreludeModules(),
+          specFiles: specFiles,
+          runtimeScript:
+            this.getRuntimeHelpersScript(),
+        }),
+      ],
+    });
   }
 
   private getPreludeModules(): string[] {
@@ -119,21 +110,16 @@ export class HtmlGenerator {
         this.config.htmlOptions?.title ||
         'Jasmine Test Runner (HMR)',
       faviconTag,
-      scripts: {
-        jasminePatch:
-          this.getJasminePatchScript(),
-        websocketReporter:
-          this.getWebSocketEventForwarderScript(),
-        hmrClient:
-          this.getHmrClientScript(),
-        bootstrap:
-          getBrowserBootstrapScript({
-            preludeModules:
-              this.getPreludeModules(),
-          }),
-        runtime:
-          this.getRuntimeHelpersScript(),
-      },
+      inlineScripts: [
+        this.getJasminePatchScript(),
+        this.getWebSocketEventForwarderScript(),
+        this.getHmrClientScript(),
+        getBrowserBootstrapScript({
+          preludeModules:
+            this.getPreludeModules(),
+        }),
+        this.getRuntimeHelpersScript(),
+      ],
     });
   }
 
