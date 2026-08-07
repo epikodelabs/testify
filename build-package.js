@@ -25,6 +25,7 @@ const distPackage = {
   version: mainPackage.version,
   description: mainPackage.description,
   type: "module",
+  exports: mainPackage.exports || undefined,
   bin: {
     "jasmine": "bin/jasmine",
     "testify": "bin/testify"
@@ -32,6 +33,7 @@ const distPackage = {
   files: [
     'README.md',
     'CHANGELOG.md',
+    'MIGRATION-V2.md',
     'LICENSE',
     'package.json',
     'assets/',

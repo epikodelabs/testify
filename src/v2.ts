@@ -21,10 +21,12 @@ export type {
 
 export {
   createTestCatalogIndex,
+  normalizeSearchText,
   searchIndexEntries,
 } from './test-catalog-index';
 
 export type {
+  SearchIndexEntry,
   TestCatalogIndex,
 } from './test-catalog-index';
 
@@ -40,12 +42,19 @@ export type {
   TestListRow,
 } from './catalog-query';
 
+export {
+  findCatalogSpecs,
+  findCatalogSuites,
+  getSpecIdsForFiles,
+  resolveTestSelector,
+} from './test-selection';
+
+export type {
+  TestSelector,
+} from './test-selection';
+
 export type {
   TestCatalog,
   TestCatalogSpec,
   TestCatalogSuite,
 } from './test-catalog';
-
-export type {
-  TestSelector,
-} from './test-selection';

@@ -440,6 +440,20 @@ export function getBrowserRuntimeScript(
         currentPlanOptions,
       );
 
+    const warnDeprecated = (() => {
+      const shown = new Set();
+
+      return (name, replacement) => {
+        if (shown.has(name)) return;
+        shown.add(name);
+
+        console.warn(
+          `[Testify v2] runner.${name}() is deprecated. Use ${replacement}.`,
+        );
+      };
+    })();
+
+
     globalThis.runner = {
       session,
 
@@ -510,7 +524,14 @@ export function getBrowserRuntimeScript(
         session.runFile(selector),
 
       // Compatibility helper retained for v1 callers.
-      runTests,
+      runTests: (...args) => {
+        warnDeprecated(
+          'runTests',
+          'runner.run() or runner.session.run()',
+        );
+
+        return runTests(...args);
+      },
 
       setSeed,
       resetSeed,

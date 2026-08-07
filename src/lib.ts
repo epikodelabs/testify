@@ -163,3 +163,9 @@ export type {
 } from './test-catalog-index';
 
 export * as v2 from './v2';
+
+export type {
+  LegacyGetAllSpecs,
+  LegacyGetAllSuites,
+  LegacyRunTests,
+} from './legacy-api';

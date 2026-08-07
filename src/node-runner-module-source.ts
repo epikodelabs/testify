@@ -96,6 +96,24 @@ ${runnerSessionSource}
 let jasmineRuntime = null;
 let currentSession = null;
 
+const warnedDeprecated =
+  new Set();
+
+function warnDeprecated(
+  name,
+  replacement,
+) {
+  if (warnedDeprecated.has(name)) {
+    return;
+  }
+
+  warnedDeprecated.add(name);
+
+  console.warn(
+    `[Testify v2] ${name}() is deprecated. Use ${replacement}.`,
+  );
+}
+
 export function getCatalog() {
   return jasmineRuntime?.utils.getCatalog() ?? {
     suites: [],
@@ -115,19 +133,39 @@ export function getStats() {
   };
 }
 
+export function getIndex() {
+  return currentSession?.index?.() ?? null;
+}
+
 export function getAllSpecs() {
+  warnDeprecated(
+    'getAllSpecs',
+    'getSession()?.listTests()',
+  );
   return jasmineRuntime?.utils.getAllSpecs() ?? [];
 }
 
 export function getAllSuites() {
+  warnDeprecated(
+    'getAllSuites',
+    'getSession()?.listSuites()',
+  );
   return jasmineRuntime?.utils.getAllSuites() ?? [];
 }
 
 export function getOrderedSpecs(seed, random) {
+  warnDeprecated(
+    'getOrderedSpecs',
+    'getSession()?.listTests()',
+  );
   return jasmineRuntime?.utils.getOrderedSpecs(seed, random) ?? [];
 }
 
 export function getOrderedSuites(seed, random) {
+  warnDeprecated(
+    'getOrderedSuites',
+    'getSession()?.listSuites()',
+  );
   return jasmineRuntime?.utils.getOrderedSuites(seed, random) ?? [];
 }
 

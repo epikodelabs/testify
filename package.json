@@ -1,6 +1,6 @@
 {
   "name": "@epikodelabs/testify",
-  "version": "1.0.37",
+  "version": "2.0.0",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
     "jasmine": "bin/jasmine",
@@ -11,6 +11,7 @@
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
+    "MIGRATION-V2.md",
     "package.json",
     "assets/",
     "bin/",
@@ -23,7 +24,7 @@
     "build:runner": "vite build --config vite.runner.config.ts",
     "build": "npm run clean && npm run build:cli && npm run build:lib && npm run build:runner",
     "start": "node --import tsx ./src/index.ts",
-    "copyfiles": "copyfiles README.md CHANGELOG.md LICENSE ./dist/testify"
+    "copyfiles": "copyfiles README.md CHANGELOG.md MIGRATION-V2.md LICENSE ./dist/testify"
   },
   "repository": {
     "type": "git",
@@ -93,5 +94,10 @@
   },
   "engines": {
     "node": ">=22.15.0"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./v2": "./lib/v2.js",
+    "./package.json": "./package.json"
   }
 }

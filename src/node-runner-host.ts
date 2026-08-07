@@ -31,6 +31,7 @@ export interface NodeRunnerModule {
     suites: number;
     files: number;
   };
+  getIndex?(): unknown;
   listTests?(): unknown[];
   listSuites?(): unknown[];
   listFiles?(): unknown[];
@@ -176,6 +177,11 @@ export class NodeRunnerHost {
         suites: 0,
         files: 0,
       };
+  }
+
+  getIndex(): unknown {
+    return this.runnerModule
+      ?.getIndex?.();
   }
 
   listTests(): unknown[] {
