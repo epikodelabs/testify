@@ -170,7 +170,9 @@ export function initializeNodeJasmineEnvironment(
   return {
     jasmineEnv,
     jasmineInstance,
-    catalog: utils.getCatalog(),
+    get catalog() {
+      return utils.getCatalog();
+    },
     utils,
   };
 }

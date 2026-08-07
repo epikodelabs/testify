@@ -230,21 +230,19 @@ ${imports}
           seed
         });
 
-        // Get ordered specs and suites based on configuration
-        const orderedSpecs = utils.getOrderedSpecs(seed, random).map(spec => ({
-          id: spec.id,
-          description: spec.description,
-          fullName: spec.getFullName ? spec.getFullName() : spec.description
-        }));
+        // Build the authoritative hierarchy after spec modules have registered
+        // themselves with Jasmine. Ordering is an execution concern; hierarchy
+        // comes exclusively from TestCatalog.
+        const catalog = utils.getCatalog();
 
-        const orderedSuites = utils.getOrderedSuites(seed, random).map(suite => ({
-          id: suite.id,
-          description: suite.description,
-          fullName: suite.getFullName ? suite.getFullName() : suite.description
-        }));
+        if (typeof reporter?.setCatalog === 'function') {
+          reporter.setCatalog(catalog);
+        } else if (typeof reporter?.userAgent === 'function') {
+          // Compatibility bridge for reporters that receive environment data
+          // through the historical userAgent callback.
+          reporter.userAgent(undefined, catalog);
+        }
 
-        // Execute tests - this will populate spec results
-        reporter.userAgent(undefined, orderedSuites, orderedSpecs);
         await jasmineEnv.execute();
 
         const failures = reporter && typeof reporter === 'object'

@@ -154,3 +154,17 @@ export function resolveTestSelector(
 
   return [];
 }
+
+
+export function getEmbeddedTestSelectionSource(): string {
+  return [
+    matchesText,
+    findCatalogSpecs,
+    findCatalogSuites,
+    getDescendantSuiteIds,
+    getSpecIdsForSuites,
+    resolveTestSelector,
+  ]
+    .map((fn) => fn.toString())
+    .join('\n\n');
+}

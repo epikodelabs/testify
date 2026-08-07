@@ -7,6 +7,8 @@ import { FileDiscoveryService } from './file-discovery-service';
 import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 import { resolveBrowserPreludeModules } from './prelude-modules';
+import { getEmbeddedTestCatalogSource } from './test-catalog';
+import { getEmbeddedTestSelectionSource } from './test-selection';
 
 export class HtmlGenerator {
   constructor(private fileDiscovery: FileDiscoveryService, private config: ViteJasmineConfig) { }
@@ -711,64 +713,40 @@ window.HMRClient = (function() {
       autoCleanClosures: false
     });
 
-    function isSpec(child) {
-      return child && typeof child.id === 'string' && !child.children;
-    }
-
-    function isSuite(child) {
-      return child && Array.isArray(child.children);
+    function getCatalog() {
+      return createTestCatalogFromJasmineEnv(env);
     }
 
     function getAllSpecs() {
-      const specs = [];
-      const traverse = suite => {
-        (suite.children || []).forEach(child => {
-          if (isSpec(child)) specs.push(child);
-          if (isSuite(child)) traverse(child);
-        });
-      };
-      traverse(env.topSuite());
-      return specs;
+      return getCatalog().specs;
     }
 
     function getAllSuites() {
-      const suites = [];
-      const traverse = suite => {
-        suites.push(suite);
-        (suite.children || []).forEach(child => {
-          if (isSuite(child)) traverse(child);
-        });
-      };
-      traverse(env.topSuite());
-      return suites;
+      return getCatalog().suites;
+    }
+
+    function orderCatalogItems(items, seed, random) {
+      if (!random) return items;
+
+      try {
+        const order = new globalThis.jasmine.Order({ random, seed });
+        return order.sort?.(items) ?? items;
+      } catch {
+        return items;
+      }
     }
 
     function getOrderedSpecs(seed, random) {
-      const all = getAllSpecs();
-      if (!random) return all;
-
-      try {
-        const order = new globalThis.jasmine.Order({ random, seed });
-        return order.sort?.(all) ?? all;
-      } catch {
-        return all;
-      }
+      return orderCatalogItems(getAllSpecs(), seed, random);
     }
 
     function getOrderedSuites(seed, random) {
-      const all = getAllSuites();
-      if (!random) return all;
-
-      try {
-        const order = new globalThis.jasmine.Order({ random, seed });
-        return order.sort?.(all) ?? all;
-      } catch {
-        return all;
-      }
+      return orderCatalogItems(getAllSuites(), seed, random);
     }
 
     globalThis.jasmine = {
       ...globalThis.jasmine,
+      getCatalog,
       getAllSpecs,
       getAllSuites,
       getOrderedSpecs,
@@ -866,21 +844,26 @@ window.HMRClient = (function() {
     }
 
     async function runTests(filters) {
-      const allSpecs = getAllSpecs();
-      const filterArr = Array.isArray(filters) ? filters : [filters];
-      const matching = filterArr.length
-        ? allSpecs.filter(s => filterArr.some(f => 
-            f instanceof RegExp ? f.test(s.description) : s.id === f || s.description === f
-          ))
-        : allSpecs;
+      const catalog = getCatalog();
+      const filterArr = filters === undefined
+        ? []
+        : (Array.isArray(filters) ? filters : [filters]);
 
-      if (!matching.length) {
+      const ids = filterArr.length === 0
+        ? catalog.specs.map(spec => spec.id)
+        : [...new Set(
+            filterArr.flatMap(filter =>
+              resolveTestSelector(catalog, { spec: filter })
+            )
+          )];
+
+      if (!ids.length) {
         console.warn('No matching specs found for:', filters);
         return [];
       }
 
-      console.log(\`🎯 Executing \${matching.length} spec(s)\`);
-      return await executeSpecsByIds(matching.map(s => s.id).sort());
+      console.log(`🎯 Executing ${ids.length} spec(s)`);
+      return await executeSpecsByIds(ids.sort());
     }
 
     async function runTest(filter) {
@@ -891,66 +874,53 @@ window.HMRClient = (function() {
     }
 
     async function runSuite(selector) {
-      const suites = getAllSuites();
-      const matching = suites.filter(suite => {
-        if (selector instanceof RegExp) {
-          selector.lastIndex = 0;
-          const idMatches = selector.test(suite.id);
-          selector.lastIndex = 0;
-          const descriptionMatches = selector.test(suite.description);
-          return idMatches || descriptionMatches;
-        }
+      const catalog = getCatalog();
+      const ids = resolveTestSelector(catalog, { suite: selector });
 
-        return suite.id === selector || suite.description.includes(selector);
-      });
-      
-      if (!matching.length) {
+      if (!ids.length) {
         console.warn('No matching suites found for:', selector);
         return [];
       }
 
-      const specsById = new Map();
-      for (const suite of matching) {
-        const traverse = currentSuite => {
-          (currentSuite.children || []).forEach(child => {
-            if (isSpec(child)) specsById.set(child.id, child);
-            if (isSuite(child)) traverse(child);
-          });
-        };
-        traverse(suite);
-      }
-
-      const allSpecs = [...specsById.values()];
-      console.log(\`🎯 Executing \${allSpecs.length} spec(s) from suite\`);
-      return await executeSpecsByIds(allSpecs.map(s => s.id).sort());
+      console.log(`🎯 Executing ${ids.length} spec(s) from suite`);
+      return await executeSpecsByIds(ids.sort());
     }
 
-    function getSuiteIdBySpecId() {
-      const suiteIdBySpecId = new Map();
+    async function run(selector) {
+      const catalog = getCatalog();
+      const ids = resolveTestSelector(catalog, selector);
 
-      const traverse = suite => {
-        (suite.children || []).forEach(child => {
-          if (isSpec(child)) {
-            suiteIdBySpecId.set(child.id, suite.id);
-          } else if (isSuite(child)) {
-            traverse(child);
-          }
-        });
-      };
+      if (!ids.length) {
+        console.warn('No matching tests found for:', selector);
+        return [];
+      }
 
-      traverse(env.topSuite());
-      return suiteIdBySpecId;
+      console.log(`🎯 Executing ${ids.length} spec(s)`);
+      return await executeSpecsByIds(ids.sort());
     }
 
     function listTests() {
-      const specs = getOrderedSpecs(seed, random);
-      const suiteIdBySpecId = getSuiteIdBySpecId();
+      const rows = getOrderedSpecs(seed, random).map(spec => ({
+        suiteId: spec.suiteId ?? '',
+        id: spec.id,
+        name: spec.description,
+        fullName: spec.fullName
+      }));
 
-      console.table(specs.map(s => ({
-        suiteId: suiteIdBySpecId.get(s.id) ?? '',
-        id: s.id,
-        name: s.description
-      })));
+      console.table(rows);
+      return rows;
+    }
+
+    function listSuites() {
+      const rows = getOrderedSuites(seed, random).map(suite => ({
+        parentSuiteId: suite.parentSuiteId ?? '',
+        id: suite.id,
+        name: suite.description,
+        fullName: suite.fullName
+      }));
+
+      console.table(rows);
+      return rows;
     }
 
     function setSeed(nextSeed) {
@@ -975,10 +945,13 @@ window.HMRClient = (function() {
     }
 
     globalThis.runner = {
+      run,
       runTests,
       runTest,
       runSuite,
       listTests,
+      listSuites,
+      catalog: getCatalog,
       setSeed,
       resetSeed,
       reload: () => location.reload(),
@@ -988,7 +961,10 @@ window.HMRClient = (function() {
     console.log('Usage:');
     console.log('  await runner.runTest("spec-name") or await runner.runTest(/pattern/)');
     console.log('  await runner.runTests(["spec1", "spec2"])');
-    console.log('  await runner.runSuite("Suite Name")');
+    console.log('  await runner.runSuite("suite12") or await runner.runSuite(/Suite Name/)');
+    console.log('  await runner.run("spec12") or await runner.run("suite12")');
+    console.log('  runner.listSuites() - Show all suites');
+    console.log('  runner.catalog() - Return the current TestCatalog');
     console.log('  runner.setSeed(12345) - Enable random order with seed');
     console.log('  runner.resetSeed() - Back to sequential order');
     console.log('  runner.listTests() - Show all tests');
