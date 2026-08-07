@@ -105,3 +105,10 @@ export {
 export type {
   NodeExecutionEnvironment,
 } from './node-execution-adapter';
+
+export {
+  createNodeRunnerModuleSource,
+} from './node-runner-module-source';
+export type {
+  NodeRunnerModuleSourceOptions,
+} from './node-runner-module-source';
