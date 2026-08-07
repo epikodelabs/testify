@@ -119,3 +119,10 @@ export {
 export type {
   NodeBuildArtifacts,
 } from './node-build-artifacts';
+
+export {
+  NodeRunnerHost,
+} from './node-runner-host';
+export type {
+  NodeRunnerModule,
+} from './node-runner-host';
