@@ -15,6 +15,12 @@ import {
   getEmbeddedRunnerSessionSource,
 } from './runner-session';
 import {
+  getEmbeddedCatalogStateSource,
+} from './catalog-state';
+import {
+  getEmbeddedPlanningEngineSource,
+} from './planning-engine';
+import {
   getEmbeddedCatalogQuerySource,
 } from './catalog-query';
 
@@ -48,6 +54,12 @@ export function createNodeRunnerModuleSource(
   const catalogQuerySource =
     getEmbeddedCatalogQuerySource();
 
+  const catalogStateSource =
+    getEmbeddedCatalogStateSource();
+
+  const planningEngineSource =
+    getEmbeddedPlanningEngineSource();
+
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
 
@@ -61,6 +73,10 @@ ${executionPlanSource}
 ${nodeExecutionAdapterSource}
 
 ${catalogQuerySource}
+
+${catalogStateSource}
+
+${planningEngineSource}
 
 ${runnerSessionSource}
 
@@ -106,6 +122,21 @@ export function getStats() {
 
 export function getIndex() {
   return currentSession?.index?.() ?? null;
+}
+
+export function getCatalogRevision() {
+  return currentSession
+    ?.revision?.() ?? 0;
+}
+
+export function getPlanningStats() {
+  return currentSession
+    ?.planningStats?.() ?? {
+      catalogVersion: 0,
+      cachedPlans: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+    };
 }
 
 export function getAllSpecs() {

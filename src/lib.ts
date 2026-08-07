@@ -219,3 +219,26 @@ export {
 export type {
   NodeExecutionHostOptions,
 } from './node-execution-host';
+
+export {
+  CatalogState,
+  diffTestCatalogs,
+  fingerprintTestCatalog,
+  getEmbeddedCatalogStateSource,
+} from './catalog-state';
+export type {
+  CatalogChangeSet,
+} from './catalog-state';
+
+export {
+  PlanningEngine,
+  getEmbeddedPlanningEngineSource,
+} from './planning-engine';
+export type {
+  PlanningEngineStats,
+} from './planning-engine';
+
+export {
+  partitionExecutionPlan,
+  shardExecutionPlan,
+} from './execution-plan';

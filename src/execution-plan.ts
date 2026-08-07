@@ -9,6 +9,11 @@ export interface ExecutionPlan {
   random: boolean;
   seed?: number;
   stopOnFailure?: boolean;
+  catalogVersion?: number;
+  shard?: {
+    index: number;
+    count: number;
+  };
   source: {
     kind:
       | 'all'
@@ -116,6 +121,65 @@ function inferSelectorKind(
   return 'selector';
 }
 
+export function shardExecutionPlan(
+  plan: ExecutionPlan,
+  index: number,
+  count: number,
+): ExecutionPlan {
+  if (
+    !Number.isInteger(index) ||
+    !Number.isInteger(count) ||
+    count <= 0 ||
+    index < 0 ||
+    index >= count
+  ) {
+    throw new RangeError(
+      'Invalid execution shard.',
+    );
+  }
+
+  return {
+    ...plan,
+    specIds:
+      plan.specIds.filter(
+        (
+          _,
+          specIndex,
+        ) =>
+          specIndex % count ===
+          index,
+      ),
+    shard: {
+      index,
+      count,
+    },
+  };
+}
+
+export function partitionExecutionPlan(
+  plan: ExecutionPlan,
+  count: number,
+): ExecutionPlan[] {
+  if (
+    !Number.isInteger(count) ||
+    count <= 0
+  ) {
+    throw new RangeError(
+      'Execution partition count must be a positive integer.',
+    );
+  }
+
+  return Array.from(
+    { length: count },
+    (_, index) =>
+      shardExecutionPlan(
+        plan,
+        index,
+        count,
+      ),
+  );
+}
+
 export function getEmbeddedExecutionPlanSource():
   string {
   return [
@@ -124,6 +188,8 @@ export function getEmbeddedExecutionPlanSource():
     createSpecExecutionPlan,
     createSuiteExecutionPlan,
     createFileExecutionPlan,
+    shardExecutionPlan,
+    partitionExecutionPlan,
   ]
     .map((fn) => fn.toString())
     .join('\n\n');

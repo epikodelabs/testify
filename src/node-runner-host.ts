@@ -40,6 +40,13 @@ export interface NodeRunnerModule {
     files: number;
   };
   getIndex?(): unknown;
+  getCatalogRevision?(): number;
+  getPlanningStats?(): {
+    catalogVersion: number;
+    cachedPlans: number;
+    cacheHits: number;
+    cacheMisses: number;
+  };
   listTests?(): TestListRow[];
   listSuites?(): SuiteListRow[];
   listFiles?(): FileListRow[];
@@ -190,6 +197,27 @@ export class NodeRunnerHost {
   getIndex(): unknown {
     return this.runnerModule
       ?.getIndex?.();
+  }
+
+  getCatalogRevision(): number {
+    return this.runnerModule
+      ?.getCatalogRevision?.() ??
+      0;
+  }
+
+  getPlanningStats(): {
+    catalogVersion: number;
+    cachedPlans: number;
+    cacheHits: number;
+    cacheMisses: number;
+  } {
+    return this.runnerModule
+      ?.getPlanningStats?.() ?? {
+        catalogVersion: 0,
+        cachedPlans: 0,
+        cacheHits: 0,
+        cacheMisses: 0,
+      };
   }
 
   listTests(): TestListRow[] {

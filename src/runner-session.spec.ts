@@ -184,4 +184,48 @@ describe('RunnerSession', () => {
       files: 1,
     });
   });
+
+  it('reuses planning state across equivalent catalog snapshots', () => {
+    let currentCatalog =
+      catalog;
+
+    const session =
+      new RunnerSession(
+        () => currentCatalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    session.plan();
+
+    currentCatalog = {
+      ...catalog,
+      suites:
+        catalog.suites.map(
+          (suite) => ({
+            ...suite,
+          }),
+        ),
+      specs:
+        catalog.specs.map(
+          (spec) => ({
+            ...spec,
+          }),
+        ),
+    };
+
+    session.plan();
+
+    expect(
+      session.revision(),
+    ).toBe(1);
+
+    expect(
+      session.planningStats()
+        .cacheHits,
+    ).toBe(1);
+  });
 });

@@ -6,13 +6,9 @@ import {
   findCatalogSuites,
   type TestSelector,
 } from './test-selection';
-import {
-  createExecutionPlan,
-  createFileExecutionPlan,
-  createSpecExecutionPlan,
-  createSuiteExecutionPlan,
-  type ExecutionPlan,
-  type ExecutionPlanOptions,
+import type {
+  ExecutionPlan,
+  ExecutionPlanOptions,
 } from './execution-plan';
 import {
   listCatalogFiles,
@@ -23,10 +19,16 @@ import {
   type TestListRow,
 } from './catalog-query';
 import {
-  createTestCatalogIndex,
   searchIndexEntries,
   type TestCatalogIndex,
 } from './test-catalog-index';
+import {
+  PlanningEngine,
+  type PlanningEngineStats,
+} from './planning-engine';
+import type {
+  CatalogChangeSet,
+} from './catalog-state';
 
 export interface RunnerSessionAdapter<TResult> {
   execute(
@@ -38,11 +40,8 @@ export interface RunnerSessionOptions
   extends ExecutionPlanOptions {}
 
 export class RunnerSession<TResult> {
-  private indexedCatalog:
-    TestCatalog | null = null;
-
-  private catalogIndexValue:
-    TestCatalogIndex | null = null;
+  private readonly planner:
+    PlanningEngine;
 
   constructor(
     private readonly getCatalogValue:
@@ -52,31 +51,48 @@ export class RunnerSession<TResult> {
     private readonly getOptions:
       () => RunnerSessionOptions =
         () => ({}),
-  ) {}
+  ) {
+    this.planner =
+      new PlanningEngine(
+        this.getCatalogValue(),
+      );
+  }
 
   catalog(): TestCatalog {
-    return this.getCatalogValue();
+    this.syncCatalog();
+
+    return this.planner.catalog;
   }
 
   index(): TestCatalogIndex {
-    const catalog =
-      this.catalog();
+    this.syncCatalog();
 
-    if (
-      catalog !== this.indexedCatalog ||
-      !this.catalogIndexValue
-    ) {
-      this.indexedCatalog =
-        catalog;
-
-      this.catalogIndexValue =
-        createTestCatalogIndex(
-          catalog,
-        );
-    }
-
-    return this.catalogIndexValue;
+    return this.planner.index;
   }
+
+  revision(): number {
+    this.syncCatalog();
+
+    return this.planner.version;
+  }
+
+  changes(): CatalogChangeSet {
+    this.syncCatalog();
+
+    return this.planner.changes;
+  }
+
+  planningStats():
+    PlanningEngineStats {
+    this.syncCatalog();
+
+    return this.planner.stats();
+  }
+
+  invalidatePlans(): void {
+    this.planner.invalidate();
+  }
+
 
   listTests(): TestListRow[] {
     return listCatalogTests(
@@ -189,8 +205,9 @@ export class RunnerSession<TResult> {
   plan(
     selector?: TestSelector,
   ): ExecutionPlan {
-    return createExecutionPlan(
-      this.catalog(),
+    this.syncCatalog();
+
+    return this.planner.plan(
       selector,
       this.getOptions(),
     );
@@ -199,30 +216,52 @@ export class RunnerSession<TResult> {
   planSpec(
     selector: string | RegExp,
   ): ExecutionPlan {
-    return createSpecExecutionPlan(
-      this.catalog(),
-      selector,
-      this.getOptions(),
-    );
+    return this.plan({
+      spec: selector,
+    });
   }
 
   planSuite(
     selector: string | RegExp,
   ): ExecutionPlan {
-    return createSuiteExecutionPlan(
-      this.catalog(),
-      selector,
-      this.getOptions(),
-    );
+    return this.plan({
+      suite: selector,
+    });
   }
 
   planFile(
     selector: string | RegExp,
   ): ExecutionPlan {
-    return createFileExecutionPlan(
-      this.catalog(),
-      selector,
-      this.getOptions(),
+    return this.plan({
+      file: selector,
+    });
+  }
+
+  shard(
+    plan: ExecutionPlan,
+    index: number,
+    count: number,
+  ): ExecutionPlan {
+    return this.planner.shard(
+      plan,
+      index,
+      count,
+    );
+  }
+
+  partition(
+    plan: ExecutionPlan,
+    count: number,
+  ): ExecutionPlan[] {
+    return this.planner.partition(
+      plan,
+      count,
+    );
+  }
+
+  private syncCatalog(): void {
+    this.planner.update(
+      this.getCatalogValue(),
     );
   }
 

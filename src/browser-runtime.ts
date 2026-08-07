@@ -14,6 +14,12 @@ import {
   getEmbeddedRunnerSessionSource,
 } from './runner-session';
 import {
+  getEmbeddedCatalogStateSource,
+} from './catalog-state';
+import {
+  getEmbeddedPlanningEngineSource,
+} from './planning-engine';
+import {
   getEmbeddedCatalogQuerySource,
 } from './catalog-query';
 import {
@@ -56,6 +62,12 @@ export function getBrowserRuntimeScript(
     .map((fn) => fn.toString())
     .join('\n\n');
 
+  const catalogStateSource =
+    getEmbeddedCatalogStateSource();
+
+  const planningEngineSource =
+    getEmbeddedPlanningEngineSource();
+
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
 
@@ -72,6 +84,10 @@ export function getBrowserRuntimeScript(
   ${catalogQuerySource}
 
   ${executionResultSource}
+
+  ${catalogStateSource}
+
+  ${planningEngineSource}
 
   ${runnerSessionSource}
 
@@ -479,6 +495,12 @@ export function getBrowserRuntimeScript(
       stats: () =>
         session.stats(),
 
+      revision: () =>
+        session.revision(),
+
+      planningStats: () =>
+        session.planningStats(),
+
       listTests: () => {
         const rows =
           session.listTests();
@@ -520,6 +542,26 @@ export function getBrowserRuntimeScript(
 
       planFile: (selector) =>
         session.planFile(selector),
+
+      shard: (
+        plan,
+        index,
+        count,
+      ) =>
+        session.shard(
+          plan,
+          index,
+          count,
+        ),
+
+      partition: (
+        plan,
+        count,
+      ) =>
+        session.partition(
+          plan,
+          count,
+        ),
 
       execute: (plan) =>
         session.execute(plan),

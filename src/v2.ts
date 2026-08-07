@@ -76,3 +76,26 @@ export {
   applyExecutionExitCode,
   getExecutionExitCode,
 } from './cli-result-adapter';
+
+export {
+  CatalogState,
+  diffTestCatalogs,
+  fingerprintTestCatalog,
+} from './catalog-state';
+
+export type {
+  CatalogChangeSet,
+} from './catalog-state';
+
+export {
+  PlanningEngine,
+} from './planning-engine';
+
+export type {
+  PlanningEngineStats,
+} from './planning-engine';
+
+export {
+  partitionExecutionPlan,
+  shardExecutionPlan,
+} from './execution-plan';
