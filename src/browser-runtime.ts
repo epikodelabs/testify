@@ -16,6 +16,9 @@ import {
 import {
   getEmbeddedCatalogQuerySource,
 } from './catalog-query';
+import {
+  summarizeExecutionResults,
+} from './execution-result';
 
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
@@ -47,6 +50,12 @@ export function getBrowserRuntimeScript(
   const catalogQuerySource =
     getEmbeddedCatalogQuerySource();
 
+  const executionResultSource = [
+    summarizeExecutionResults,
+  ]
+    .map((fn) => fn.toString())
+    .join('\n\n');
+
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
 
@@ -61,6 +70,8 @@ export function getBrowserRuntimeScript(
   ${executionPlanSource}
 
   ${catalogQuerySource}
+
+  ${executionResultSource}
 
   ${runnerSessionSource}
 
@@ -285,11 +296,11 @@ export function getBrowserRuntimeScript(
         console.warn(
           '⚠️  Execution already in progress. Please wait...',
         );
-        return [];
+        return summarizeExecutionResults([]);
       }
 
       if (!plan.specIds.length) {
-        return [];
+        return summarizeExecutionResults([]);
       }
 
       return new Promise((resolve) => {
@@ -331,7 +342,9 @@ export function getBrowserRuntimeScript(
             );
 
             resolve(
-              inBrowserReporter.results,
+              summarizeExecutionResults(
+                inBrowserReporter.results,
+              ),
             );
 
             inBrowserReporter.jasmineDone =
@@ -385,7 +398,7 @@ export function getBrowserRuntimeScript(
           'No matching specs found for:',
           filters,
         );
-        return [];
+        return summarizeExecutionResults([]);
       }
 
       return executePlan({

@@ -169,3 +169,11 @@ export type {
   LegacyGetAllSuites,
   LegacyRunTests,
 } from './legacy-api';
+
+export {
+  summarizeExecutionResults,
+} from './execution-result';
+export type {
+  ExecutionResult,
+  ExecutionSpecResult,
+} from './execution-result';

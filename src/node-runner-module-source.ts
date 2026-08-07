@@ -19,6 +19,9 @@ import {
 import {
   getEmbeddedCatalogQuerySource,
 } from './catalog-query';
+import {
+  summarizeExecutionResults,
+} from './execution-result';
 
 export interface NodeRunnerModuleSourceOptions {
   jasmineCoreUrl: string;
@@ -49,6 +52,12 @@ export function createNodeRunnerModuleSource(
 
   const catalogQuerySource =
     getEmbeddedCatalogQuerySource();
+
+  const executionResultSource = [
+    summarizeExecutionResults,
+  ]
+    .map((fn) => fn.toString())
+    .join('\n\n');
 
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
@@ -91,10 +100,13 @@ ${nodeExecutionAdapterSource}
 
 ${catalogQuerySource}
 
+${executionResultSource}
+
 ${runnerSessionSource}
 
 let jasmineRuntime = null;
 let currentSession = null;
+let lastExecutionResult = null;
 
 const warnedDeprecated =
   new Set();
@@ -135,6 +147,10 @@ export function getStats() {
 
 export function getIndex() {
   return currentSession?.index?.() ?? null;
+}
+
+export function getLastExecutionResult() {
+  return lastExecutionResult;
 }
 
 export function getAllSpecs() {
@@ -450,19 +466,29 @@ ${imports}
               )
             : 0;
 
-        if (failures > 0) {
-          resolve(
-            ${EXIT_CODES.TEST_FAILURES}
+        const exitCode =
+          failures > 0
+            ? ${EXIT_CODES.TEST_FAILURES}
+            : pending > 0
+              ? ${EXIT_CODES.SUCCESS_WITH_PENDING}
+              : ${EXIT_CODES.SUCCESS};
+
+        const specResults =
+          Array.isArray(reporter?.failedSpecs) ||
+          Array.isArray(reporter?.pendingSpecs)
+            ? [
+                ...(reporter?.failedSpecs ?? []),
+                ...(reporter?.pendingSpecs ?? []),
+              ]
+            : [];
+
+        lastExecutionResult =
+          summarizeExecutionResults(
+            specResults,
+            { exitCode },
           );
-        } else if (pending > 0) {
-          resolve(
-            ${EXIT_CODES.SUCCESS_WITH_PENDING}
-          );
-        } else {
-          resolve(
-            ${EXIT_CODES.SUCCESS}
-          );
-        }
+
+        resolve(exitCode);
       } catch (error) {
         console.error(
           replacePlaceholders(

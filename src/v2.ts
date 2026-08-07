@@ -58,3 +58,12 @@ export type {
   TestCatalogSpec,
   TestCatalogSuite,
 } from './test-catalog';
+
+export {
+  summarizeExecutionResults,
+} from './execution-result';
+
+export type {
+  ExecutionResult,
+  ExecutionSpecResult,
+} from './execution-result';

@@ -2,6 +2,14 @@ import * as fs from 'fs';
 import { pathToFileURL } from 'url';
 import { norm } from './utils';
 import type { TestSelector } from './test-selection';
+import type {
+  FileListRow,
+  SuiteListRow,
+  TestListRow,
+} from './catalog-query';
+import type {
+  ExecutionResult,
+} from './execution-result';
 
 export interface NodeRunnerModule {
   runTests(
@@ -32,12 +40,13 @@ export interface NodeRunnerModule {
     files: number;
   };
   getIndex?(): unknown;
-  listTests?(): unknown[];
-  listSuites?(): unknown[];
-  listFiles?(): unknown[];
-  findTests?(selector: string | RegExp): unknown[];
-  findSuites?(selector: string | RegExp): unknown[];
-  findFiles?(selector: string | RegExp): unknown[];
+  getLastExecutionResult?(): ExecutionResult | null;
+  listTests?(): TestListRow[];
+  listSuites?(): SuiteListRow[];
+  listFiles?(): FileListRow[];
+  findTests?(selector: string | RegExp): TestListRow[];
+  findSuites?(selector: string | RegExp): SuiteListRow[];
+  findFiles?(selector: string | RegExp): FileListRow[];
 }
 
 export class NodeRunnerHost {
@@ -184,19 +193,26 @@ export class NodeRunnerHost {
       ?.getIndex?.();
   }
 
-  listTests(): unknown[] {
+  getLastExecutionResult():
+    ExecutionResult | null {
+    return this.runnerModule
+      ?.getLastExecutionResult?.() ??
+      null;
+  }
+
+  listTests(): TestListRow[] {
     return this.runnerModule
       ?.listTests?.() ??
       [];
   }
 
-  listSuites(): unknown[] {
+  listSuites(): SuiteListRow[] {
     return this.runnerModule
       ?.listSuites?.() ??
       [];
   }
 
-  listFiles(): unknown[] {
+  listFiles(): FileListRow[] {
     return this.runnerModule
       ?.listFiles?.() ??
       [];
@@ -204,7 +220,7 @@ export class NodeRunnerHost {
 
   findTests(
     selector: string | RegExp,
-  ): unknown[] {
+  ): TestListRow[] {
     return this.runnerModule
       ?.findTests?.(selector) ??
       [];
@@ -212,7 +228,7 @@ export class NodeRunnerHost {
 
   findSuites(
     selector: string | RegExp,
-  ): unknown[] {
+  ): SuiteListRow[] {
     return this.runnerModule
       ?.findSuites?.(selector) ??
       [];
@@ -220,7 +236,7 @@ export class NodeRunnerHost {
 
   findFiles(
     selector: string | RegExp,
-  ): unknown[] {
+  ): FileListRow[] {
     return this.runnerModule
       ?.findFiles?.(selector) ??
       [];

@@ -1,4 +1,5 @@
 import type { ExecutionPlan } from './execution-plan';
+import type { ExecutionResult } from './execution-result';
 
 export interface NodeExecutionEnvironment {
   configure(
