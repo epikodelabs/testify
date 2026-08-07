@@ -37,7 +37,7 @@ describe('generated module extension', () => {
     const input =
       viteConfig
         .build
-        ?.rollupOptions
+        ?.rolldownOptions
         ?.input as
           Record<string, string>;
 
@@ -67,7 +67,7 @@ describe('generated module extension', () => {
     const output =
       viteConfig
         .build
-        ?.rollupOptions
+        ?.rolldownOptions
         ?.output as any;
 
     expect(

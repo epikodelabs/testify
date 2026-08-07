@@ -146,7 +146,7 @@ export class ViteJasmineRunner extends EventEmitter {
         fs.mkdirSync(this.config.outDir, { recursive: true });
       }
 
-      viteConfig.build!.rollupOptions!.input = input;
+      viteConfig.build!.rolldownOptions!.input = input;
 
       logger.println(RunnerMessages.buildingFiles(Object.keys(input).length));
       this.viteCache = await viteBuild(viteConfig);

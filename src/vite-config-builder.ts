@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
-import { createRequire } from 'module';
+import { builtinModules, createRequire } from 'module';
 import { globSync } from 'glob';
 import picomatch from 'picomatch';
 import { InlineConfig } from 'vite';
@@ -29,10 +29,17 @@ interface PackageManifest {
   module?: string;
   browser?: string;
   exports?: unknown;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
 }
 
 export class ViteConfigBuilder {
   private inputMap: Record<string, string> = {};
+
+  private nodeExternalPackages:
+    Set<string> | null = null;
 
   private static readonly DEFAULT_EXCLUDED_DIRS = new Set([
     'node_modules',
@@ -49,6 +56,101 @@ export class ViteConfigBuilder {
   /* -------------------------------------------------- */
   /* Helpers                                            */
   /* -------------------------------------------------- */
+
+  private getNodeExternalPackages():
+    Set<string> {
+    if (this.nodeExternalPackages) {
+      return this.nodeExternalPackages;
+    }
+
+    const packages =
+      new Set<string>();
+
+    try {
+      const packagePath =
+        path.resolve(
+          process.cwd(),
+          'package.json',
+        );
+
+      if (fs.existsSync(packagePath)) {
+        const manifest =
+          JSON.parse(
+            fs.readFileSync(
+              packagePath,
+              'utf8',
+            ),
+          ) as PackageManifest;
+
+        for (
+          const group of [
+            manifest.dependencies,
+            manifest.devDependencies,
+            manifest.peerDependencies,
+            manifest.optionalDependencies,
+          ]
+        ) {
+          for (
+            const packageName of
+            Object.keys(
+              group ?? {},
+            )
+          ) {
+            packages.add(
+              packageName,
+            );
+          }
+        }
+      }
+    } catch {
+      // Dependency externalization is an optimization/isolation boundary.
+      // A malformed package.json should still be reported by the normal
+      // project/tooling path instead of making Testify config construction fail.
+    }
+
+    this.nodeExternalPackages =
+      packages;
+
+    return packages;
+  }
+
+  private isNodeExternal(
+    id: string,
+  ): boolean {
+    if (
+      id.startsWith('.') ||
+      path.isAbsolute(id) ||
+      id.startsWith('/')
+    ) {
+      return false;
+    }
+
+    if (
+      id.startsWith('node:') ||
+      builtinModules.includes(id)
+    ) {
+      return true;
+    }
+
+    const packages =
+      this.getNodeExternalPackages();
+
+    for (
+      const packageName of
+      packages
+    ) {
+      if (
+        id === packageName ||
+        id.startsWith(
+          `${packageName}/`,
+        )
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   private preserveRoot(): string {
     return this.config.viteBuildOptions?.preserveModulesRoot ?? '.';
@@ -278,12 +380,24 @@ export class ViteConfigBuilder {
           sourcemap: true,
           target: 'es2022',
           minify: false,
-          // Enable SSR build for Node.js target to bypass browser dynamic import wrappers
-          ssr: isNodeTarget ? true : undefined,
-          modulePreload: isNodeTarget ? false : true,
+          // Node tests are a normal multi-entry ESM build, not an SSR app.
+          // Package dependencies and Node built-ins stay external, so SSR
+          // entry semantics are unnecessary and would make Vite look for an
+          // HTML/dedicated SSR entry.
+          modulePreload:
+            isNodeTarget
+              ? false
+              : true,
 
-          rollupOptions: {
+          rolldownOptions: {
             input,
+            external:
+              isNodeTarget
+                ? (id) =>
+                    this.isNodeExternal(
+                      id,
+                    )
+                : undefined,
             preserveEntrySignatures: incremental
               ? 'allow-extension'
               : 'strict',
@@ -413,7 +527,7 @@ export class ViteConfigBuilder {
   ): InlineConfig {
     const rollupOptions =
       config.build
-        ?.rollupOptions;
+        ?.rolldownOptions;
 
     if (!rollupOptions) {
       return config;
@@ -444,7 +558,7 @@ export class ViteConfigBuilder {
       ...config,
       build: {
         ...config.build,
-        rollupOptions: {
+        rolldownOptions: {
           ...rollupOptions,
           output,
         },

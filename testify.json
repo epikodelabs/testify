@@ -1,0 +1,37 @@
+{
+  "srcDirs": [
+    "./src"
+  ],
+  "testDirs": [
+    "./src"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**"
+  ],
+  "outDir": "./dist/.vite-jasmine-build",
+  "browser": "node",
+  "headless": true,
+  "watch": false,
+  "coverage": false,
+  "preserveOutputs": false,
+  "viteConfig": {
+    "build": {
+      "rolldownOptions": {
+        "external": [
+          "playwright",
+          "playwright-core",
+          "chromium-bidi"
+        ]
+      }
+    }
+  },
+  "jasmineConfig": {
+    "env": {
+      "random": false,
+      "seed": 0,
+      "stopSpecOnExpectationFailure": false,
+      "timeout": 120000
+    }
+  }
+}
