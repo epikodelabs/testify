@@ -15,22 +15,22 @@ export interface NodeRunnerModule {
   runTests(
     reporter: jasmine.CustomReporter,
     selector?: TestSelector,
-  ): Promise<number>;
+  ): Promise<ExecutionResult>;
 
   runTest?(
     reporter: jasmine.CustomReporter,
     selector: string | RegExp,
-  ): Promise<number>;
+  ): Promise<ExecutionResult>;
 
   runSuite?(
     reporter: jasmine.CustomReporter,
     selector: string | RegExp,
-  ): Promise<number>;
+  ): Promise<ExecutionResult>;
 
   runFile?(
     reporter: jasmine.CustomReporter,
     selector: string | RegExp,
-  ): Promise<number>;
+  ): Promise<ExecutionResult>;
 
   getCatalog?(): unknown;
   getSession?(): unknown;
@@ -40,7 +40,6 @@ export interface NodeRunnerModule {
     files: number;
   };
   getIndex?(): unknown;
-  getLastExecutionResult?(): ExecutionResult | null;
   listTests?(): TestListRow[];
   listSuites?(): SuiteListRow[];
   listFiles?(): FileListRow[];
@@ -86,7 +85,7 @@ export class NodeRunnerHost {
   async execute(
     reporter: jasmine.CustomReporter,
     selector?: TestSelector,
-  ): Promise<number> {
+  ): Promise<ExecutionResult> {
     const runner =
       this.runnerModule ??
       await this.load();
@@ -100,7 +99,7 @@ export class NodeRunnerHost {
   async run(
     reporter: jasmine.CustomReporter,
     selector?: TestSelector,
-  ): Promise<number> {
+  ): Promise<ExecutionResult> {
     return this.execute(
       reporter,
       selector,
@@ -110,7 +109,7 @@ export class NodeRunnerHost {
   async runSpec(
     reporter: jasmine.CustomReporter,
     selector: string | RegExp,
-  ): Promise<number> {
+  ): Promise<ExecutionResult> {
     const runner =
       this.runnerModule ??
       await this.load();
@@ -131,7 +130,7 @@ export class NodeRunnerHost {
   async runSuite(
     reporter: jasmine.CustomReporter,
     selector: string | RegExp,
-  ): Promise<number> {
+  ): Promise<ExecutionResult> {
     const runner =
       this.runnerModule ??
       await this.load();
@@ -152,7 +151,7 @@ export class NodeRunnerHost {
   async runFile(
     reporter: jasmine.CustomReporter,
     selector: string | RegExp,
-  ): Promise<number> {
+  ): Promise<ExecutionResult> {
     const runner =
       this.runnerModule ??
       await this.load();
@@ -191,13 +190,6 @@ export class NodeRunnerHost {
   getIndex(): unknown {
     return this.runnerModule
       ?.getIndex?.();
-  }
-
-  getLastExecutionResult():
-    ExecutionResult | null {
-    return this.runnerModule
-      ?.getLastExecutionResult?.() ??
-      null;
   }
 
   listTests(): TestListRow[] {

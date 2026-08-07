@@ -273,3 +273,10 @@ export function getEmbeddedRunnerSessionSource():
     .map((value) => value.toString())
     .join('\n\n');
 }
+
+
+export type TestifyRunnerSession =
+  RunnerSession<
+    import('./execution-result')
+      .ExecutionResult
+  >;

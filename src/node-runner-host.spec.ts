@@ -33,7 +33,14 @@ describe('NodeRunnerHost', () => {
           selector
         ) {
           reporter.received = selector;
-          return 7;
+          return {
+            specResults: [],
+            total: 0,
+            passed: 0,
+            failed: 0,
+            pending: 0,
+            exitCode: 7,
+          };
         }
       `);
 
@@ -47,7 +54,7 @@ describe('NodeRunnerHost', () => {
           },
         );
 
-      expect(exitCode).toBe(7);
+      expect(exitCode.exitCode).toBe(7);
 
       expect(
         reporter.received,

@@ -26,13 +26,8 @@ describe('NodeRunnerHost typed surfaces', () => {
     const files: FileListRow[] =
       host.listFiles();
 
-    const result:
-      ExecutionResult | null =
-        host.getLastExecutionResult();
-
     void tests;
     void suites;
     void files;
-    void result;
   });
 });

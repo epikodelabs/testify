@@ -3,6 +3,10 @@ export {
 } from './runner-session';
 
 export type {
+  TestifyRunnerSession,
+} from './runner-session';
+
+export type {
   RunnerSessionAdapter,
   RunnerSessionOptions,
 } from './runner-session';

@@ -3,11 +3,13 @@ import * as path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
 import type { TestSelector } from './test-selection';
+import type {
+  ExecutionResult,
+} from './execution-result';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import { ConsoleReporter } from './console-reporter';
 import { CoverageReportGenerator } from './coverage-report-generator';
-import { EXIT_CODES } from './exit-codes';
 import { logger } from './logger';
 import { NodeRunnerMessages } from './log-messages';
 import {
@@ -148,7 +150,7 @@ export class NodeTestRunner {
     );
   }
 
-  async start(): Promise<number> {
+  async start(): Promise<ExecutionResult> {
     if (this.isRunning) {
       logger.println(
         NodeRunnerMessages
@@ -225,7 +227,7 @@ export class NodeTestRunner {
 
       await host.load();
 
-      const exitCode =
+      const result =
         await host.execute(
           this.reporter,
           this.options.selector,
@@ -244,7 +246,7 @@ export class NodeTestRunner {
         );
       }
 
-      return exitCode;
+      return result;
     } catch (error: any) {
       logger.println(
         NodeRunnerMessages

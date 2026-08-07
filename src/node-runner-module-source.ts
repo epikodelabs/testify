@@ -19,9 +19,6 @@ import {
 import {
   getEmbeddedCatalogQuerySource,
 } from './catalog-query';
-import {
-  summarizeExecutionResults,
-} from './execution-result';
 
 export interface NodeRunnerModuleSourceOptions {
   jasmineCoreUrl: string;
@@ -52,12 +49,6 @@ export function createNodeRunnerModuleSource(
 
   const catalogQuerySource =
     getEmbeddedCatalogQuerySource();
-
-  const executionResultSource = [
-    summarizeExecutionResults,
-  ]
-    .map((fn) => fn.toString())
-    .join('\n\n');
 
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
@@ -100,13 +91,10 @@ ${nodeExecutionAdapterSource}
 
 ${catalogQuerySource}
 
-${executionResultSource}
-
 ${runnerSessionSource}
 
 let jasmineRuntime = null;
 let currentSession = null;
-let lastExecutionResult = null;
 
 const warnedDeprecated =
   new Set();
@@ -147,10 +135,6 @@ export function getStats() {
 
 export function getIndex() {
   return currentSession?.index?.() ?? null;
-}
-
-export function getLastExecutionResult() {
-  return lastExecutionResult;
 }
 
 export function getAllSpecs() {
@@ -447,48 +431,22 @@ ${imports}
             }),
           );
 
-        await currentSession.run(
-          selector,
-        );
-
-        const failures =
-          reporter &&
-          typeof reporter === 'object'
-            ? reporter.failureCount || 0
-            : 0;
-
-        const pending =
-          reporter &&
-          typeof reporter === 'object'
-            ? (
-                reporter.pendingSpecs?.length ||
-                0
-              )
-            : 0;
+        const result =
+          await currentSession.run(
+            selector,
+          );
 
         const exitCode =
-          failures > 0
+          result.failed > 0
             ? ${EXIT_CODES.TEST_FAILURES}
-            : pending > 0
+            : result.pending > 0
               ? ${EXIT_CODES.SUCCESS_WITH_PENDING}
               : ${EXIT_CODES.SUCCESS};
 
-        const specResults =
-          Array.isArray(reporter?.failedSpecs) ||
-          Array.isArray(reporter?.pendingSpecs)
-            ? [
-                ...(reporter?.failedSpecs ?? []),
-                ...(reporter?.pendingSpecs ?? []),
-              ]
-            : [];
+        result.exitCode =
+          exitCode;
 
-        lastExecutionResult =
-          summarizeExecutionResults(
-            specResults,
-            { exitCode },
-          );
-
-        resolve(exitCode);
+        resolve(result);
       } catch (error) {
         console.error(
           replacePlaceholders(
