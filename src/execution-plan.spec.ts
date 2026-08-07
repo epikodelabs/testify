@@ -22,14 +22,14 @@ describe('ExecutionPlan', () => {
         description: 'one',
         fullName: 'Forms one',
         suiteId: 'suite1',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
       {
         id: 'spec2',
         description: 'two',
         fullName: 'Forms two',
         suiteId: 'suite1',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
     ],
   };
@@ -63,7 +63,7 @@ describe('ExecutionPlan', () => {
     expect(
       createFileExecutionPlan(
         catalog,
-        'forms.spec.js',
+        'forms.spec.mjs',
       ).specIds,
     ).toEqual([
       'spec1',

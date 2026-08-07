@@ -29,3 +29,8 @@ export {
 export type {
   SearchIndexEntry,
 } from './test-catalog-index';
+
+export {
+  embedClassSource,
+  embedFunctionSource,
+} from './embedded-source';

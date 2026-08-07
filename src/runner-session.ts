@@ -1,3 +1,6 @@
+import {
+  embedClassSource,
+} from './embedded-source';
 import type {
   TestCatalog,
 } from './test-catalog';
@@ -315,11 +318,10 @@ export class RunnerSession<TResult> {
 
 export function getEmbeddedRunnerSessionSource():
   string {
-  return [
+  return embedClassSource(
+    'RunnerSession',
     RunnerSession,
-  ]
-    .map((value) => value.toString())
-    .join('\n\n');
+  );
 }
 
 

@@ -3,6 +3,9 @@ import {
   getEmbeddedTestCatalogSource,
   type TestCatalog,
 } from './test-catalog';
+import {
+  getEmbeddedTestMetadataSource,
+} from './test-metadata-runtime';
 
 export interface NodeJasmineRuntimeOptions {
   reporter?: jasmine.CustomReporter;
@@ -179,6 +182,7 @@ export function initializeNodeJasmineEnvironment(
 
 export function getEmbeddedNodeJasmineRuntimeSource(): string {
   return [
+    getEmbeddedTestMetadataSource(),
     getEmbeddedTestCatalogSource(),
     [
       getAllSpecsFromEnv,

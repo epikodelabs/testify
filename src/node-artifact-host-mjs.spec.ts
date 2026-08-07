@@ -5,67 +5,52 @@ import {
   discoverNodeBuildArtifacts,
 } from './node-build-artifacts';
 
-describe('NodeBuildArtifacts', () => {
-  it('discovers node build files and specs', () => {
-    const dir =
+describe('Node mjs build artifacts', () => {
+  it('discovers .spec.mjs and resolves test-runner.mjs', () => {
+    const directory =
       fs.mkdtempSync(
         path.join(
           os.tmpdir(),
-          'testify-node-artifacts-',
+          'testify-mjs-',
         ),
       );
 
     try {
       fs.writeFileSync(
         path.join(
-          dir,
-          'shared.js',
+          directory,
+          'fixture__12345678.spec.mjs',
         ),
         '',
       );
 
       fs.writeFileSync(
         path.join(
-          dir,
-          'forms.spec.mjs',
-        ),
-        '',
-      );
-
-      fs.writeFileSync(
-        path.join(
-          dir,
-          'notes.txt',
+          directory,
+          'source__12345678.mjs',
         ),
         '',
       );
 
       const artifacts =
         discoverNodeBuildArtifacts(
-          dir,
+          directory,
         );
-
-      expect(
-        artifacts.files,
-      ).toEqual([
-        'forms.spec.mjs',
-        'shared.js',
-      ]);
 
       expect(
         artifacts.specFiles,
       ).toEqual([
-        'forms.spec.mjs',
+        'fixture__12345678.spec.mjs',
       ]);
 
       expect(
         artifacts.runnerFile,
-      ).toContain(
-        'test-runner.mjs',
+      ).toMatch(
+        /test-runner\.mjs$/,
       );
     } finally {
       fs.rmSync(
-        dir,
+        directory,
         {
           recursive: true,
           force: true,

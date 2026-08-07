@@ -1,3 +1,7 @@
+import {
+  embedClassSource,
+  embedFunctionSource,
+} from './embedded-source';
 import type {
   TestCatalog,
 } from './test-catalog';
@@ -258,15 +262,21 @@ function cloneExecutionPlan(
 export function getEmbeddedPlanningEngineSource():
   string {
   return [
-    createPlanCacheKey,
-    serializeSelector,
-    serializeSelectorValue,
-    cloneExecutionPlan,
-    PlanningEngine,
-  ]
-    .map(
-      (value) =>
-        value.toString(),
-    )
-    .join('\n\n');
+    embedFunctionSource(
+      createPlanCacheKey,
+    ),
+    embedFunctionSource(
+      serializeSelector,
+    ),
+    embedFunctionSource(
+      serializeSelectorValue,
+    ),
+    embedFunctionSource(
+      cloneExecutionPlan,
+    ),
+    embedClassSource(
+      'PlanningEngine',
+      PlanningEngine,
+    ),
+  ].join('\n\n');
 }

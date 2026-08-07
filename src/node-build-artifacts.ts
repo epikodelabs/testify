@@ -11,7 +11,7 @@ export interface NodeBuildArtifacts {
 
 export function discoverNodeBuildArtifacts(
   outDir: string,
-  runnerFileName = 'test-runner.js',
+  runnerFileName = 'test-runner.mjs',
 ): NodeBuildArtifacts {
   const normalizedOutDir = norm(outDir);
 
@@ -33,7 +33,7 @@ export function discoverNodeBuildArtifacts(
     .readdirSync(normalizedOutDir)
     .filter(
       (file) =>
-        /\.(?:js|mjs)$/i.test(file),
+        /\.mjs$/i.test(file),
     )
     .sort();
 
@@ -42,7 +42,7 @@ export function discoverNodeBuildArtifacts(
     files,
     specFiles: files.filter(
       (file) =>
-        /\.spec\.(?:js|mjs)$/i.test(file),
+        /\.spec\.mjs$/i.test(file),
     ),
     runnerFile: norm(
       path.join(

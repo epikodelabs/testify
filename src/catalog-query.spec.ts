@@ -14,7 +14,7 @@ describe('Catalog query helpers', () => {
         id: 'suite1',
         description: 'Forms',
         fullName: 'Forms',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
     ],
     specs: [
@@ -23,14 +23,14 @@ describe('Catalog query helpers', () => {
         description: 'one',
         fullName: 'Forms one',
         suiteId: 'suite1',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
       {
         id: 'spec2',
         description: 'two',
         fullName: 'Forms two',
         suiteId: 'suite1',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
     ],
   };
@@ -44,14 +44,14 @@ describe('Catalog query helpers', () => {
         id: 'spec1',
         name: 'one',
         fullName: 'Forms one',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
       {
         suiteId: 'suite1',
         id: 'spec2',
         name: 'two',
         fullName: 'Forms two',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
     ]);
   });
@@ -64,7 +64,7 @@ describe('Catalog query helpers', () => {
       id: 'suite1',
       name: 'Forms',
       fullName: 'Forms',
-      file: 'forms.spec.js',
+      file: 'forms.spec.mjs',
     });
   });
 
@@ -73,7 +73,7 @@ describe('Catalog query helpers', () => {
       listCatalogFiles(catalog),
     ).toEqual([
       {
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
         specs: 2,
       },
     ]);

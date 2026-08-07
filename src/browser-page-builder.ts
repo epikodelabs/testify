@@ -12,7 +12,6 @@ import { getBrowserJasmineRegistrationPatchScript } from './browser-jasmine-runt
 import { getBrowserWebSocketReporterScript } from './browser-websocket-runtime';
 import { getBrowserHmrClientScript } from './browser-hmr-client';
 import { getBrowserBootstrapScript } from './browser-bootstrap-runtime';
-import { getStaticBrowserBootstrapScript } from './browser-static-bootstrap';
 
 export class BrowserPageBuilder {
   constructor(
@@ -20,19 +19,53 @@ export class BrowserPageBuilder {
   ) {}
 
   buildStatic(specFiles: string[]): string {
+    const moduleImports = [
+      ...this.getPreludeModules(),
+      ...specFiles.map(
+        (file) => './' + file,
+      ),
+    ]
+      .map(
+        (modulePath) =>
+          `import ${JSON.stringify(modulePath)};`,
+      )
+      .join('\n');
+
+    const websocketReporter =
+      getBrowserWebSocketReporterScript({
+        initialSeed:
+          (this.config.jasmineConfig?.env as any)
+            ?.seed ?? 0,
+        initialRandom:
+          this.config.jasmineConfig?.env
+            ?.random ?? false,
+      });
+
     return createBrowserPage({
       title:
         this.config.htmlOptions?.title ||
         'Jasmine Test Runner',
-      faviconTag: this.getFaviconTag(),
-      inlineScripts: [
-        getStaticBrowserBootstrapScript({
-          preludeModules:
-            this.getPreludeModules(),
-          specFiles,
-          runtimeScript:
-            this.getRuntimeScript(),
-        }),
+      faviconTag:
+        this.getFaviconTag(),
+      headScripts: [
+        '<script src="/node_modules/jasmine-core/lib/jasmine-core/boot0.js"></script>',
+        '<script src="/node_modules/jasmine-core/lib/jasmine-core/boot1.js"></script>',
+        `<script type="module">
+${websocketReporter}
+
+const forwarder =
+  new WebSocketEventForwarder();
+
+forwarder.connect();
+
+jasmine
+  .getEnv()
+  .addReporter(
+    forwarder,
+  );
+
+${moduleImports}
+</script>`,
       ],
     });
   }

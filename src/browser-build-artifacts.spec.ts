@@ -27,7 +27,7 @@ describe('BrowserBuildArtifacts', () => {
       fs.writeFileSync(
         path.join(
           dir,
-          'forms.spec.js',
+          'forms.spec.mjs',
         ),
         '',
       );
@@ -49,13 +49,13 @@ describe('BrowserBuildArtifacts', () => {
         artifacts.files,
       ).toEqual([
         'app.js',
-        'forms.spec.js',
+        'forms.spec.mjs',
       ]);
 
       expect(
         artifacts.specFiles,
       ).toEqual([
-        'forms.spec.js',
+        'forms.spec.mjs',
       ]);
     } finally {
       fs.rmSync(

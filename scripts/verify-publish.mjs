@@ -31,6 +31,11 @@ const npmCommand =
     ? 'npm.cmd'
     : 'npm';
 
+const npxCommand =
+  process.platform === 'win32'
+    ? 'npx.cmd'
+    : 'npx';
+
 function run(
   command,
   args,
@@ -260,6 +265,99 @@ try {
     ) + '\n',
   );
 
+  fs.mkdirSync(
+    path.join(
+      fixtureDirectory,
+      'src',
+    ),
+    { recursive: true },
+  );
+
+  fs.mkdirSync(
+    path.join(
+      fixtureDirectory,
+      'tests',
+    ),
+    { recursive: true },
+  );
+
+  fs.writeFileSync(
+    path.join(
+      fixtureDirectory,
+      'src',
+      'fixture.ts',
+    ),
+    `export const fixtureValue = 42;\n`,
+  );
+
+  fs.writeFileSync(
+    path.join(
+      fixtureDirectory,
+      'tests',
+      'fixture.spec.ts',
+    ),
+    `import { fixtureValue } from '../src/fixture';\n\n`
+      + `describe('Fixture suite', () => {\n`
+      + `  it('runs through npx testify', () => {\n`
+      + `    expect(fixtureValue).toBe(42);\n`
+      + `  });\n`
+      + `});\n`,
+  );
+
+  fs.writeFileSync(
+    path.join(
+      fixtureDirectory,
+      'testify.json',
+    ),
+    JSON.stringify(
+      {
+        srcDirs: [
+          './src',
+        ],
+        testDirs: [
+          './tests',
+        ],
+        exclude: [
+          '**/node_modules/**',
+        ],
+        preserveOutputs: false,
+        outDir:
+          './dist/.vite-jasmine-build',
+        browser: 'node',
+        headless: true,
+        // Deliberately stale/legacy value: plain `npx testify` must still
+        // perform a one-shot run. Only --watch may enable HMR.
+        watch: true,
+        coverage: false,
+        port: 8888,
+        viteBuildOptions: {
+          target: 'es2022',
+          sourcemap: true,
+          minify: false,
+          preserveModules: false,
+          preserveModulesRoot: '.',
+        },
+        jasmineConfig: {
+          env: {
+            stopSpecOnExpectationFailure:
+              false,
+            random: false,
+            seed: 0,
+            timeout: 120000,
+          },
+        },
+        htmlOptions: {
+          title:
+            'Jasmine Test Runner',
+          preludeModules: [],
+        },
+        suppressConsoleLogs: false,
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+
   fs.writeFileSync(
     path.join(
       fixtureDirectory,
@@ -385,6 +483,56 @@ console.log('Testify package smoke test passed.');
       cwd:
         fixtureDirectory,
     },
+  );
+
+  const testifyRun =
+    run(
+      npxCommand,
+      [
+        '--no-install',
+        'testify',
+      ],
+      {
+        cwd:
+          fixtureDirectory,
+        capture: true,
+        env: {
+          NO_COLOR: '1',
+          FORCE_COLOR: '0',
+        },
+      },
+    );
+
+  const testifyOutput =
+    [
+      testifyRun.stdout,
+      testifyRun.stderr,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+  assert.match(
+    testifyOutput,
+    /Test Runner Started/,
+    'npx testify did not preserve the v1 reporter start output.',
+  );
+
+  assert.match(
+    testifyOutput,
+    /Fixture suite/,
+    'npx testify did not execute the fixture suite.',
+  );
+
+  assert.match(
+    testifyOutput,
+    /runs through npx testify/,
+    'npx testify did not execute the fixture spec.',
+  );
+
+  assert.doesNotMatch(
+    testifyOutput,
+    /watch mode|HMR watcher|HMR-enabled/i,
+    'plain npx testify unexpectedly entered watch/HMR mode.',
   );
 
   run(

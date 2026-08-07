@@ -1,3 +1,7 @@
+import {
+  embedClassSource,
+  embedFunctionSource,
+} from './embedded-source';
 import type {
   TestCatalog,
 } from './test-catalog';
@@ -306,15 +310,21 @@ export class CatalogState {
 export function getEmbeddedCatalogStateSource():
   string {
   return [
-    collectCatalogFiles,
-    setDifference,
-    fingerprintTestCatalog,
-    diffTestCatalogs,
-    CatalogState,
-  ]
-    .map(
-      (value) =>
-        value.toString(),
-    )
-    .join('\n\n');
+    embedFunctionSource(
+      collectCatalogFiles,
+    ),
+    embedFunctionSource(
+      setDifference,
+    ),
+    embedFunctionSource(
+      fingerprintTestCatalog,
+    ),
+    embedFunctionSource(
+      diffTestCatalogs,
+    ),
+    embedClassSource(
+      'CatalogState',
+      CatalogState,
+    ),
+  ].join('\n\n');
 }

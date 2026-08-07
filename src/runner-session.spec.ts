@@ -20,7 +20,7 @@ describe('RunnerSession', () => {
         description: 'works',
         fullName: 'Forms works',
         suiteId: 'suite1',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
     ],
   };
@@ -70,7 +70,7 @@ describe('RunnerSession', () => {
 
     const plan =
       session.planFile(
-        'forms.spec.js',
+        'forms.spec.mjs',
       );
 
     expect(plan.specIds).toEqual([
@@ -103,7 +103,7 @@ describe('RunnerSession', () => {
       session.listFiles(),
     ).toEqual([
       {
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
         specs: 1,
       },
     ]);
@@ -162,7 +162,7 @@ describe('RunnerSession', () => {
       session.findFiles(
         /forms/,
       )[0]?.file,
-    ).toBe('forms.spec.js');
+    ).toBe('forms.spec.mjs');
   });
 
   it('reports session stats', () => {

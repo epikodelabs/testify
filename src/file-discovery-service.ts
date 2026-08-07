@@ -140,12 +140,12 @@ export class FileDiscoveryService {
     if (isSpecFile) {
       const prefix = segments.join('_');
       const flattened = prefix ? `${prefix}__${fileName}` : fileName;
-      return `${flattened}__${hash}.spec.js`;
+      return `${flattened}__${hash}.spec.mjs`;
     }
 
     const sanitized =
       segments.length > 0 ? `${segments.join('_')}__${fileName}` : fileName;
     
-    return `${sanitized}__${hash}.js`;
+    return `${sanitized}__${hash}.mjs`;
   }
 }

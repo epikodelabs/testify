@@ -22,12 +22,12 @@ describe('BrowserPageBuilder', () => {
       new BrowserPageBuilder(config);
 
     const html = builder.buildStatic([
-      'forms.spec.js',
+      'forms.spec.mjs',
       'binding.spec.mjs',
     ]);
 
     expect(html).toContain(
-      'forms.spec.js',
+      'forms.spec.mjs',
     );
     expect(html).toContain(
       'binding.spec.mjs',

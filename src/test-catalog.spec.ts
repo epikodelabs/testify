@@ -150,13 +150,13 @@ describe('TestCatalog file ownership', () => {
     const suite = {
       id: 'suite1',
       description: 'Forms',
-      _filePath: 'forms.spec.js',
+      _filePath: 'forms.spec.mjs',
       children: [spec],
       getFullName: () => 'Forms',
     };
 
-    setTestifyFile(spec, 'forms.spec.js');
-    setTestifyFile(suite, 'forms.spec.js');
+    setTestifyFile(spec, 'forms.spec.mjs');
+    setTestifyFile(suite, 'forms.spec.mjs');
 
     const top = {
       id: 'suite0',
@@ -173,10 +173,10 @@ describe('TestCatalog file ownership', () => {
       createTestCatalogFromJasmineEnv(env);
 
     expect(catalog.suites[0]!.file).toBe(
-      'forms.spec.js',
+      'forms.spec.mjs',
     );
     expect(catalog.specs[0]!.file).toBe(
-      'forms.spec.js',
+      'forms.spec.mjs',
     );
   });
 });

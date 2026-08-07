@@ -120,7 +120,7 @@ export const CLIMessages = {
     `%cross% Could not resolve project "${name}". It is not a directory and not a known package name.`,
 
   preserveOutputsEnabled: () =>
-    `%info%  Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).`,
+    `%info%  Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
 
   failedToStartTestRunner: (error: unknown) =>
     `%cross% Failed to start test runner: ${error}`,
@@ -141,7 +141,7 @@ export const CLIMessages = {
     '  --seed <number>      Seed used for randomization order',
     '  --port <number>      Override the port from testify.json',
     '  --silent / --quiet    Suppress console logs when running in Node.js mode',
-    '  --preserve           Skip regenerating index.html and test-runner.js when outputs exist',
+    '  --preserve           Skip regenerating index.html and test-runner.mjs when outputs exist',
     '  --ansi               Use plain ASCII output (no colors, emoji, or cursor control)',
     '  --project <name>     Run tests only for the specified package or directory',
     '  --exclusive          Close any previously running testify instance before starting',
@@ -542,7 +542,7 @@ export const RunnerMessages = {
     `%info%  Preserving existing index.html (no regeneration).`,
 
   preservingExistingRunner: () =>
-    `%info%  Preserving existing test-runner.js (no regeneration).`,
+    `%info%  Preserving existing test-runner.mjs (no regeneration).`,
 
   buildingFiles: (count: number) =>
     `%box% Building ${count} files...`,

@@ -28,14 +28,14 @@ describe('TestCatalogIndex', () => {
         description: 'one',
         fullName: 'Root one',
         suiteId: 'suite1',
-        file: 'root.spec.js',
+        file: 'root.spec.mjs',
       },
       {
         id: 'spec2',
         description: 'two',
         fullName: 'Root Child two',
         suiteId: 'suite2',
-        file: 'child.spec.js',
+        file: 'child.spec.mjs',
       },
     ],
   };
@@ -60,7 +60,7 @@ describe('TestCatalogIndex', () => {
 
     expect(
       index.specIdsByFile.get(
-        'child.spec.js',
+        'child.spec.mjs',
       ),
     ).toEqual([
       'spec2',

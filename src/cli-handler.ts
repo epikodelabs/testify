@@ -186,7 +186,10 @@ export class CLIHandler {
         headless: headless || browserName === 'node' ? true : (config.headless || false),
         coverage: coverage ? true : (config.coverage || false),
         browser: hasBrowserArg ? browserName : (config.browser || 'chrome'),
-        watch: watch ? true : (config.watch || false),
+        // CLI contract: plain `testify` always performs a one-shot run.
+        // Watch/HMR is opt-in through `--watch`; a stale `watch` value in
+        // testify.json must not change the default CLI behavior.
+        watch,
         suppressConsoleLogs: silentLogs ? true : config.suppressConsoleLogs,
         srcDirs: normalizeDirConfig(config.srcDirs, './src'),
         testDirs: normalizeDirConfig(config.testDirs, './tests'),

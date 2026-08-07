@@ -12,7 +12,7 @@ describe('Node runner module source', () => {
         jasmineCoreUrl:
           'file:///jasmine.js',
         imports:
-          "        await import('./forms.spec.js');",
+          "        await import('./forms.spec.mjs');",
         config: {
           jasmineConfig: {
             env: {
@@ -34,7 +34,7 @@ describe('Node runner module source', () => {
     );
 
     expect(source).toContain(
-      "./forms.spec.js",
+      "./forms.spec.mjs",
     );
   });
 
@@ -105,6 +105,43 @@ describe('Node runner module source', () => {
 
     expect(source).not.toContain(
       'console[method] = () => {}',
+    );
+  });
+
+  it('contains the metadata dependency required by TestCatalog', () => {
+    const source =
+      createNodeRunnerModuleSource({
+        jasmineCoreUrl:
+          'file:///jasmine.js',
+        imports: '',
+        config: {
+          jasmineConfig: {
+            env: {
+              random: false,
+              seed: 0,
+              stopSpecOnExpectationFailure:
+                false,
+            },
+          },
+        } as unknown as ViteJasmineConfig,
+      });
+
+    expect(source).toContain(
+      'function getTestifyFile(',
+    );
+
+    expect(source).toContain(
+      'function createTestCatalogFromJasmineEnv(',
+    );
+
+    expect(
+      source.indexOf(
+        'function getTestifyFile(',
+      ),
+    ).toBeLessThan(
+      source.indexOf(
+        'function createTestCatalogFromJasmineEnv(',
+      ),
     );
   });
 });

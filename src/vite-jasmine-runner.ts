@@ -102,7 +102,7 @@ export class ViteJasmineRunner extends EventEmitter {
     this.nodeTestRunner = new NodeTestRunner(this.config, {
       reporter: this.consoleReporter,
       cwd: this.config.outDir,
-      file: 'test-runner.js',
+      file: 'test-runner.mjs',
       coverage: this.config.coverage,
       suppressConsoleLogs: this.config.suppressConsoleLogs
     });
@@ -121,8 +121,17 @@ export class ViteJasmineRunner extends EventEmitter {
       const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
       const input: Record<string, string> = {};
  
-      const entryKeyFromOutput = (file: string) =>
-        this.fileDiscovery.getOutputName(file).replace(/\.js$/, '');
+      const entryKeyFromOutput = (
+        file: string,
+      ) =>
+        this.fileDiscovery
+          .getOutputName(
+            file,
+          )
+          .replace(
+            /\.mjs$/,
+            '',
+          );
 
       for (const file of entryFiles) {
         input[entryKeyFromOutput(file)] = file;
@@ -142,12 +151,44 @@ export class ViteJasmineRunner extends EventEmitter {
       logger.println(RunnerMessages.buildingFiles(Object.keys(input).length));
       this.viteCache = await viteBuild(viteConfig);
 
-      const jsFiles = (await glob(path.join(this.config.outDir, '**/*.js').replace(/\\/g, '/')))
-        .filter((f) => !/\.spec\.js$/i.test(f));
+      const moduleFiles =
+        (
+          await glob(
+            path
+              .join(
+                this.config.outDir,
+                '**/*.mjs',
+              )
+              .replace(
+                /\\/g,
+                '/',
+              ),
+          )
+        ).filter(
+          (file) =>
+            !/\.spec\.mjs$/i.test(
+              file,
+            ),
+        );
 
-      for (const jsFile of jsFiles) {
-        const result = await this.instrumenter.instrumentFile(jsFile);
-        const outFile = path.join(this.config.outDir, path.relative(this.config.outDir, jsFile));
+      for (
+        const moduleFile of
+        moduleFiles
+      ) {
+        const result =
+          await this.instrumenter
+            .instrumentFile(
+              moduleFile,
+            );
+
+        const outFile =
+          path.join(
+            this.config.outDir,
+            path.relative(
+              this.config.outDir,
+              moduleFile,
+            ),
+          );
         fs.mkdirSync(path.dirname(outFile), { recursive: true });
         fs.writeFileSync(outFile, result.code, 'utf-8');
         
@@ -170,7 +211,7 @@ export class ViteJasmineRunner extends EventEmitter {
         logger.println(RunnerMessages.preservingExistingHtml());
       }
 
-      const runnerPath = path.join(this.config.outDir, 'test-runner.js');
+      const runnerPath = path.join(this.config.outDir, 'test-runner.mjs');
       const preserveRunner = this.shouldPreserve() && fs.existsSync(runnerPath);
       if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
         this.nodeTestRunner.generateTestRunner();
@@ -204,10 +245,9 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   async start(): Promise<number> {
-    if (this.config.watch) {
-      // if watch mode requested, redirect to dedicated watch() entry
-      return this.watch();
-    }
+    // `start()` is intentionally one-shot. Watch/HMR has its own explicit
+    // entrypoint (`watch()`), used by the CLI only when --watch is present.
+    this.config.watch = false;
 
     logger.println(this.config.headless ? RunnerMessages.startingHeadless() : RunnerMessages.startingServer());
 

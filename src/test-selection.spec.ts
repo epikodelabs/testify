@@ -26,14 +26,14 @@ describe('TestSelector', () => {
         description: 'creates fields',
         fullName: 'Forms creates fields',
         suiteId: 'suite1',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
       {
         id: 'spec2',
         description: 'binds controls',
         fullName: 'Forms Bindings binds controls',
         suiteId: 'suite2',
-        file: 'bindings.spec.js',
+        file: 'bindings.spec.mjs',
       },
     ],
   };
@@ -62,7 +62,7 @@ describe('TestSelector', () => {
     expect(
       resolveTestSelector(
         catalog,
-        { file: 'bindings.spec.js' },
+        { file: 'bindings.spec.mjs' },
       ),
     ).toEqual(['spec2']);
   });

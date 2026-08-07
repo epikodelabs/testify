@@ -142,7 +142,10 @@ export class ViteConfigBuilder {
       if (this.isTypeOnlyModule(file)) {
         continue;
       }
-      const outputName = this.buildOutputName(file).replace(/\.js$/, '');
+      const outputName =
+        this.buildOutputName(
+          file,
+        );
       map[outputName] = norm(file);
     }
 
@@ -189,10 +192,10 @@ export class ViteConfigBuilder {
     const hash = createHash('sha1').update(normalizedPath).digest('hex').slice(0, 8);
 
     if (isSpecFile) {
-      return `${sanitizedBaseName}__${hash}.spec.js`;
+      return `${sanitizedBaseName}__${hash}.spec`;
     }
 
-    return `${sanitizedBaseName}__${hash}.js`;
+    return `${sanitizedBaseName}__${hash}`;
   }
 
   private isTypeOnlyModule(filePath: string): boolean {
@@ -289,8 +292,8 @@ export class ViteConfigBuilder {
 
             output: {
               format: 'es',
-              entryFileNames: '[name].js',
-              chunkFileNames: 'vendor.js',
+              entryFileNames: '[name].mjs',
+              chunkFileNames: 'vendor.mjs',
               manualChunks: id => this.vendorChunk(id)
             }
           }
@@ -319,8 +322,15 @@ export class ViteConfigBuilder {
       logger.error(ViteConfigMessages.noFilesToBuild());
     }
 
-    return this.normalizeAliasConfig(
-      this.mergeUserConfig(this.baseConfig(this.inputMap, false))
+    return this.normalizeGeneratedOutput(
+      this.normalizeAliasConfig(
+        this.mergeUserConfig(
+          this.baseConfig(
+            this.inputMap,
+            false,
+          ),
+        ),
+      ),
     );
   }
 
@@ -345,10 +355,16 @@ export class ViteConfigBuilder {
 
     logger.println(ViteConfigMessages.incrementalBuild(Object.keys(this.inputMap).length));
 
-    return this.normalizeAliasConfig(
-      this.mergeUserConfig(
-        this.baseConfig(this.inputMap, true, cache)
-      )
+    return this.normalizeGeneratedOutput(
+      this.normalizeAliasConfig(
+        this.mergeUserConfig(
+          this.baseConfig(
+            this.inputMap,
+            true,
+            cache,
+          ),
+        ),
+      ),
     );
   }
 
@@ -390,6 +406,50 @@ export class ViteConfigBuilder {
     };
 
     return merge(base, user);
+  }
+
+  private normalizeGeneratedOutput(
+    config: InlineConfig,
+  ): InlineConfig {
+    const rollupOptions =
+      config.build
+        ?.rollupOptions;
+
+    if (!rollupOptions) {
+      return config;
+    }
+
+    const output =
+      Array.isArray(
+        rollupOptions.output,
+      )
+        ? rollupOptions.output.map(
+            (entry) => ({
+              ...entry,
+              entryFileNames:
+                '[name].mjs',
+              chunkFileNames:
+                'vendor.mjs',
+            }),
+          )
+        : {
+            ...(rollupOptions.output ?? {}),
+            entryFileNames:
+              '[name].mjs',
+            chunkFileNames:
+              'vendor.mjs',
+          };
+
+    return {
+      ...config,
+      build: {
+        ...config.build,
+        rollupOptions: {
+          ...rollupOptions,
+          output,
+        },
+      },
+    };
   }
 
   private normalizeAliasConfig(config: InlineConfig): InlineConfig {

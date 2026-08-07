@@ -18,7 +18,7 @@ describe('TestCatalog search index', () => {
         id: 'suite1',
         description: 'Membrane Forms',
         fullName: 'Membrane Forms',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
     ],
     specs: [
@@ -28,7 +28,7 @@ describe('TestCatalog search index', () => {
         fullName:
           'Membrane Forms binds controls',
         suiteId: 'suite1',
-        file: 'forms.spec.js',
+        file: 'forms.spec.mjs',
       },
       {
         id: 'spec2',
@@ -36,7 +36,7 @@ describe('TestCatalog search index', () => {
         fullName:
           'Performance measures snapshots',
         file:
-          'performance.spec.js',
+          'performance.spec.mjs',
       },
     ],
   };
