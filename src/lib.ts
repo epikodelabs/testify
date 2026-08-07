@@ -3,6 +3,8 @@ export {
   createTestCatalogFromJasmineEnv,
   getCatalogSpecIds,
   getCatalogSuiteIds,
+  getCatalogFiles,
+  getSpecIdsForFile,
 } from './test-catalog';
 export type {
   TestCatalog,
@@ -14,6 +16,7 @@ export {
   findCatalogSuites,
   getDescendantSuiteIds,
   getSpecIdsForSuites,
+  getSpecIdsForFiles,
   resolveTestSelector,
 } from './test-selection';
 export type { TestSelector } from './test-selection';

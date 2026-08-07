@@ -136,3 +136,44 @@ describe('TestCatalog', () => {
     ).toEqual(['spec1', 'spec2']);
   });
 });
+
+
+describe('TestCatalog file ownership', () => {
+  it('captures file ownership from Jasmine metadata', () => {
+    const spec = {
+      id: 'spec1',
+      description: 'works',
+      _filePath: 'forms.spec.js',
+      getFullName: () => 'Forms works',
+    };
+
+    const suite = {
+      id: 'suite1',
+      description: 'Forms',
+      _filePath: 'forms.spec.js',
+      children: [spec],
+      getFullName: () => 'Forms',
+    };
+
+    const top = {
+      id: 'suite0',
+      description: 'Jasmine__TopLevel__Suite',
+      children: [suite],
+      getFullName: () => '',
+    };
+
+    const env = {
+      topSuite: () => top,
+    } as unknown as jasmine.Env;
+
+    const catalog =
+      createTestCatalogFromJasmineEnv(env);
+
+    expect(catalog.suites[0]!.file).toBe(
+      'forms.spec.js',
+    );
+    expect(catalog.specs[0]!.file).toBe(
+      'forms.spec.js',
+    );
+  });
+});

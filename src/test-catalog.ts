@@ -3,6 +3,7 @@ export interface TestCatalogSuite {
   description: string;
   fullName: string;
   parentSuiteId?: string;
+  file?: string;
 }
 
 export interface TestCatalogSpec {
@@ -10,6 +11,7 @@ export interface TestCatalogSpec {
   description: string;
   fullName: string;
   suiteId?: string;
+  file?: string;
 }
 
 export interface TestCatalog {
@@ -32,6 +34,17 @@ function getItemFullName(item: any): string {
   }
 
   return getItemDescription(item);
+}
+
+function getItemFile(item: any): string | undefined {
+  const file =
+    item?._filePath ??
+    item?.filePath ??
+    item?.metadata?.filePath;
+
+  return typeof file === 'string' && file.length > 0
+    ? file
+    : undefined;
 }
 
 function isSuite(item: any): boolean {
@@ -72,6 +85,7 @@ export function createTestCatalogFromJasmineEnv(
         description: getItemDescription(suite),
         fullName: getItemFullName(suite),
         parentSuiteId,
+        file: getItemFile(suite),
       });
     }
 
@@ -95,6 +109,7 @@ export function createTestCatalogFromJasmineEnv(
           description: getItemDescription(child),
           fullName: getItemFullName(child),
           suiteId: owningSuiteId,
+          file: getItemFile(child) ?? getItemFile(suite),
         });
       }
     }
@@ -130,6 +145,7 @@ export function getEmbeddedTestCatalogSource(): string {
   return [
     getItemDescription,
     getItemFullName,
+    getItemFile,
     isSuite,
     isSpec,
     createTestCatalogFromJasmineEnv,
@@ -138,4 +154,29 @@ export function getEmbeddedTestCatalogSource(): string {
   ]
     .map((fn) => fn.toString())
     .join('\n\n');
+}
+
+
+export function getCatalogFiles(
+  catalog: TestCatalog,
+): string[] {
+  return [
+    ...new Set(
+      [
+        ...catalog.suites.map((suite) => suite.file),
+        ...catalog.specs.map((spec) => spec.file),
+      ].filter(
+        (file): file is string => !!file,
+      ),
+    ),
+  ].sort();
+}
+
+export function getSpecIdsForFile(
+  catalog: TestCatalog,
+  file: string,
+): string[] {
+  return catalog.specs
+    .filter((spec) => spec.file === file)
+    .map((spec) => spec.id);
 }

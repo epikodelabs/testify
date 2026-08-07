@@ -570,29 +570,43 @@ window.HMRClient = (function() {
   function detachFilePathSuites(filePath) {
     const env = getEnv();
     if (!env) return;
-    
+
     const topSuite = env.topSuite().__suite || env.topSuite();
     if (!topSuite) return;
+
+    const catalog =
+      window.jasmine?.getCatalog?.() ??
+      createTestCatalogFromJasmineEnv(env);
+
+    const specIds = new Set(
+      catalog.specs
+        .filter(spec => spec.file === filePath)
+        .map(spec => spec.id)
+    );
+
+    const suiteIds = new Set(
+      catalog.suites
+        .filter(suite => suite.file === filePath)
+        .map(suite => suite.id)
+    );
 
     function cleanSuite(suite) {
       if (!suite || !Array.isArray(suite.children)) return;
 
       const keep = [];
 
-      for (const childWrapper of suite.children) {
-        if (!childWrapper) continue;
+      for (const child of suite.children) {
+        if (!child) continue;
 
-        const child = childWrapper;
-
-        if (child._filePath === filePath) {
+        if (suiteIds.has(child.id) || specIds.has(child.id)) {
           continue;
         }
 
-        if (child.children && Array.isArray(child.children)) {
+        if (Array.isArray(child.children)) {
           cleanSuite(child);
         }
 
-        keep.push(childWrapper);
+        keep.push(child);
       }
 
       if (suite.removeChildren && suite.addChild) {
@@ -603,12 +617,14 @@ window.HMRClient = (function() {
       }
 
       if (Array.isArray(suite.specs)) {
-        suite.specs = suite.specs.filter(spec => spec._filePath !== filePath);
+        suite.specs = suite.specs.filter(
+          spec => !specIds.has(spec.id)
+        );
       }
     }
 
     cleanSuite(topSuite);
-    console.log(\`🧹 Detached all suites/specs with _filePath: \${filePath}\`);
+    console.log(`🧹 Detached catalog entries for file: ${filePath}`);
   }
 
   async function hotUpdateSpec(filePath, moduleExports) {
@@ -923,6 +939,45 @@ window.HMRClient = (function() {
       return rows;
     }
 
+    async function runFile(selector) {
+      const catalog = getCatalog();
+      const ids = resolveTestSelector(
+        catalog,
+        { file: selector },
+      );
+
+      if (!ids.length) {
+        console.warn('No matching spec files found for:', selector);
+        return [];
+      }
+
+      console.log(`🎯 Executing ${ids.length} spec(s) from file`);
+      return await executeSpecsByIds(ids.sort());
+    }
+
+    function listFiles() {
+      const catalog = getCatalog();
+      const counts = new Map();
+
+      for (const spec of catalog.specs) {
+        if (!spec.file) continue;
+        counts.set(
+          spec.file,
+          (counts.get(spec.file) ?? 0) + 1,
+        );
+      }
+
+      const rows = [...counts.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([file, specs]) => ({
+          file,
+          specs,
+        }));
+
+      console.table(rows);
+      return rows;
+    }
+
     function setSeed(nextSeed) {
       const parsed = Number(nextSeed);
       if (!Number.isFinite(parsed)) {
@@ -949,8 +1004,10 @@ window.HMRClient = (function() {
       runTests,
       runTest,
       runSuite,
+      runFile,
       listTests,
       listSuites,
+      listFiles,
       catalog: getCatalog,
       setSeed,
       resetSeed,
@@ -964,6 +1021,8 @@ window.HMRClient = (function() {
     console.log('  await runner.runSuite("suite12") or await runner.runSuite(/Suite Name/)');
     console.log('  await runner.run("spec12") or await runner.run("suite12")');
     console.log('  runner.listSuites() - Show all suites');
+    console.log('  runner.listFiles() - Show all spec files');
+    console.log('  await runner.runFile("forms.spec.js")');
     console.log('  runner.catalog() - Return the current TestCatalog');
     console.log('  runner.setSeed(12345) - Enable random order with seed');
     console.log('  runner.resetSeed() - Back to sequential order');

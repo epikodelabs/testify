@@ -27,6 +27,9 @@ export function createBrowserTestCatalog(env: jasmine.Env): TestCatalog {
             ? suite.getFullName()
             : suite.description ?? suite.id,
         parentSuiteId,
+        file: typeof suite._filePath === 'string'
+          ? suite._filePath
+          : undefined,
       });
     }
 
@@ -46,6 +49,12 @@ export function createBrowserTestCatalog(env: jasmine.Env): TestCatalog {
               ? child.getFullName()
               : child.description ?? child.id,
           suiteId,
+          file:
+            typeof child._filePath === 'string'
+              ? child._filePath
+              : (typeof suite._filePath === 'string'
+                  ? suite._filePath
+                  : undefined),
         });
       }
     }

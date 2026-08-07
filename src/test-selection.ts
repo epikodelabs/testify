@@ -10,6 +10,7 @@ export type TestSelector =
   | {
       spec?: string | RegExp;
       suite?: string | RegExp;
+      file?: string | RegExp;
     };
 
 function matchesText(
@@ -100,6 +101,19 @@ export function getSpecIdsForSuites(
     .map((spec) => spec.id);
 }
 
+export function getSpecIdsForFiles(
+  catalog: TestCatalog,
+  selector: string | RegExp,
+): string[] {
+  return catalog.specs
+    .filter(
+      (spec) =>
+        !!spec.file &&
+        matchesText(selector, spec.file),
+    )
+    .map((spec) => spec.id);
+}
+
 export function resolveTestSelector(
   catalog: TestCatalog,
   selector: TestSelector,
@@ -152,6 +166,13 @@ export function resolveTestSelector(
     );
   }
 
+  if (selector.file) {
+    return getSpecIdsForFiles(
+      catalog,
+      selector.file,
+    );
+  }
+
   return [];
 }
 
@@ -163,6 +184,7 @@ export function getEmbeddedTestSelectionSource(): string {
     findCatalogSuites,
     getDescendantSuiteIds,
     getSpecIdsForSuites,
+    getSpecIdsForFiles,
     resolveTestSelector,
   ]
     .map((fn) => fn.toString())

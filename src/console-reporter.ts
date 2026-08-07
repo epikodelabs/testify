@@ -245,12 +245,14 @@ export class ConsoleReporter {
           description: suite.description ?? suite.id,
           fullName: suite.fullName ?? suite.id,
           parentSuiteId: suite.parentSuiteId,
+          file: suite.file,
         })),
         specs: specs.map((spec: any) => ({
           id: spec.id,
           description: spec.description ?? spec.id,
           fullName: spec.fullName ?? spec.id,
           suiteId: spec.suiteId,
+          file: spec.file,
         })),
       });
     }
