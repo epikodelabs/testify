@@ -52,3 +52,17 @@ export {
 export {
   getBrowserHmrClientScript,
 } from './browser-hmr-client';
+
+export {
+  getBrowserBootstrapScript,
+} from './browser-bootstrap-runtime';
+export type {
+  BrowserBootstrapScriptOptions,
+} from './browser-bootstrap-runtime';
+export {
+  createBrowserPage,
+} from './browser-page';
+export type {
+  BrowserPage,
+  BrowserPageScripts,
+} from './browser-page';

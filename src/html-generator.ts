@@ -8,6 +8,8 @@ import { getBrowserRuntimeScript } from './browser-runtime';
 import { getBrowserJasmineRegistrationPatchScript } from './browser-jasmine-runtime';
 import { getBrowserWebSocketReporterScript } from './browser-websocket-runtime';
 import { getBrowserHmrClientScript } from './browser-hmr-client';
+import { getBrowserBootstrapScript } from './browser-bootstrap-runtime';
+import { createBrowserPage } from './browser-page';
 import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 import { resolveBrowserPreludeModules } from './prelude-modules';
@@ -109,54 +111,30 @@ export class HtmlGenerator {
     return imports.join('\n    ');
   }
 
-  private generateHtmlTemplateWithHmr(faviconTag: string): string {    
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  ${faviconTag}
-  <title>${this.config.htmlOptions?.title || "Jasmine Test Runner (HMR)"}</title>
-  <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css">
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
-
-  <script>
-${this.getJasminePatchScript()}
-
-${this.getWebSocketEventForwarderScript()}
-
-${this.getHmrClientScript()}
-
-// Initialize everything after Jasmine is loaded
-(function initAfterJasmine() {
-  if (!window.jasmineRequire) {
-    return setTimeout(initAfterJasmine, 10);
-  }
-
-  const script = document.createElement('script');
-  script.src = '/node_modules/jasmine-core/lib/jasmine-core/boot0.js';
-  
-  script.onload = () => {
-    // Add the WebSocket forwarder as a reporter
-    const forwarder = new WebSocketEventForwarder();
-    forwarder.connect();
-    jasmine.getEnv().addReporter(forwarder);
-    
-    ${this.getRuntimeHelpersScript()}
-  };
-  
-  script.onerror = (err) => {
-    console.error('Failed to load boot0.js:', err);
-  };
-  
-  document.head.appendChild(script);
-})();
-  </script>
-</head>
-<body>
-  <div class="jasmine_html-reporter"></div>
-</body>
-</html>`;
+  private generateHtmlTemplateWithHmr(
+    faviconTag: string,
+  ): string {
+    return createBrowserPage({
+      title:
+        this.config.htmlOptions?.title ||
+        'Jasmine Test Runner (HMR)',
+      faviconTag,
+      scripts: {
+        jasminePatch:
+          this.getJasminePatchScript(),
+        websocketReporter:
+          this.getWebSocketEventForwarderScript(),
+        hmrClient:
+          this.getHmrClientScript(),
+        bootstrap:
+          getBrowserBootstrapScript({
+            preludeModules:
+              this.getPreludeModules(),
+          }),
+        runtime:
+          this.getRuntimeHelpersScript(),
+      },
+    });
   }
 
   private getJasminePatchScript(): string {
