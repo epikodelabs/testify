@@ -6,6 +6,9 @@ import type { FileDiscoveryService } from './file-discovery-service';
 import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 import { BrowserPageBuilder } from './browser-page-builder';
+import {
+  discoverBrowserBuildArtifacts,
+} from './browser-build-artifacts';
 
 export class HtmlGenerator {
   private readonly pageBuilder:
@@ -27,30 +30,21 @@ export class HtmlGenerator {
     const htmlDir =
       this.ensureOutputDirectory();
 
-    const builtFiles =
-      fs.readdirSync(htmlDir)
-        .filter(
-          (file) =>
-            /\.(?:js|mjs)$/i.test(file),
-        )
-        .sort();
+    const artifacts =
+      discoverBrowserBuildArtifacts(
+        htmlDir,
+      );
 
-    if (builtFiles.length === 0) {
+    if (artifacts.files.length === 0) {
       logger.println(
         HtmlMessages.noJsFilesForHtml(),
       );
       return;
     }
 
-    const specFiles =
-      builtFiles.filter(
-        (file) =>
-          /\.spec\.(?:js|mjs)$/i.test(file),
-      );
-
     const htmlContent =
       this.pageBuilder.buildStatic(
-        specFiles,
+        artifacts.specFiles,
       );
 
     this.writePage(

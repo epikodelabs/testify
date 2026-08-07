@@ -77,3 +77,23 @@ export type {
 export {
   BrowserPageBuilder,
 } from './browser-page-builder';
+
+export {
+  createExecutionPlan,
+  createFileExecutionPlan,
+  createSpecExecutionPlan,
+  createSuiteExecutionPlan,
+  getEmbeddedExecutionPlanSource,
+} from './execution-plan';
+export type {
+  ExecutionPlan,
+  ExecutionPlanOptions,
+} from './execution-plan';
+
+export {
+  discoverBrowserBuildArtifacts,
+  getBrowserArtifactPath,
+} from './browser-build-artifacts';
+export type {
+  BrowserBuildArtifacts,
+} from './browser-build-artifacts';

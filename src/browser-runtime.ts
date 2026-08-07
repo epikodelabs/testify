@@ -1,3 +1,13 @@
+import {
+  getEmbeddedTestCatalogSource,
+} from './test-catalog';
+import {
+  getEmbeddedTestSelectionSource,
+} from './test-selection';
+import {
+  getEmbeddedExecutionPlanSource,
+} from './execution-plan';
+
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
   initialSeed: number;
@@ -12,50 +22,93 @@ export function getBrowserRuntimeScript(
     initialSeed,
     initialRandom,
   } = options;
-    
-    return `
+
+  const catalogSource =
+    getEmbeddedTestCatalogSource();
+
+  const selectionSource =
+    getEmbeddedTestSelectionSource();
+
+  const executionPlanSource =
+    getEmbeddedExecutionPlanSource();
+
+  return `
 (function(globalThis) {
-  async function waitForJasmine(maxAttempts = 50, interval = 100) {
-    return new Promise((resolve, reject) => {
-      let attempts = 0;
-      
-      function check() {
-        if (globalThis.jasmine?.getEnv) {
-          resolve(globalThis.jasmine.getEnv());
-        } else if (attempts >= maxAttempts) {
-          reject(new Error('Jasmine environment not found after waiting'));
-        } else {
+  ${catalogSource}
+
+  ${selectionSource}
+
+  ${executionPlanSource}
+
+  async function waitForJasmine(
+    maxAttempts = 50,
+    interval = 100,
+  ) {
+    return new Promise(
+      (resolve, reject) => {
+        let attempts = 0;
+
+        function check() {
+          if (globalThis.jasmine?.getEnv) {
+            resolve(
+              globalThis.jasmine.getEnv(),
+            );
+            return;
+          }
+
+          if (attempts >= maxAttempts) {
+            reject(
+              new Error(
+                'Jasmine environment not found after waiting',
+              ),
+            );
+            return;
+          }
+
           attempts++;
-          setTimeout(check, interval);
+          setTimeout(
+            check,
+            interval,
+          );
         }
-      }
-      
-      check();
-    });
+
+        check();
+      },
+    );
   }
 
   async function init() {
     let env;
+
     try {
       env = await waitForJasmine();
-      console.log('✅ Jasmine environment found');
+      console.log(
+        '✅ Jasmine environment found',
+      );
     } catch (error) {
-      console.error('⚠️  Jasmine environment not found:', error.message);
+      console.error(
+        '⚠️  Jasmine environment not found:',
+        error.message,
+      );
       return;
     }
 
     let random = ${initialRandom};
     let seed = ${initialSeed};
+    const stopOnFailure =
+      ${stopOnSpecFailure};
 
     env.configure({
       random,
-      stopOnSpecFailure: ${stopOnSpecFailure},
+      stopOnSpecFailure: stopOnFailure,
       seed,
-      autoCleanClosures: false
+      autoCleanClosures: false,
     });
 
     function getCatalog() {
-      return createTestCatalogFromJasmineEnv(env);
+      return createTestCatalogFromJasmineEnv(
+        env,
+      );
     }
 
     function getAllSpecs() {
@@ -66,23 +119,46 @@ export function getBrowserRuntimeScript(
       return getCatalog().suites;
     }
 
-    function orderCatalogItems(items, seed, random) {
-      if (!random) return items;
+    function orderCatalogItems(
+      items,
+      currentSeed,
+      currentRandom,
+    ) {
+      if (!currentRandom) return items;
 
       try {
-        const order = new globalThis.jasmine.Order({ random, seed });
+        const order =
+          new globalThis.jasmine.Order({
+            random: currentRandom,
+            seed: currentSeed,
+          });
+
         return order.sort?.(items) ?? items;
       } catch {
         return items;
       }
     }
 
-    function getOrderedSpecs(seed, random) {
-      return orderCatalogItems(getAllSpecs(), seed, random);
+    function getOrderedSpecs(
+      currentSeed,
+      currentRandom,
+    ) {
+      return orderCatalogItems(
+        getAllSpecs(),
+        currentSeed,
+        currentRandom,
+      );
     }
 
-    function getOrderedSuites(seed, random) {
-      return orderCatalogItems(getAllSuites(), seed, random);
+    function getOrderedSuites(
+      currentSeed,
+      currentRandom,
+    ) {
+      return orderCatalogItems(
+        getAllSuites(),
+        currentSeed,
+        currentRandom,
+      );
     }
 
     globalThis.jasmine = {
@@ -91,7 +167,7 @@ export function getBrowserRuntimeScript(
       getAllSpecs,
       getAllSuites,
       getOrderedSpecs,
-      getOrderedSuites
+      getOrderedSuites,
     };
 
     let originalSpecFilter = null;
@@ -101,37 +177,64 @@ export function getBrowserRuntimeScript(
       results: [],
       currentSpecIdSet: null,
 
-      jasmineStarted: function () {
+      jasmineStarted() {
         this.results = [];
       },
 
-      specStarted: function (config) {
-        if (this.currentSpecIdSet?.has(config.id)) {
-          console.log(\`▶️ Running [\${config.id}]: \${config.description}\`);
-        }
-      },
-
-      specDone: function (result) {
-        if (this.currentSpecIdSet?.has(result.id)) {
-          this.results.push(result);
-          const status = result.status.toUpperCase();
-          console.log(\`[\${status}] \${result.description}\`);
-          
-          result.failedExpectations?.forEach(f => 
-            console.error('❌', f.message, f.stack ? '\\n' + f.stack : '')
+      specStarted(config) {
+        if (
+          this.currentSpecIdSet?.has(
+            config.id,
+          )
+        ) {
+          console.log(
+            \`▶️ Running [\${config.id}]: \${config.description}\`,
           );
         }
       },
 
-      jasmineDone: () => {
-        if (originalSpecFilter !== null) {
-          env.configure({ specFilter: originalSpecFilter });
+      specDone(result) {
+        if (
+          !this.currentSpecIdSet?.has(
+            result.id,
+          )
+        ) {
+          return;
         }
+
+        this.results.push(result);
+
+        console.log(
+          \`[\${result.status.toUpperCase()}] \${result.description}\`,
+        );
+
+        result.failedExpectations?.forEach(
+          (failure) =>
+            console.error(
+              '❌',
+              failure.message,
+              failure.stack
+                ? '\\n' + failure.stack
+                : '',
+            ),
+        );
+      },
+
+      jasmineDone() {
+        if (originalSpecFilter !== null) {
+          env.configure({
+            specFilter:
+              originalSpecFilter,
+          });
+        }
+
         isExecuting = false;
-      }
+      },
     };
 
-    env.addReporter(inBrowserReporter);
+    env.addReporter(
+      inBrowserReporter,
+    );
 
     function resetEnvironment() {
       const resetNode = (node) => {
@@ -139,192 +242,313 @@ export function getBrowserRuntimeScript(
           node.result = {
             status: 'pending',
             failedExpectations: [],
-            passedExpectations: []
+            passedExpectations: [],
           };
         }
-        node.children?.forEach(resetNode);
+
+        node.children?.forEach(
+          resetNode,
+        );
       };
-      
-      resetNode(env.topSuite());
+
+      resetNode(
+        env.topSuite(),
+      );
     }
 
-    async function executeSpecsByIds(specIds) {
+    async function executePlan(plan) {
       if (isExecuting) {
-        console.warn('⚠️  Execution already in progress. Please wait...');
+        console.warn(
+          '⚠️  Execution already in progress. Please wait...',
+        );
+        return [];
+      }
+
+      if (!plan.specIds.length) {
         return [];
       }
 
       return new Promise((resolve) => {
         isExecuting = true;
+
         inBrowserReporter.results = [];
-        const specIdSet = new Set(specIds);
-        inBrowserReporter.currentSpecIdSet = specIdSet;
-        
+
+        const specIdSet =
+          new Set(plan.specIds);
+
+        inBrowserReporter.currentSpecIdSet =
+          specIdSet;
+
         if (originalSpecFilter === null) {
-          originalSpecFilter = env.specFilter;
+          originalSpecFilter =
+            env.specFilter;
         }
 
         resetEnvironment();
 
         env.configure({
-          random,
-          seed,
-          specFilter: (spec) => specIdSet.has(spec.id),
-          autoCleanClosures: false
+          random: plan.random,
+          seed: plan.seed,
+          stopOnSpecFailure:
+            plan.stopOnFailure ??
+            false,
+          specFilter: (spec) =>
+            specIdSet.has(spec.id),
+          autoCleanClosures: false,
         });
 
-        const originalDone = inBrowserReporter.jasmineDone;
-        inBrowserReporter.jasmineDone = () => {
-          originalDone.call(inBrowserReporter);
-          resolve(inBrowserReporter.results);
-          inBrowserReporter.jasmineDone = originalDone;
-        };
+        const originalDone =
+          inBrowserReporter.jasmineDone;
+
+        inBrowserReporter.jasmineDone =
+          () => {
+            originalDone.call(
+              inBrowserReporter,
+            );
+
+            resolve(
+              inBrowserReporter.results,
+            );
+
+            inBrowserReporter.jasmineDone =
+              originalDone;
+          };
 
         env.execute();
       });
     }
 
+    function currentPlanOptions() {
+      return {
+        random,
+        seed,
+        stopOnFailure,
+      };
+    }
+
     async function runTests(filters) {
       const catalog = getCatalog();
-      const filterArr = filters === undefined
-        ? []
-        : (Array.isArray(filters) ? filters : [filters]);
 
-      const ids = filterArr.length === 0
-        ? catalog.specs.map(spec => spec.id)
-        : [...new Set(
-            filterArr.flatMap(filter =>
-              resolveTestSelector(catalog, { spec: filter })
-            )
-          )];
+      if (filters === undefined) {
+        return executePlan(
+          createExecutionPlan(
+            catalog,
+            undefined,
+            currentPlanOptions(),
+          ),
+        );
+      }
 
-      if (!ids.length) {
-        console.warn('No matching specs found for:', filters);
+      const filterArr =
+        Array.isArray(filters)
+          ? filters
+          : [filters];
+
+      const specIds = [
+        ...new Set(
+          filterArr.flatMap(
+            (filter) =>
+              resolveTestSelector(
+                catalog,
+                { spec: filter },
+              ),
+          ),
+        ),
+      ];
+
+      if (!specIds.length) {
+        console.warn(
+          'No matching specs found for:',
+          filters,
+        );
         return [];
       }
 
-      console.log(`🎯 Executing ${ids.length} spec(s)`);
-      return await executeSpecsByIds(ids.sort());
+      return executePlan({
+        specIds,
+        ...currentPlanOptions(),
+        source: {
+          kind: 'spec',
+        },
+      });
     }
 
     async function runTest(filter) {
       if (Array.isArray(filter)) {
-        throw new Error('runTest() only accepts a single spec or RegExp, not an array.');
-      }
-      return runTests(filter);
-    }
-
-    async function runSuite(selector) {
-      const catalog = getCatalog();
-      const ids = resolveTestSelector(catalog, { suite: selector });
-
-      if (!ids.length) {
-        console.warn('No matching suites found for:', selector);
-        return [];
-      }
-
-      console.log(`🎯 Executing ${ids.length} spec(s) from suite`);
-      return await executeSpecsByIds(ids.sort());
-    }
-
-    async function run(selector) {
-      const catalog = getCatalog();
-      const ids = resolveTestSelector(catalog, selector);
-
-      if (!ids.length) {
-        console.warn('No matching tests found for:', selector);
-        return [];
-      }
-
-      console.log(`🎯 Executing ${ids.length} spec(s)`);
-      return await executeSpecsByIds(ids.sort());
-    }
-
-    function listTests() {
-      const rows = getOrderedSpecs(seed, random).map(spec => ({
-        suiteId: spec.suiteId ?? '',
-        id: spec.id,
-        name: spec.description,
-        fullName: spec.fullName
-      }));
-
-      console.table(rows);
-      return rows;
-    }
-
-    function listSuites() {
-      const rows = getOrderedSuites(seed, random).map(suite => ({
-        parentSuiteId: suite.parentSuiteId ?? '',
-        id: suite.id,
-        name: suite.description,
-        fullName: suite.fullName
-      }));
-
-      console.table(rows);
-      return rows;
-    }
-
-    async function runFile(selector) {
-      const catalog = getCatalog();
-      const ids = resolveTestSelector(
-        catalog,
-        { file: selector },
-      );
-
-      if (!ids.length) {
-        console.warn('No matching spec files found for:', selector);
-        return [];
-      }
-
-      console.log(`🎯 Executing ${ids.length} spec(s) from file`);
-      return await executeSpecsByIds(ids.sort());
-    }
-
-    function listFiles() {
-      const catalog = getCatalog();
-      const counts = new Map();
-
-      for (const spec of catalog.specs) {
-        if (!spec.file) continue;
-        counts.set(
-          spec.file,
-          (counts.get(spec.file) ?? 0) + 1,
+        throw new Error(
+          'runTest() only accepts a single spec or RegExp, not an array.',
         );
       }
 
-      const rows = [...counts.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([file, specs]) => ({
-          file,
-          specs,
+      return executePlan(
+        createSpecExecutionPlan(
+          getCatalog(),
+          filter,
+          currentPlanOptions(),
+        ),
+      );
+    }
+
+    async function runSuite(selector) {
+      const plan =
+        createSuiteExecutionPlan(
+          getCatalog(),
+          selector,
+          currentPlanOptions(),
+        );
+
+      if (!plan.specIds.length) {
+        console.warn(
+          'No matching suites found for:',
+          selector,
+        );
+        return [];
+      }
+
+      return executePlan(plan);
+    }
+
+    async function runFile(selector) {
+      const plan =
+        createFileExecutionPlan(
+          getCatalog(),
+          selector,
+          currentPlanOptions(),
+        );
+
+      if (!plan.specIds.length) {
+        console.warn(
+          'No matching spec files found for:',
+          selector,
+        );
+        return [];
+      }
+
+      return executePlan(plan);
+    }
+
+    async function run(selector) {
+      const plan =
+        createExecutionPlan(
+          getCatalog(),
+          selector,
+          currentPlanOptions(),
+        );
+
+      if (!plan.specIds.length) {
+        console.warn(
+          'No matching tests found for:',
+          selector,
+        );
+        return [];
+      }
+
+      return executePlan(plan);
+    }
+
+    function listTests() {
+      const rows =
+        getOrderedSpecs(
+          seed,
+          random,
+        ).map((spec) => ({
+          suiteId:
+            spec.suiteId ?? '',
+          id: spec.id,
+          name: spec.description,
+          fullName: spec.fullName,
+          file: spec.file ?? '',
         }));
 
       console.table(rows);
       return rows;
     }
 
+    function listSuites() {
+      const rows =
+        getOrderedSuites(
+          seed,
+          random,
+        ).map((suite) => ({
+          parentSuiteId:
+            suite.parentSuiteId ?? '',
+          id: suite.id,
+          name: suite.description,
+          fullName: suite.fullName,
+          file: suite.file ?? '',
+        }));
+
+      console.table(rows);
+      return rows;
+    }
+
+    function listFiles() {
+      const counts = new Map();
+
+      for (
+        const spec of
+        getCatalog().specs
+      ) {
+        if (!spec.file) continue;
+
+        counts.set(
+          spec.file,
+          (counts.get(spec.file) ?? 0) + 1,
+        );
+      }
+
+      const rows =
+        [...counts.entries()]
+          .sort(([a], [b]) =>
+            a.localeCompare(b),
+          )
+          .map(
+            ([file, specs]) => ({
+              file,
+              specs,
+            }),
+          );
+
+      console.table(rows);
+      return rows;
+    }
+
     function setSeed(nextSeed) {
-      const parsed = Number(nextSeed);
+      const parsed =
+        Number(nextSeed);
+
       if (!Number.isFinite(parsed)) {
-        console.warn('Invalid seed (expected a number).');
+        console.warn(
+          'Invalid seed (expected a number).',
+        );
         return seed;
       }
+
       random = true;
       seed = parsed;
-      env.configure({ random, seed });
-      console.log('✅ Seed updated to:', seed, '| Random enabled:', random);
+
+      env.configure({
+        random,
+        seed,
+      });
+
       return seed;
     }
 
     function resetSeed() {
       random = false;
       seed = ${initialSeed};
-      env.configure({ random, seed });
-      console.log('✅ Seed reset to:', seed, '| Random reset to:', random);
+
+      env.configure({
+        random,
+        seed,
+      });
+
       return seed;
     }
 
     globalThis.runner = {
+      execute: executePlan,
       run,
       runTests,
       runTest,
@@ -336,27 +560,22 @@ export function getBrowserRuntimeScript(
       catalog: getCatalog,
       setSeed,
       resetSeed,
-      reload: () => location.reload(),
+      reload: () =>
+        location.reload(),
     };
 
-    console.log('%c✅ Jasmine runner ready!', 'color: green; font-weight: bold;');
-    console.log('Usage:');
-    console.log('  await runner.runTest("spec-name") or await runner.runTest(/pattern/)');
-    console.log('  await runner.runTests(["spec1", "spec2"])');
-    console.log('  await runner.runSuite("suite12") or await runner.runSuite(/Suite Name/)');
-    console.log('  await runner.run("spec12") or await runner.run("suite12")');
-    console.log('  runner.listSuites() - Show all suites');
-    console.log('  runner.listFiles() - Show all spec files');
-    console.log('  await runner.runFile("forms.spec.js")');
-    console.log('  runner.catalog() - Return the current TestCatalog');
-    console.log('  runner.setSeed(12345) - Enable random order with seed');
-    console.log('  runner.resetSeed() - Back to sequential order');
-    console.log('  runner.listTests() - Show all tests');
+    console.log(
+      '%c✅ Testify runner ready!',
+      'color: green; font-weight: bold;',
+    );
   }
 
-  init().catch(error => {
-    console.error('Failed to initialize runner:', error);
+  init().catch((error) => {
+    console.error(
+      'Failed to initialize runner:',
+      error,
+    );
   });
 })(window);
 `;
-  }
+}

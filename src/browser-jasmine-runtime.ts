@@ -1,5 +1,12 @@
+import { getEmbeddedTestMetadataSource } from './test-metadata-runtime';
+
 export function getBrowserJasmineRegistrationPatchScript(): string {
-    return `
+  const metadataSource =
+    getEmbeddedTestMetadataSource();
+
+  return `
+${metadataSource}
+
 (function patchJasmineRegistrationCapture() {
   if (!window.jasmineRequire) {
     return setTimeout(patchJasmineRegistrationCapture, 10);
