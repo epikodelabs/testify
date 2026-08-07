@@ -1,5 +1,5 @@
 import { supportsColor } from './ansi-constants';
-import { LOG_MESSAGES, LogMessageTemplate } from '../messages';
+import { LOG_MESSAGES, LogMessageTemplate } from './messages';
 import { replacePlaceholders } from './symbols';
 
 // ANSI color codes
