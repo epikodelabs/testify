@@ -18,6 +18,7 @@ describe('Browser Playground runtime', () => {
   function createHarness() {
     const executedPlans: any[] = [];
     const hostMessages: any[] = [];
+    let revision = 1;
 
     const session: any = {
       state: 'ready',
@@ -46,25 +47,25 @@ describe('Browser Playground runtime', () => {
         source: selector === undefined
           ? { kind: 'all' }
           : { kind: 'selector', selector },
-        catalogVersion: 1,
+        catalogVersion: revision,
         ...options,
       }),
       planSpec: (selector: any, options: any = {}) => ({
         specIds: ['spec-1'],
         source: { kind: 'spec', selector },
-        catalogVersion: 1,
+        catalogVersion: revision,
         ...options,
       }),
       planSuite: (selector: any, options: any = {}) => ({
         specIds: ['spec-1'],
         source: { kind: 'suite', selector },
-        catalogVersion: 1,
+        catalogVersion: revision,
         ...options,
       }),
       planFile: (selector: any, options: any = {}) => ({
         specIds: ['spec-1'],
         source: { kind: 'file', selector },
-        catalogVersion: 1,
+        catalogVersion: revision,
         ...options,
       }),
       findTests: () => [{ id: 'spec-1' }],
@@ -76,9 +77,16 @@ describe('Browser Playground runtime', () => {
             id: 'failed-spec',
             fullName: 'failed-spec',
           },
+          {
+            id: 'spec-1',
+            fullName: 'spec-1',
+          },
         ],
       }),
-      revision: () => 1,
+      revision: () => revision,
+      setRevision(value: number) {
+        revision = value;
+      },
     };
 
     const previousHost =
@@ -141,7 +149,7 @@ describe('Browser Playground runtime', () => {
     }
   });
 
-  it('captures the last result and plan for reruns', async () => {
+  it('stores one execution record behind last()', async () => {
     const harness = createHarness();
 
     try {
@@ -149,26 +157,80 @@ describe('Browser Playground runtime', () => {
         'Forms',
       );
 
-      expect(
-        harness.session.lastPlan()
-          .source.kind,
-      ).toBe('suite');
-      expect(
-        harness.session.last()
-          .specResults,
-      ).toHaveSize(1);
+      const last =
+        harness.session.last();
+
+      expect(last.plan.source.kind)
+        .toBe('suite');
+      expect(last.result.specResults)
+        .toHaveSize(1);
+      expect(last.intent).toEqual({
+        kind: 'suite',
+        selector: 'Forms',
+        options: {},
+      });
+      expect(last.revision).toBe(1);
+    } finally {
+      harness.restore();
+    }
+  });
+
+  it('rerun replans the previous intent against the current revision', async () => {
+    const harness = createHarness();
+
+    try {
+      await harness.session.runSuite(
+        'Forms',
+      );
+
+      harness.session.setRevision(2);
 
       await harness.session.rerun();
 
       expect(
         harness.executedPlans,
       ).toHaveSize(2);
+      expect(
+        harness.executedPlans.at(-1)
+          .catalogVersion,
+      ).toBe(2);
+      expect(
+        harness.session.last().intent.kind,
+      ).toBe('suite');
     } finally {
       harness.restore();
     }
   });
 
-  it('reruns failed specs against the current catalog', async () => {
+  it('execute records an exact-plan intent and rerun reuses that plan', async () => {
+    const harness = createHarness();
+
+    try {
+      const plan = {
+        specIds: ['spec-1'],
+        source: {
+          kind: 'spec',
+          selector: 'spec-1',
+        },
+        catalogVersion: 1,
+      };
+
+      await harness.session.execute(plan);
+      harness.session.setRevision(2);
+      await harness.session.rerun();
+
+      expect(
+        harness.executedPlans.at(-1),
+      ).toBe(plan);
+      expect(
+        harness.session.last().intent.kind,
+      ).toBe('plan');
+    } finally {
+      harness.restore();
+    }
+  });
+
+  it('failures derives failures from the last execution', async () => {
     const harness = createHarness();
 
     try {
@@ -181,17 +243,42 @@ describe('Browser Playground runtime', () => {
         catalogVersion: 1,
       });
 
-      const failed =
-        harness.session.failed();
+      expect(
+        harness.session.failures(),
+      ).toHaveSize(1);
+    } finally {
+      harness.restore();
+    }
+  });
 
-      expect(failed).toHaveSize(1);
+  it('retry resolves previous failures against the current catalog', async () => {
+    const harness = createHarness();
 
-      await harness.session.rerunFailed();
+    try {
+      await harness.session.execute({
+        specIds: ['failed-spec'],
+        source: {
+          kind: 'spec',
+          selector: 'failed-spec',
+        },
+        catalogVersion: 1,
+      });
+
+      harness.session.setRevision(2);
+
+      await harness.session.retry();
 
       expect(
         harness.executedPlans.at(-1)
           .specIds,
       ).toEqual(['failed-spec']);
+      expect(
+        harness.executedPlans.at(-1)
+          .catalogVersion,
+      ).toBe(2);
+      expect(
+        harness.session.last().intent.kind,
+      ).toBe('retry');
     } finally {
       harness.restore();
     }
@@ -211,7 +298,7 @@ describe('Browser Playground runtime', () => {
     }
   });
 
-  it('keeps help synchronized with the Playground surface', () => {
+  it('keeps help synchronized with the execution language', () => {
     const harness = createHarness();
 
     try {
@@ -223,9 +310,9 @@ describe('Browser Playground runtime', () => {
         'session.suites()',
         'session.files()',
         'session.last()',
-        'session.failed()',
+        'session.failures()',
         'await session.rerun()',
-        'await session.rerunFailed()',
+        'await session.retry()',
         'session.refresh()',
         'session.plan(selector, options)',
         'await session.execute(plan)',
@@ -237,6 +324,19 @@ describe('Browser Playground runtime', () => {
               line.includes(command),
           ),
         ).toBeTrue();
+      }
+
+      for (const removed of [
+        'session.failed()',
+        'session.rerunFailed()',
+        'session.lastPlan()',
+      ]) {
+        expect(
+          help.some(
+            (line: string) =>
+              line.includes(removed),
+          ),
+        ).toBeFalse();
       }
     } finally {
       harness.restore();

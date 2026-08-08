@@ -14,82 +14,45 @@ function installTestifyPlayground(
   const executeSessionPlan =
     session.execute.bind(session);
 
-  let lastExecutionResult = null;
-  let lastExecutionPlan = null;
+  let lastExecution = null;
 
-  async function rememberExecution(
-    work,
+  function emptyResult() {
+    return summarizeExecutionResults([]);
+  }
+
+  async function executeRecordedPlan(
+    plan,
+    intent,
   ) {
     const result =
-      await work();
+      await executeSessionPlan(
+        plan,
+      );
 
-    lastExecutionResult =
-      result;
+    lastExecution = {
+      plan,
+      result,
+      intent,
+      revision:
+        plan.catalogVersion ??
+        session.revision(),
+    };
 
     return result;
   }
 
-  async function executeRememberedPlan(
-    plan,
+  function collectFailures(
+    print = false,
   ) {
-    lastExecutionPlan =
-      plan;
-
-    return rememberExecution(
-      () =>
-        executeSessionPlan(
-          plan,
-        ),
-    );
-  }
-
-  function replanLastExecution() {
-    if (!lastExecutionPlan) {
-      return null;
-    }
-
-    const source =
-      lastExecutionPlan.source;
-
-    if (
-      !source ||
-      source.kind === 'all'
-    ) {
-      return session.plan();
-    }
-
-    return session.plan(
-      source.selector,
-    );
-  }
-
-  async function rerunLastExecution() {
-    const plan =
-      replanLastExecution();
-
-    if (!plan) {
-      console.info(
-        '[Testify] Nothing to rerun yet.',
-      );
-
-      return summarizeExecutionResults([]);
-    }
-
-    return executeRememberedPlan(
-      plan,
-    );
-  }
-
-  function getFailedResults() {
     const failed =
-      lastExecutionResult?.specResults?.filter(
+      lastExecution?.result?.specResults?.filter(
         (result) =>
           result.status === 'failed',
       ) ?? [];
 
-    if (!lastExecutionResult) {
+    if (!lastExecution) {
       console.info(
-        '[Testify] No execution result yet.',
+        '[Testify] Nothing has run yet.',
       );
 
       return [];
@@ -97,14 +60,15 @@ function installTestifyPlayground(
 
     if (!failed.length) {
       console.info(
-        '[Testify] No failed specs in the last run.',
+        '[Testify] No failures in the last run.',
       );
 
       return [];
     }
 
-    console.table(
-      failed.map(
+    if (print) {
+      console.table(
+        failed.map(
         (result) => ({
           id:
             result.id,
@@ -115,26 +79,26 @@ function installTestifyPlayground(
           failures:
             result.failedExpectations?.length ?? 0,
         }),
-      ),
-    );
+        ),
+      );
+    }
 
     return failed;
   }
 
-  async function rerunFailedExecution() {
-    const failed =
-      getFailedResults();
+  function getFailures() {
+    return collectFailures(true);
+  }
 
-    if (!failed.length) {
-      return summarizeExecutionResults([]);
-    }
-
+  function resolveFailureSpecIds(
+    failures,
+  ) {
     const catalog =
       session.catalog();
 
     const failedNames =
       new Set(
-        failed
+        failures
           .map(
             (result) =>
               result.fullName,
@@ -144,46 +108,146 @@ function installTestifyPlayground(
 
     const failedIds =
       new Set(
-        failed.map(
+        failures.map(
           (result) =>
             result.id,
         ),
       );
 
-    const specIds =
-      catalog.specs
-        .filter(
-          (spec) =>
-            failedIds.has(
-              spec.id,
-            ) ||
-            failedNames.has(
-              spec.fullName,
-            ),
-        )
-        .map(
-          (spec) =>
+    return catalog.specs
+      .filter(
+        (spec) =>
+          failedIds.has(
             spec.id,
+          ) ||
+          failedNames.has(
+            spec.fullName,
+          ),
+      )
+      .map(
+        (spec) =>
+          spec.id,
+      );
+  }
+
+  function planIntent(intent) {
+    switch (intent?.kind) {
+      case 'all':
+        return session.plan();
+
+      case 'run':
+        return session.plan(
+          intent.selector,
+          intent.options,
         );
 
-    if (!specIds.length) {
-      console.warn(
-        '[Testify] Failed specs are no longer present in the current catalog.',
+      case 'spec':
+        return session.planSpec(
+          intent.selector,
+          intent.options,
+        );
+
+      case 'suite':
+        return session.planSuite(
+          intent.selector,
+          intent.options,
+        );
+
+      case 'file':
+        return session.planFile(
+          intent.selector,
+          intent.options,
+        );
+
+      case 'retry': {
+        const specIds =
+          resolveFailureSpecIds(
+            intent.failures,
+          );
+
+        if (!specIds.length) {
+          return null;
+        }
+
+        return {
+          specIds,
+          ...currentPlanOptions(),
+          source: {
+            kind: 'selector',
+            selector: undefined,
+          },
+          catalogVersion:
+            session.revision(),
+        };
+      }
+
+      case 'plan':
+      default:
+        return lastExecution?.plan ?? null;
+    }
+  }
+
+  async function rerunLastExecution() {
+    if (!lastExecution) {
+      console.info(
+        '[Testify] Nothing to rerun yet.',
       );
 
-      return summarizeExecutionResults([]);
+      return emptyResult();
     }
 
-    return executeRememberedPlan({
-      specIds,
-      ...currentPlanOptions(),
-      source: {
-        kind: 'selector',
-        selector: undefined,
-      },
-      catalogVersion:
-        session.revision(),
-    });
+    const plan =
+      planIntent(
+        lastExecution.intent,
+      );
+
+    if (!plan) {
+      console.warn(
+        '[Testify] The previous selection is no longer present in the current catalog.',
+      );
+
+      return emptyResult();
+    }
+
+    return executeRecordedPlan(
+      plan,
+      lastExecution.intent,
+    );
+  }
+
+  async function retryFailures() {
+    const failures =
+      collectFailures();
+
+    if (!failures.length) {
+      return emptyResult();
+    }
+
+    const intent = {
+      kind: 'retry',
+      failures: failures.map(
+        (result) => ({
+          id: result.id,
+          fullName: result.fullName,
+        }),
+      ),
+    };
+
+    const plan =
+      planIntent(intent);
+
+    if (!plan) {
+      console.warn(
+        '[Testify] Previous failures are no longer present in the current catalog.',
+      );
+
+      return emptyResult();
+    }
+
+    return executeRecordedPlan(
+      plan,
+      intent,
+    );
   }
 
   function formatSelector(selector) {
@@ -215,7 +279,7 @@ function installTestifyPlayground(
         'Try ' + listCommand,
       );
 
-      return summarizeExecutionResults([]);
+      return emptyResult();
     }
 
     const matches =
@@ -230,7 +294,7 @@ function installTestifyPlayground(
         'Try ' + listCommand,
       );
 
-      return summarizeExecutionResults([]);
+      return emptyResult();
     }
 
     if (matches.length > 1) {
@@ -243,11 +307,18 @@ function installTestifyPlayground(
       );
     }
 
-    return executeRememberedPlan(
+    const intent = {
+      kind,
+      selector,
+      options,
+    };
+
+    return executeRecordedPlan(
       planMatches(
         selector,
         options,
       ),
+      intent,
     );
   }
 
@@ -261,17 +332,25 @@ function installTestifyPlayground(
       '  session.files()                         List files; optional string/RegExp selector',
       '',
       'Run',
-      '  await session.run(selector, options)    Run all or selected tests',
+      '  await session.run(selector, options)    New intent → fresh plan → execute',
       "  await session.runSpec('<spec>', options)",
       "  await session.runSuite('<suite>', options)",
       "  await session.runFile('<file>', options)",
+      '  await session.rerun()                   Previous intent → fresh plan → execute',
+      '  await session.retry()                   Previous failures → fresh plan → execute',
       '',
-      'Inspect / rerun',
-      '  session.last()                          Last execution result',
-      '  session.lastPlan()                      Last execution plan',
-      '  session.failed()                        Failed specs from the last run',
-      '  await session.rerun()                   Re-plan and rerun the last selection',
-      '  await session.rerunFailed()             Rerun failed specs against current catalog',
+      'Inspect',
+      '  session.last()                          Last execution record: plan, result, intent, revision',
+      '  session.failures()                      Failures from the last execution',
+      '',
+      'Plan',
+      '  session.plan(selector, options)          Resolve intent without executing',
+      '  session.planSpec(selector, options)',
+      '  session.planSuite(selector, options)',
+      '  session.planFile(selector, options)',
+      '  await session.execute(plan)              Execute this exact plan',
+      '  session.shard(plan, index, count)',
+      '  session.partition(plan, count)',
       '',
       'Session',
       '  session.state',
@@ -280,15 +359,6 @@ function installTestifyPlayground(
       '  session.changes()',
       '  session.refresh()',
       '  session.planningStats()',
-      '',
-      'Plan',
-      '  session.plan(selector, options)',
-      '  session.planSpec(selector, options)',
-      '  session.planSuite(selector, options)',
-      '  session.planFile(selector, options)',
-      '  await session.execute(plan)',
-      '  session.shard(plan, index, count)',
-      '  session.partition(plan, count)',
       '',
       'Advanced',
       '  session.query()',
@@ -314,19 +384,37 @@ function installTestifyPlayground(
       help:
         printSessionHelp,
 
-      execute:
-        executeRememberedPlan,
+      execute: (plan) =>
+        executeRecordedPlan(
+          plan,
+          {
+            kind: 'plan',
+          },
+        ),
 
       run: (
         selector,
         options = {},
-      ) =>
-        executeRememberedPlan(
+      ) => {
+        const intent =
+          selector === undefined
+            ? {
+                kind: 'all',
+              }
+            : {
+                kind: 'run',
+                selector,
+                options,
+              };
+
+        return executeRecordedPlan(
           session.plan(
             selector,
             options,
           ),
-        ),
+          intent,
+        );
+      },
 
       runSpec: (
         selector,
@@ -383,19 +471,16 @@ function installTestifyPlayground(
         ),
 
       last: () =>
-        lastExecutionResult,
+        lastExecution,
 
-      lastPlan: () =>
-        lastExecutionPlan,
-
-      failed:
-        getFailedResults,
+      failures:
+        getFailures,
 
       rerun:
         rerunLastExecution,
 
-      rerunFailed:
-        rerunFailedExecution,
+      retry:
+        retryFailures,
 
       setSeed,
       resetSeed,
@@ -428,7 +513,7 @@ function installTestifyPlayground(
     'color: green; font-weight: bold;',
   );
   console.log(
-    '💡 Browser console: session.help() · session.tests() · session.rerunFailed()',
+    '💡 Browser console: session.help() · session.tests() · session.retry()',
   );
 
   return session;

@@ -10,6 +10,7 @@ export function normalizeTestifyFilePath(
 ): string {
   return String(file)
     .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
     .replace(/^\/+/, '');
 }
 

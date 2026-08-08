@@ -15,6 +15,7 @@ window.HMRClient = (function() {
 
     return String(filePath)
       .replace(/\\\\/g, '/')
+      .replace(/\\/+/g, '/')
       .replace(/^\\/+/, '');
   }
 
@@ -101,9 +102,7 @@ window.HMRClient = (function() {
     const normalizedFilePath =
       normalizeHmrPath(filePath);
 
-    detachFilePathSuites(
-      normalizedFilePath,
-    );
+    detachFilePathSuites(filePath);
 
     const module =
       await withTestifyRegistrationScope(

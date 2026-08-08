@@ -6,6 +6,7 @@ const __testifyRegistrationScopes = [];
 function normalizeTestifyFilePath(file) {
   return String(file)
     .replace(/\\\\/g, '/')
+    .replace(/\\/+/g, '/')
     .replace(/^\\/+/, '');
 }
 
