@@ -139,3 +139,87 @@ describe('PlanningEngine', () => {
     ]);
   });
 });
+
+describe('PlanningEngine programmable plans', () => {
+  const catalog = {
+    suites: [],
+    specs: [
+      {
+        id: 'spec1',
+        description: 'one',
+        fullName: 'one',
+        file: 'one.spec.ts',
+      },
+      {
+        id: 'spec2',
+        description: 'two',
+        fullName: 'two',
+        file: 'two.spec.ts',
+      },
+    ],
+  };
+
+  it('returns programmable plans on cache hits', () => {
+    const planner =
+      new PlanningEngine(catalog);
+
+    planner.plan();
+
+    const cached =
+      planner.plan();
+
+    expect(
+      cached.tests().map(
+        (test) => test.id,
+      ),
+    ).toEqual([
+      'spec1',
+      'spec2',
+    ]);
+
+    expect(
+      cached.filter(
+        (test) =>
+          test.id === 'spec2',
+      ).specIds,
+    ).toEqual([
+      'spec2',
+    ]);
+  });
+
+  it('preserves plan operations through sharding and partitioning', () => {
+    const planner =
+      new PlanningEngine(catalog);
+    const plan =
+      planner.plan();
+
+    const shard =
+      planner.shard(
+        plan,
+        0,
+        2,
+      );
+
+    expect(
+      shard.tests().map(
+        (test) => test.id,
+      ),
+    ).toEqual([
+      'spec1',
+    ]);
+
+    const partitions =
+      planner.partition(
+        plan,
+        2,
+      );
+
+    expect(
+      partitions[1]
+        .slice(0, 1)
+        .specIds,
+    ).toEqual([
+      'spec2',
+    ]);
+  });
+});

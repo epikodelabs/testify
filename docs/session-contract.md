@@ -399,7 +399,7 @@ But `refresh()` makes the behavior observable and controllable for watch mode an
 
 ## 9. Query surface
 
-`query()` should remain the canonical query API.
+`query()` remains the lower-level catalog query API:
 
 ```ts
 session.query().tests();
@@ -407,43 +407,27 @@ session.query().suites();
 session.query().files();
 ```
 
-The existing convenience methods:
+The Session also exposes one concise discovery vocabulary for direct use and for the browser Playground:
 
 ```ts
-session.listTests();
-session.listSuites();
-session.listFiles();
-
-session.findTests();
-session.findSuites();
-session.findFiles();
+session.tests(selector?);
+session.suites(selector?);
+session.files(selector?);
 ```
 
-should eventually become convenience/UI helpers rather than primary API.
+These methods are the only direct discovery aliases. `list*` and `find*` variants are deliberately not part of the Session surface. An omitted selector lists the current catalog; a string or `RegExp` filters it.
 
-The stable conceptual hierarchy should be:
+The hierarchy remains:
 
 ```text
-session
-  ↓
-query()
-  ↓
-CatalogQuery
+session.tests/suites/files   concise discovery
+            ↓
+        query()              lower-level query object
+            ↓
+       CatalogQuery
 ```
 
-rather than continually adding query methods directly onto Session.
-
-That keeps Session from becoming a giant object.
-
-Preferred usage:
-
-```ts
-session.query().tests(/parser/);
-session.query().suites(/Membrane/);
-session.query().files(/validation/);
-```
-
-No compatibility aliases are required for the Playground surface. The concise `tests()`, `suites()`, and `files()` helpers are intentional controls over the same catalog/query model.
+This keeps the Session easy to use without multiplying synonymous methods.
 
 ---
 
@@ -1187,59 +1171,52 @@ And the architectural hierarchy remains:
 
 ## 26. Browser Playground surface
 
-The browser Playground exposes the live `RunnerSession` directly as `globalThis.session`.
-There is no separate `runner` façade and no compatibility alias.
+The browser Playground exposes the live `RunnerSession` directly as `globalThis.session`. There is no separate `runner` façade and no compatibility alias.
 
-The reusable `RunnerSession` remains the engine boundary. Browser-only controls are attached by the browser runtime rather than added to the reusable class contract:
+The reusable `RunnerSession` remains the engine boundary. Browser-only controls are attached by the browser runtime:
 
 ```ts
 session.help();
 session.last();
-session.lastPlan();
-session.failed();
+session.failures();
 await session.rerun();
-await session.rerunFailed();
+await session.retry();
 session.setSeed(12345);
 session.resetSeed();
 session.reload();
 await session.exit();
 ```
 
-Execution helpers exposed in the Playground keep the `RunnerSession` vocabulary:
+Execution keeps the `RunnerSession` vocabulary:
 
 ```ts
-await session.run();
+await session.run(selector, options);
 await session.runSpec(selector, options);
 await session.runSuite(selector, options);
 await session.runFile(selector, options);
 ```
 
-`session.exit()` is a Playground-to-host command. It asks the Testify host to close the controlled browser, clean up HMR/WebSocket/HTTP resources, and resolve watch mode successfully. `RunnerSession.close()` remains the lower-level programmatic lifecycle operation and is not the user-facing way to leave the Playground.
+Plans are the programmable workload value:
 
-The Playground may retain the last execution result and plan for interactive rerun workflows. This state belongs to the browser Playground layer, not to the reusable `RunnerSession` class, preserving the Session v1 rule that execution history is not fundamental engine state.
+```ts
+const plan = session
+  .planSuite('Forms')
+  .filter(test => /validation/i.test(test.fullName))
+  .slice(0, 10);
 
-
-### Playground implementation boundary
-
-The browser runtime should keep the engine and Playground responsibilities physically separate:
-
-```text
-browser-runtime
-  ├─ Jasmine/browser environment
-  ├─ RunnerSession construction
-  └─ Playground installation
-
-browser-playground-runtime
-  ├─ execution history
-  ├─ rerun helpers
-  ├─ selector diagnostics
-  ├─ console help
-  ├─ seed/reload controls
-  └─ host exit command
+plan.tests();
+await session.execute(plan);
 ```
 
-This is an internal boundary, not another public abstraction. The browser still exposes only `globalThis.session`.
+The Playground follows two UX invariants:
 
-`session.help()` is treated as part of the Playground contract. Playground capability changes must update the help surface and its behavioral test in the same change.
+> **Every value exposed by the Playground should be worth looking at.**
 
-Generated-source assertions should be reserved for embedding and syntax boundaries. Playground behavior should be tested through the installed session surface so internal helper names can change without breaking public-contract tests.
+> **The Playground exposes Testify's powers; it does not invent separate console-only powers.**
+
+Accordingly, discovery collections, plans, execution records, results, and failure collections carry enough non-enumerable identity metadata for DevTools presentation without changing their normal JavaScript behavior or serialized data shape. Empty collections retain their identity as tests, suites, files, or results.
+
+`session.exit()` is a Playground-to-host command. It asks the Testify host to close the controlled browser, clean up HMR/WebSocket/HTTP resources, and resolve watch mode successfully. `RunnerSession.close()` remains the lower-level programmatic lifecycle operation and is not the user-facing way to leave the Playground.
+
+The Playground may retain one last execution record for interactive rerun/retry workflows. This state belongs to the browser Playground layer, not to the reusable `RunnerSession` class, preserving the Session v1 rule that execution history is not fundamental engine state.
+

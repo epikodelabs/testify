@@ -20,6 +20,49 @@ describe('Browser Playground runtime', () => {
     const hostMessages: any[] = [];
     let revision = 1;
 
+    const createPlan = (
+      specIds: string[],
+      source: any,
+      options: any = {},
+    ) => {
+      const descriptors =
+        specIds.map(
+          (id) => ({
+            id,
+            description: id,
+            fullName: id,
+            file: 'fixture.spec.ts',
+          }),
+        );
+
+      const plan: any = {
+        specIds: [...specIds],
+        source,
+        catalogVersion: revision,
+        ...options,
+      };
+
+      plan.tests = () => descriptors;
+      plan.filter = (predicate: any) => {
+        const selected = descriptors.filter(predicate);
+        return createPlan(
+          selected.map((test) => test.id),
+          source,
+          options,
+        );
+      };
+      plan.slice = (start?: number, end?: number) => {
+        const selected = descriptors.slice(start, end);
+        return createPlan(
+          selected.map((test) => test.id),
+          source,
+          options,
+        );
+      };
+
+      return plan;
+    };
+
     const session: any = {
       state: 'ready',
       execute: async (plan: any) => {
@@ -42,35 +85,35 @@ describe('Browser Playground runtime', () => {
           ),
         };
       },
-      plan: (selector?: any, options: any = {}) => ({
-        specIds: ['spec-1'],
-        source: selector === undefined
-          ? { kind: 'all' }
-          : { kind: 'selector', selector },
-        catalogVersion: revision,
-        ...options,
-      }),
-      planSpec: (selector: any, options: any = {}) => ({
-        specIds: ['spec-1'],
-        source: { kind: 'spec', selector },
-        catalogVersion: revision,
-        ...options,
-      }),
-      planSuite: (selector: any, options: any = {}) => ({
-        specIds: ['spec-1'],
-        source: { kind: 'suite', selector },
-        catalogVersion: revision,
-        ...options,
-      }),
-      planFile: (selector: any, options: any = {}) => ({
-        specIds: ['spec-1'],
-        source: { kind: 'file', selector },
-        catalogVersion: revision,
-        ...options,
-      }),
-      findTests: () => [{ id: 'spec-1' }],
-      findSuites: () => [{ id: 'suite-1' }],
-      findFiles: () => [{ file: 'fixture.spec.ts' }],
+      plan: (selector?: any, options: any = {}) =>
+        createPlan(
+          ['failed-spec', 'spec-1'],
+          selector === undefined
+            ? { kind: 'all' }
+            : { kind: 'selector', selector },
+          options,
+        ),
+      planSpec: (selector: any, options: any = {}) =>
+        createPlan(
+          ['spec-1'],
+          { kind: 'spec', selector },
+          options,
+        ),
+      planSuite: (selector: any, options: any = {}) =>
+        createPlan(
+          ['spec-1'],
+          { kind: 'suite', selector },
+          options,
+        ),
+      planFile: (selector: any, options: any = {}) =>
+        createPlan(
+          ['spec-1'],
+          { kind: 'file', selector },
+          options,
+        ),
+      tests: () => [{ id: 'spec-1' }],
+      suites: () => [{ id: 'suite-1' }],
+      files: () => [{ file: 'fixture.spec.ts' }],
       catalog: () => ({
         specs: [
           {
@@ -284,6 +327,28 @@ describe('Browser Playground runtime', () => {
     }
   });
 
+  it('keeps discovery and failure collections observable even when empty', async () => {
+    const harness = createHarness();
+
+    try {
+      const tests =
+        harness.session.tests('missing');
+
+      expect(
+        (tests as any).__testifyCollectionKind,
+      ).toBe('tests');
+
+      const failures =
+        harness.session.failures();
+
+      expect(
+        (failures as any).__testifyCollectionKind,
+      ).toBe('results');
+    } finally {
+      harness.restore();
+    }
+  });
+
   it('sends exit through the host command channel', async () => {
     const harness = createHarness();
 
@@ -315,6 +380,9 @@ describe('Browser Playground runtime', () => {
         'await session.retry()',
         'session.refresh()',
         'session.plan(selector, options)',
+        'plan.tests()',
+        'plan.filter(test => ...)',
+        'plan.slice(start, end)',
         'await session.execute(plan)',
         'await session.exit()',
       ]) {
@@ -325,6 +393,15 @@ describe('Browser Playground runtime', () => {
           ),
         ).toBeTrue();
       }
+
+      expect(
+        help.some(
+          (line: string) =>
+            line.includes(
+              'useful when inspected directly',
+            ),
+        ),
+      ).toBeTrue();
 
       for (const removed of [
         'session.failed()',

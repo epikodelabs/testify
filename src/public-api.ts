@@ -27,6 +27,9 @@ export {
 export type {
   ExecutionPlan,
   ExecutionPlanOptions,
+  ExecutionPlanPredicate,
+  ExecutionPlanTest,
+  PlannedExecution,
 } from './execution-plan';
 
 export {

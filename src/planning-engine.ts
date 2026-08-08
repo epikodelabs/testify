@@ -12,8 +12,10 @@ import {
   createExecutionPlan,
   partitionExecutionPlan,
   shardExecutionPlan,
+  createPlannedExecution,
   type ExecutionPlan,
   type ExecutionPlanOptions,
+  type PlannedExecution,
 } from './execution-plan';
 import {
   CatalogState,
@@ -88,7 +90,7 @@ export class PlanningEngine {
     selector?: TestSelector,
     options:
       ExecutionPlanOptions = {},
-  ): ExecutionPlan {
+  ): PlannedExecution {
     const key =
       createPlanCacheKey(
         this.version,
@@ -102,8 +104,11 @@ export class PlanningEngine {
     if (cached) {
       this.cacheHitsValue++;
 
-      return cloneExecutionPlan(
-        cached,
+      return createPlannedExecution(
+        cloneExecutionPlan(
+          cached,
+        ),
+        this.catalog,
       );
     }
 
@@ -130,6 +135,16 @@ export class PlanningEngine {
   }
 
   shard(
+    plan: PlannedExecution,
+    index: number,
+    count: number,
+  ): PlannedExecution;
+  shard(
+    plan: ExecutionPlan,
+    index: number,
+    count: number,
+  ): ExecutionPlan;
+  shard(
     plan: ExecutionPlan,
     index: number,
     count: number,
@@ -141,6 +156,14 @@ export class PlanningEngine {
     );
   }
 
+  partition(
+    plan: PlannedExecution,
+    count: number,
+  ): PlannedExecution[];
+  partition(
+    plan: ExecutionPlan,
+    count: number,
+  ): ExecutionPlan[];
   partition(
     plan: ExecutionPlan,
     count: number,

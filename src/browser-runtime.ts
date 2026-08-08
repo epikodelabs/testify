@@ -28,6 +28,9 @@ import {
 import {
   getBrowserPlaygroundRuntimeSource,
 } from './browser-playground-runtime';
+import {
+  getBrowserPlaygroundFormattersSource,
+} from './browser-playground-formatters';
 
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
@@ -74,6 +77,9 @@ export function getBrowserRuntimeScript(
   const runnerSessionSource =
     getEmbeddedRunnerSessionSource();
 
+  const playgroundFormattersSource =
+    getBrowserPlaygroundFormattersSource();
+
   const playgroundRuntimeSource =
     getBrowserPlaygroundRuntimeSource();
 
@@ -96,6 +102,8 @@ export function getBrowserRuntimeScript(
   ${planningEngineSource}
 
   ${runnerSessionSource}
+
+  ${playgroundFormattersSource}
 
   ${playgroundRuntimeSource}
 
@@ -429,6 +437,8 @@ export function getBrowserRuntimeScript(
         },
         currentPlanOptions,
       );
+
+    installTestifyPlaygroundFormatters();
 
     installTestifyPlayground(
       session,

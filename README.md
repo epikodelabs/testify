@@ -81,21 +81,28 @@ npx testify --watch           # HMR watch mode (headed only)
 
 ### Playground
 
-In headed watch mode, DevTools exposes the live Testify `session` directly:
+In headed watch mode, DevTools exposes the live Testify `session` directly. The surface is intentionally small: discover tests, shape plans, execute them, inspect the last execution, and control the live session.
 
 ```js
 session.tests()
 session.suites()
+session.files()
 
-const plan = session.planSuite('Forms');
+const plan = session
+  .planSuite('Forms')
+  .filter(test => /validation/i.test(test.fullName));
+
 await session.execute(plan);
 
-session.failed();
-await session.rerunFailed();
+session.last()
+session.failures()
+await session.retry()
 
-session.help();
-await session.exit();
+session.help()
+await session.exit()
 ```
+
+Playground values are designed to be useful when inspected directly in DevTools. Plans remain plain serializable execution data, while Testify adds non-enumerable operations and identity metadata for interactive inspection.
 
 `session.help()` is the authoritative console reference for the current Playground surface.
 

@@ -13,6 +13,30 @@ function installTestifyPlayground(
 
   const executeSessionPlan =
     session.execute.bind(session);
+  const queryTests =
+    session.tests.bind(session);
+  const querySuites =
+    session.suites.bind(session);
+  const queryFiles =
+    session.files.bind(session);
+
+  function observableCollection(
+    kind,
+    values,
+  ) {
+    Object.defineProperty(
+      values,
+      '__testifyCollectionKind',
+      {
+        enumerable: false,
+        configurable: true,
+        writable: false,
+        value: kind,
+      },
+    );
+
+    return values;
+  }
 
   let lastExecution = null;
 
@@ -41,9 +65,7 @@ function installTestifyPlayground(
     return result;
   }
 
-  function collectFailures(
-    print = false,
-  ) {
+  function collectFailures() {
     const failed =
       lastExecution?.result?.specResults?.filter(
         (result) =>
@@ -55,7 +77,10 @@ function installTestifyPlayground(
         '[Testify] Nothing has run yet.',
       );
 
-      return [];
+      return observableCollection(
+        'results',
+        [],
+      );
     }
 
     if (!failed.length) {
@@ -63,31 +88,20 @@ function installTestifyPlayground(
         '[Testify] No failures in the last run.',
       );
 
-      return [];
-    }
-
-    if (print) {
-      console.table(
-        failed.map(
-        (result) => ({
-          id:
-            result.id,
-          name:
-            result.description,
-          fullName:
-            result.fullName ?? '',
-          failures:
-            result.failedExpectations?.length ?? 0,
-        }),
-        ),
+      return observableCollection(
+        'results',
+        [],
       );
     }
 
-    return failed;
+    return observableCollection(
+      'results',
+      failed,
+    );
   }
 
   function getFailures() {
-    return collectFailures(true);
+    return collectFailures();
   }
 
   function resolveFailureSpecIds(
@@ -169,16 +183,20 @@ function installTestifyPlayground(
           return null;
         }
 
-        return {
-          specIds,
-          ...currentPlanOptions(),
-          source: {
-            kind: 'selector',
-            selector: undefined,
-          },
-          catalogVersion:
-            session.revision(),
-        };
+        const selectedIds =
+          new Set(specIds);
+
+        return session
+          .plan(
+            undefined,
+            currentPlanOptions(),
+          )
+          .filter(
+            (test) =>
+              selectedIds.has(
+                test.id,
+              ),
+          );
       }
 
       case 'plan':
@@ -302,8 +320,15 @@ function installTestifyPlayground(
         '[Testify] ' + matches.length + ' ' + kind + 's matched ' + formatSelector(selector) + '.',
       );
 
-      console.table(
-        matches,
+      console.info(
+        observableCollection(
+          kind === 'spec'
+            ? 'tests'
+            : kind === 'suite'
+              ? 'suites'
+              : 'files',
+          matches,
+        ),
       );
     }
 
@@ -327,27 +352,30 @@ function installTestifyPlayground(
       'Testify Playground session',
       '',
       'Discover',
-      '  session.tests()                         List tests; optional string/RegExp selector',
-      '  session.suites()                        List suites; optional string/RegExp selector',
-      '  session.files()                         List files; optional string/RegExp selector',
+      '  session.tests(selector?)                 Tests in the current catalog',
+      '  session.suites(selector?)                Suites in the current catalog',
+      '  session.files(selector?)                 Files in the current catalog',
       '',
       'Run',
-      '  await session.run(selector, options)    New intent → fresh plan → execute',
-      "  await session.runSpec('<spec>', options)",
-      "  await session.runSuite('<suite>', options)",
-      "  await session.runFile('<file>', options)",
-      '  await session.rerun()                   Previous intent → fresh plan → execute',
-      '  await session.retry()                   Previous failures → fresh plan → execute',
+      '  await session.run(selector?, options?)   New intent → fresh plan → execute',
+      "  await session.runSpec('<spec>', options?)",
+      "  await session.runSuite('<suite>', options?)",
+      "  await session.runFile('<file>', options?)",
+      '  await session.rerun()                    Previous intent → fresh plan → execute',
+      '  await session.retry()                    Previous failures → fresh plan → execute',
       '',
       'Inspect',
-      '  session.last()                          Last execution record: plan, result, intent, revision',
-      '  session.failures()                      Failures from the last execution',
+      '  session.last()                           Last execution record',
+      '  session.failures()                       Failures from the last execution',
       '',
       'Plan',
-      '  session.plan(selector, options)          Resolve intent without executing',
-      '  session.planSpec(selector, options)',
-      '  session.planSuite(selector, options)',
-      '  session.planFile(selector, options)',
+      '  session.plan(selector?, options?)        Resolve intent without executing',
+      '  session.planSpec(selector, options?)',
+      '  session.planSuite(selector, options?)',
+      '  session.planFile(selector, options?)',
+      '  plan.tests()                             Exact tests selected by the plan',
+      '  plan.filter(test => ...)                 Create a filtered plan',
+      '  plan.slice(start, end)                   Create a positional subset',
       '  await session.execute(plan)              Execute this exact plan',
       '  session.shard(plan, index, count)',
       '  session.partition(plan, count)',
@@ -358,17 +386,12 @@ function installTestifyPlayground(
       '  session.revision()',
       '  session.changes()',
       '  session.refresh()',
-      '  session.planningStats()',
-      '',
-      'Advanced',
-      '  session.query()',
-      '  session.catalog()',
-      '  session.index()',
-      '  session.invalidatePlans()',
       '  session.setSeed(12345)',
       '  session.resetSeed()',
       '  session.reload()',
       '  await session.exit()',
+      '',
+      'Every Playground value is designed to be useful when inspected directly.',
     ];
 
     console.log(
@@ -383,6 +406,24 @@ function installTestifyPlayground(
     {
       help:
         printSessionHelp,
+
+      tests: (selector) =>
+        observableCollection(
+          'tests',
+          queryTests(selector),
+        ),
+
+      suites: (selector) =>
+        observableCollection(
+          'suites',
+          querySuites(selector),
+        ),
+
+      files: (selector) =>
+        observableCollection(
+          'files',
+          queryFiles(selector),
+        ),
 
       execute: (plan) =>
         executeRecordedPlan(
@@ -425,13 +466,13 @@ function installTestifyPlayground(
           selector,
           options,
           (value) =>
-            session.findTests(value),
+            session.tests(value),
           (value, nextOptions) =>
             session.planSpec(
               value,
               nextOptions,
             ),
-          'session.tests() or session.query().tests(...)',
+          'session.tests(...)',
         ),
 
       runSuite: (
@@ -443,13 +484,13 @@ function installTestifyPlayground(
           selector,
           options,
           (value) =>
-            session.findSuites(value),
+            session.suites(value),
           (value, nextOptions) =>
             session.planSuite(
               value,
               nextOptions,
             ),
-          'session.suites() or session.query().suites(...)',
+          'session.suites(...)',
         ),
 
       runFile: (
@@ -461,13 +502,13 @@ function installTestifyPlayground(
           selector,
           options,
           (value) =>
-            session.findFiles(value),
+            session.files(value),
           (value, nextOptions) =>
             session.planFile(
               value,
               nextOptions,
             ),
-          'session.files() or session.query().files(...)',
+          'session.files(...)',
         ),
 
       last: () =>

@@ -84,7 +84,7 @@ describe('RunnerSession HMR lifecycle', () => {
       ]);
 
     expect(
-      session.listTests().map(
+      session.tests().map(
         (test) => test.id,
       ),
     ).toEqual([
@@ -141,7 +141,7 @@ describe('RunnerSession HMR lifecycle', () => {
       ]);
 
     expect(
-      session.listTests().map(
+      session.tests().map(
         (test) => test.id,
       ),
     ).toEqual([
@@ -149,7 +149,7 @@ describe('RunnerSession HMR lifecycle', () => {
     ]);
 
     expect(
-      session.findTests(
+      session.tests(
         'spec 1',
       ),
     ).toEqual([]);

@@ -80,35 +80,6 @@ describe('RunnerSession', () => {
     expect(plan.seed).toBe(42);
   });
 
-  it('queries catalog through the shared session', () => {
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-      );
-
-    expect(
-      session.listTests(),
-    ).toHaveSize(1);
-
-    expect(
-      session.listSuites(),
-    ).toHaveSize(1);
-
-    expect(
-      session.listFiles(),
-    ).toEqual([
-      {
-        file: 'forms.spec.mjs',
-        specs: 1,
-      },
-    ]);
-  });
-
   it('exposes concise Playground discovery methods', () => {
     const session =
       new RunnerSession(
@@ -161,36 +132,6 @@ describe('RunnerSession', () => {
         'spec1',
       )?.description,
     ).toBe('works');
-  });
-
-  it('queries indexed text through the session', () => {
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-      );
-
-    expect(
-      session.findTests(
-        'works',
-      )[0]?.id,
-    ).toBe('spec1');
-
-    expect(
-      session.findSuites(
-        'Forms',
-      )[0]?.id,
-    ).toBe('suite1');
-
-    expect(
-      session.findFiles(
-        /forms/,
-      )[0]?.file,
-    ).toBe('forms.spec.mjs');
   });
 
   it('reports session stats', () => {

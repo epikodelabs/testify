@@ -4,26 +4,21 @@ import {
 import type {
   TestCatalog,
 } from './test-catalog';
-import {
-  findCatalogSpecs,
-  findCatalogSuites,
-  type TestSelector,
+import type {
+  TestSelector,
 } from './test-selection';
 import type {
   ExecutionPlan,
   ExecutionPlanOptions,
+  PlannedExecution,
 } from './execution-plan';
-import {
-  listCatalogFiles,
-  listCatalogSuites,
-  listCatalogTests,
-  type FileListRow,
-  type SuiteListRow,
-  type TestListRow,
+import type {
+  FileListRow,
+  SuiteListRow,
+  TestListRow,
 } from './catalog-query';
-import {
-  searchIndexEntries,
-  type TestCatalogIndex,
+import type {
+  TestCatalogIndex,
 } from './test-catalog-index';
 import {
   PlanningEngine,
@@ -178,76 +173,6 @@ export class RunnerSession<TResult> {
     );
   }
 
-  listTests(): TestListRow[] {
-    return listCatalogTests(
-      this.catalog(),
-    );
-  }
-
-  listSuites(): SuiteListRow[] {
-    return listCatalogSuites(
-      this.catalog(),
-    );
-  }
-
-  listFiles(): FileListRow[] {
-    return listCatalogFiles(
-      this.catalog(),
-    );
-  }
-
-  findTests(
-    selector: string | RegExp,
-  ): TestListRow[] {
-    const catalog =
-      this.catalog();
-
-    const selectedIds =
-      new Set(
-        findCatalogSpecs(
-          catalog,
-          selector,
-        ).map(
-          (spec) => spec.id,
-        ),
-      );
-
-    return listCatalogTests(
-      catalog,
-    ).filter(
-      (row) =>
-        selectedIds.has(
-          row.id,
-        ),
-    );
-  }
-
-  findSuites(
-    selector: string | RegExp,
-  ): SuiteListRow[] {
-    const catalog =
-      this.catalog();
-
-    const selectedIds =
-      new Set(
-        findCatalogSuites(
-          catalog,
-          selector,
-        ).map(
-          (suite) => suite.id,
-        ),
-      );
-
-    return listCatalogSuites(
-      catalog,
-    ).filter(
-      (row) =>
-        selectedIds.has(
-          row.id,
-        ),
-    );
-  }
-
   stats(): {
     specs: number;
     suites: number;
@@ -262,34 +187,10 @@ export class RunnerSession<TResult> {
     };
   }
 
-  findFiles(
-    selector: string | RegExp,
-  ): FileListRow[] {
-    const index =
-      this.index();
-
-    const fileIds =
-      new Set(
-        searchIndexEntries(
-          index.fileSearch,
-          selector,
-        ),
-      );
-
-    return listCatalogFiles(
-      this.catalog(),
-    ).filter(
-      (row) =>
-        fileIds.has(
-          row.file,
-        ),
-    );
-  }
-
   plan(
     selector?: TestSelector,
     options: ExecutionPlanOptions = {},
-  ): ExecutionPlan {
+  ): PlannedExecution {
     this.refresh();
 
     return this.planner.plan(
@@ -304,7 +205,7 @@ export class RunnerSession<TResult> {
   planSpec(
     selector: string | RegExp,
     options: ExecutionPlanOptions = {},
-  ): ExecutionPlan {
+  ): PlannedExecution {
     return this.plan(
       { spec: selector },
       options,
@@ -314,7 +215,7 @@ export class RunnerSession<TResult> {
   planSuite(
     selector: string | RegExp,
     options: ExecutionPlanOptions = {},
-  ): ExecutionPlan {
+  ): PlannedExecution {
     return this.plan(
       { suite: selector },
       options,
@@ -324,13 +225,23 @@ export class RunnerSession<TResult> {
   planFile(
     selector: string | RegExp,
     options: ExecutionPlanOptions = {},
-  ): ExecutionPlan {
+  ): PlannedExecution {
     return this.plan(
       { file: selector },
       options,
     );
   }
 
+  shard(
+    plan: PlannedExecution,
+    index: number,
+    count: number,
+  ): PlannedExecution;
+  shard(
+    plan: ExecutionPlan,
+    index: number,
+    count: number,
+  ): ExecutionPlan;
   shard(
     plan: ExecutionPlan,
     index: number,
@@ -345,6 +256,14 @@ export class RunnerSession<TResult> {
     );
   }
 
+  partition(
+    plan: PlannedExecution,
+    count: number,
+  ): PlannedExecution[];
+  partition(
+    plan: ExecutionPlan,
+    count: number,
+  ): ExecutionPlan[];
   partition(
     plan: ExecutionPlan,
     count: number,

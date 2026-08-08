@@ -16,6 +16,10 @@ describe('Browser runtime', () => {
     );
 
     expect(source).toContain(
+      'installTestifyPlaygroundFormatters();',
+    );
+
+    expect(source).toContain(
       'installTestifyPlayground(',
     );
   });
