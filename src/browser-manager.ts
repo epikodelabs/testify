@@ -189,12 +189,21 @@ export class BrowserManager {
       if (browser && browser.isConnected()) {
         await browser.close().catch(() => {});
       }
+      this.clearBrowserState();
       if (error.code === 'MODULE_NOT_FOUND') {
         logger.println(BrowserMessages.playwrightNotInstalledManual(url));
         logger.println(BrowserMessages.playwrightAutoOpenTip());
+        throw new ExitCodeError(
+          EXIT_CODES.CONFIG_ERROR,
+          'Playwright is not installed',
+        );
       } else {
         logger.error(BrowserMessages.failedToOpenBrowser(error.message));
         logger.println(BrowserMessages.openBrowserManually(url));
+        throw new ExitCodeError(
+          EXIT_CODES.INTERNAL_ERROR,
+          error.message ?? 'Failed to open browser',
+        );
       }
     }
   }

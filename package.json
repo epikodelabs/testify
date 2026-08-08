@@ -45,7 +45,6 @@
   },
   "homepage": "https://github.com/epikodelabs/testify#readme",
   "dependencies": {
-    "@epikodelabs/testify": "file:epikodelabs-testify-1.0.37.tgz",
     "chokidar": "^5.0.0",
     "esbuild": "^0.28.1",
     "glob": "^13.0.6",
