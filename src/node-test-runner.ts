@@ -48,7 +48,7 @@ export class NodeTestRunner {
    * Generate in-process test runner entry file that:
    * - Bootstraps Jasmine
    * - Imports compiled spec bundles
-   * - Exposes a stable API: runTests, getOrderedSpecs/Suites, getTestCounts
+   * - Exposes the stable API used by the host runner
    */
   generateTestRunner(): void {
     const outDir = this.config.outDir;
@@ -139,25 +139,6 @@ ${jasmineRuntimeSource}
 
 // Jasmine runtime
 let jasmineRuntime = null;
-
-// ---------------------------
-// Introspection helpers
-// ---------------------------
-export function getAllSpecs() {
-  return jasmineRuntime?.utils.getAllSpecs() ?? [];
-}
-
-export function getAllSuites() {
-  return jasmineRuntime?.utils.getAllSuites() ?? [];
-}
-
-export function getOrderedSpecs(seed, random) {
-  return jasmineRuntime?.utils.getOrderedSpecs(seed, random) ?? [];
-}
-
-export function getOrderedSuites(seed, random) {
-  return jasmineRuntime?.utils.getOrderedSuites(seed, random) ?? [];
-}
 
 // ---------------------------
 // Main runTests entrypoint
