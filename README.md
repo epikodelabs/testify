@@ -1,8 +1,8 @@
 # testify
 
-A programmable test engine for Jasmine that runs tests in **real browsers** (Chrome, Firefox, Safari) or **Node.js**, with TypeScript, HMR, and code coverage out of the box.
+Testify is a test execution engine for real browsers and Node.js. It gives you a simple path from install to running specs, then layers on smart features like watch mode, HMR, coverage, and a live browser Playground when you need them.
 
-**Testify is an execution engine for tests. Jasmine is one test language hosted by it.**
+Jasmine is the test language Testify currently hosts. Testify owns discovery, planning, runtime control, and execution. Jasmine owns `describe` and `it`. That split is what lets the same specs run in Node.js for speed or in a real browser when the DOM starts making demands.
 
 <p align="center">
   <a href="https://github.com/epikodelabs/testify/actions/workflows/build.yml"><img src="https://github.com/epikodelabs/testify/actions/workflows/build.yml/badge.svg?branch=main" alt="Build Status"></a>
@@ -14,12 +14,13 @@ A programmable test engine for Jasmine that runs tests in **real browsers** (Chr
 
 ## Highlights
 
-- 🌐 Real browser testing (Chrome, Firefox, Safari) — not JSDOM
-- ⚡ Node.js mode for fast unit tests
-- 🔥 Hot Module Reload in headed browser mode
-- 📦 TypeScript + source maps, zero config
-- 📊 Istanbul coverage (HTML, LCOV, text)
-- 🎯 VS Code debug support for single specs
+- **Real browser testing** in Chrome, Firefox, and WebKit. No simulated DOM pretending to be brave.
+- **Fast Node.js execution** for specs that do not need a browser at all.
+- **Watch mode with HMR** so source and spec edits show up quickly without full-page drama.
+- **TypeScript and source maps** out of the box for readable stacks and reliable breakpoints.
+- **Code coverage** in HTML, LCOV, and text formats.
+- **Single-spec debugging** when one stubborn test needs a private conversation.
+- **A live Playground** in DevTools for inspecting tests, shaping plans, rerunning failures, and exploring the session interactively.
 
 ---
 
@@ -27,24 +28,26 @@ A programmable test engine for Jasmine that runs tests in **real browsers** (Chr
 
 ```bash
 npm install --save-dev @epikodelabs/testify
-npx playwright install        # required for browser testing
+npx playwright install
 ```
 
-`npm install` does not run a Testify postinstall script or modify your project. Browser binaries are installed separately and only when you run `npx playwright install`.
+`npm install` does not run a Testify postinstall script or quietly reshape your project. Browser binaries are installed only when you ask for them.
 
 ---
 
 ## Quick Start
 
 ```bash
-npx testify init              # creates testify.json and configures Jasmine types when needed
+npx testify
 ```
 
-Write tests as normal `.spec.ts` Jasmine specs:
+Testify is meant to be useful immediately. Install it, point it at your specs, and run.
+
+Write ordinary Jasmine specs:
 
 ```typescript
 // tests/calculator.spec.ts
-import { Calculator } from '../src/calculator';
+import { Calculator } from '@contoso/calculator';
 
 describe('Calculator', () => {
   it('should add', () => {
@@ -53,14 +56,14 @@ describe('Calculator', () => {
 });
 ```
 
-Run:
+Run them in the mode that fits the moment:
 
 ```bash
-npx testify                   # interactive browser mode
-npx testify --headless        # headless Chrome (CI)
-npx testify --browser node            # fastest, Node.js only
-npx testify --coverage        # with code coverage
-npx testify --watch           # HMR watch mode (headed only)
+npx testify
+npx testify --headless
+npx testify --browser node
+npx testify --coverage
+npx testify --watch
 ```
 
 ---
@@ -74,39 +77,62 @@ npx testify --watch           # HMR watch mode (headed only)
 | Node.js | `npx testify --browser node` | Fast unit tests |
 | Watch | `npx testify --watch` | Rapid iteration |
 
-**Notes:**
-- `--watch` requires headed browser mode; incompatible with `--headless`, `--coverage`, and `--browser node`.
+Notes:
+- `--watch` requires headed browser mode and is incompatible with `--headless`, `--coverage`, and `--browser node`.
 - `--coverage` is incompatible with `--watch`.
-- Suppress logs in Node mode: `--silent`, `--quiet`, or `"suppressConsoleLogs": true` in config.
+- If Node mode gets chatty, use `--silent` or `--quiet`.
 
 ### Playground
 
-In headed watch mode, DevTools exposes the live Testify `session` directly. The surface is intentionally small: discover tests, shape plans, execute them, inspect the last execution, and control the live session.
+In headed watch mode, DevTools gets a live `session` object. The console stops being a dump of log lines and becomes a control surface.
+
+Start by seeing what exists:
 
 ```js
 session.tests()
 session.suites()
 session.files()
-
-const plan = session
-  .planSuite('Forms')
-  .filter(test => /validation/i.test(test.fullName));
-
-await session.execute(plan);
-
-session.last()
-session.failures()
-await session.retry()
-
-session.help()
-await session.exit()
 ```
 
-Playground values are designed to be useful when inspected directly in DevTools. Plans remain plain serializable execution data, while Testify adds non-enumerable operations and identity metadata for interactive inspection.
+Build a plan:
 
-`session.help()` is the authoritative console reference for the current Playground surface.
+```js
+const plan = session
+  .plan()
+  .filter(test => /validation/i.test(test.fullName));
+```
 
-Architecture rule: **one concept → one vocabulary → one owner**. See `docs/architecture-vocabulary.md` for the frozen Session/Plan/Result terminology.
+Run it:
+
+```js
+await session.execute(plan);
+```
+
+Inspect what happened:
+
+```js
+session.last()
+session.failures()
+```
+
+Repeat the whole thing or just the failures:
+
+```js
+await session.rerun()
+await session.retry()
+```
+
+Need the live reference:
+
+```js
+session.help()
+```
+
+Done for now:
+
+```js
+await session.exit()
+```
 
 ---
 
@@ -116,17 +142,17 @@ Architecture rule: **one concept → one vocabulary → one owner**. See `docs/a
 npx testify --coverage
 ```
 
-Generates `coverage/index.html`, `coverage/lcov.info`, and a console text summary.
+This produces `coverage/index.html`, `coverage/lcov.info`, and a console summary.
 
 ---
 
 ## Single Spec Debugging
 
-Run `npx jasmine init` to configure Jasmine typings (when an explicit `compilerOptions.types` list is present) and create/update the VS Code single-spec launch configuration. The command is idempotent.
+Run `npx jasmine init` once to prepare single-spec debugging and editor support. After that, the path from failing test to breakpoint is short and predictable.
 
-The Jasmine CLI uses `tsx` with the nearest `tsconfig.json`. Testify also resolves extensionless relative files and directory indexes, so imports such as `../lib`, `../lib/forms`, and `./helper` work like they do in the browser/Vite runner.
+The Jasmine CLI uses `tsx` and the nearest TypeScript project settings automatically. Testify also resolves extensionless relative files and directory indexes the same way the browser runner does, so imports like `../lib`, `../lib/forms`, and `./helper` behave consistently across runners.
 
-Run one spec with the bundled Jasmine CLI:
+To run one spec directly:
 
 ```bash
 node --enable-source-maps \
@@ -134,74 +160,7 @@ node --enable-source-maps \
   --spec ./tests/example.spec.ts
 ```
 
-**VS Code `launch.json`:**
-
-```json
-{
-  "type": "node",
-  "request": "launch",
-  "name": "Debug current spec",
-  "runtimeExecutable": "node",
-  "runtimeArgs": ["--enable-source-maps"],
-  "program": "${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine",
-  "args": ["--spec", "${file}"],
-  "cwd": "${workspaceFolder}",
-  "console": "integratedTerminal",
-  "skipFiles": ["<node_internals>/**"]
-}
-```
-
----
-
-## Configuration (`testify.json`)
-
-```json
-{
-  "srcDirs": ["./src"],
-  "testDirs": ["./tests"],
-  "outDir": "./dist/.vite-jasmine-build",
-  "browser": "chrome",
-  "headless": false,
-  "port": 8888,
-  "coverage": false,
-  "watch": false,
-  "suppressConsoleLogs": false,
-  "tsconfig": "tsconfig.json",
-  "jasmineConfig": {
-    "env": { "random": true, "timeout": 120000 }
-  },
-  "htmlOptions": {
-    "title": "Jasmine Test Runner",
-    "preludeModules": []
-  },
-  "viteConfig": {
-    "resolve": { "alias": { "@": "/src" } }
-  }
-}
-```
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `srcDirs` | `string[]` | `["./src"]` | Source directories |
-| `testDirs` | `string[]` | `["./tests"]` | Test directories |
-| `exclude` | `string[]` | `["**/node_modules/**"]` | Exclude patterns |
-| `outDir` | `string` | `"./dist/.vite-jasmine-build"` | Build output |
-| `browser` | `string` | `"chrome"` | `chrome`, `firefox`, `webkit`, `node` |
-| `headless` | `boolean` | `false` | Headless mode |
-| `port` | `number` | `8888` | Dev server port |
-| `coverage` | `boolean` | `false` | Enable coverage |
-| `watch` | `boolean` | `false` | Watch mode with HMR |
-| `suppressConsoleLogs` | `boolean` | `false` | Hide spec console output (Node) |
-| `preserveOutputs` | `boolean` | `false` | Skip regenerating existing outputs |
-| `tsconfig` | `string` | `"tsconfig.json"` | TypeScript config path |
-| `jasmineConfig` | `object` | — | Jasmine env options |
-| `viteConfig` | `object` | — | Custom Vite config |
-
-| `htmlOptions` | `object` | — | Browser runner HTML options like `title` and `preludeModules` |
-
-Path aliases from `tsconfig.json` are resolved automatically.
-
-`htmlOptions.preludeModules` imports setup modules before specs run in both browser and Node runners without preloading every source entry at startup.
+Then you can debug exactly that spec in VS Code instead of marching the whole suite into the room.
 
 ---
 
@@ -216,7 +175,6 @@ Path aliases from `tsconfig.json` are resolved automatically.
 | `--seed <n>` | Randomization seed |
 | `--silent` / `--quiet` | Suppress console logs (Node) |
 | `--preserve` | Skip regenerating outputs |
-| `--config <path>` | Custom config file |
 | `--help` | Show help |
 
 **Exit codes:** `0` success, `1` failures, `2` invalid usage, `3` config error, `4` internal error, `130` SIGINT, `143` SIGTERM.
@@ -224,6 +182,8 @@ Path aliases from `tsconfig.json` are resolved automatically.
 ---
 
 ## CI/CD Example
+
+A typical pipeline runs the fast Node.js suite first, then follows it with a slower headless browser pass plus coverage:
 
 ```yaml
 name: Tests
@@ -243,27 +203,14 @@ jobs:
 
 ---
 
-## Comparison
-
-| Feature | testify | Jest | Vitest | Karma |
-|---------|---------|------|--------|-------|
-| Real browser testing | ✅ | ❌ | ❌ | ✅ |
-| Node.js execution | ✅ | ✅ | ✅ | ❌ |
-| HMR | ✅ | ✅ | ✅ | ❌ |
-| TypeScript (zero config) | ✅ | ✅ | ✅ | ⚠️ Plugin |
-| Code coverage | ✅ | ✅ | ✅ | ✅ |
-| Jasmine framework | ✅ | ❌ | ❌ | ✅ |
-
----
-
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
 | Browser not found | `npx playwright install` |
-| Port in use | Change `"port"` in `testify.json` |
-| No tests found | Check `testDirs`, `.spec.ts` extension, and `exclude` patterns |
-| TS errors | Verify `tsconfig.json` and `tsconfig` path in `testify.json` |
+| Port in use | Pick a different port with `--port` |
+| No tests found | Check your spec locations, `.spec.ts` extension, and excludes |
+| TS errors | Make sure your TypeScript project resolves imports correctly |
 | Watch not working | Requires headed mode; incompatible with `--headless`, `--coverage`, `node` |
 | Coverage missing | Use `--coverage`; incompatible with `--watch` |
 
@@ -271,9 +218,9 @@ jobs:
 
 ## License
 
-MIT © 2026
+MIT (c) 2026
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@epikodelabs/testify">Install from NPM</a> •
+  <a href="https://www.npmjs.com/package/@epikodelabs/testify">Install from NPM</a> -
   <a href="https://github.com/epikodelabs/testify">View on GitHub</a>
 </p>
