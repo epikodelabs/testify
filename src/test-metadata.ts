@@ -5,6 +5,14 @@ export interface TestifyItemMetadata {
 const metadataByItem =
   new WeakMap<object, TestifyItemMetadata>();
 
+export function normalizeTestifyFilePath(
+  file: string,
+): string {
+  return String(file)
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+}
+
 export function setTestifyMetadata(
   item: object,
   metadata: TestifyItemMetadata,
@@ -48,7 +56,12 @@ export function setTestifyFile(
 
   setTestifyMetadata(
     item as object,
-    { file },
+    {
+      file:
+        normalizeTestifyFilePath(
+          file,
+        ),
+    },
   );
 }
 
@@ -58,13 +71,16 @@ export function getTestifyFile(
   return getTestifyMetadata(item)?.file;
 }
 
-
 const registrationScopes: string[] = [];
 
 export function beginTestifyRegistrationScope(
   file: string,
 ): void {
-  registrationScopes.push(file);
+  registrationScopes.push(
+    normalizeTestifyFilePath(
+      file,
+    ),
+  );
 }
 
 export function endTestifyRegistrationScope(): void {

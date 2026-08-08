@@ -3,6 +3,12 @@ export function getEmbeddedTestMetadataSource(): string {
 const __testifyMetadataByItem = new WeakMap();
 const __testifyRegistrationScopes = [];
 
+function normalizeTestifyFilePath(file) {
+  return String(file)
+    .replace(/\\\\/g, '/')
+    .replace(/^\\/+/, '');
+}
+
 function setTestifyMetadata(item, metadata) {
   if (!item || (typeof item !== 'object' && typeof item !== 'function')) {
     return;
@@ -26,7 +32,9 @@ function getTestifyMetadata(item) {
 }
 
 function setTestifyFile(item, file) {
-  setTestifyMetadata(item, { file });
+  setTestifyMetadata(item, {
+    file: normalizeTestifyFilePath(file),
+  });
 }
 
 function getTestifyFile(item) {
@@ -34,7 +42,9 @@ function getTestifyFile(item) {
 }
 
 function beginTestifyRegistrationScope(file) {
-  __testifyRegistrationScopes.push(file);
+  __testifyRegistrationScopes.push(
+    normalizeTestifyFilePath(file),
+  );
 }
 
 function endTestifyRegistrationScope() {

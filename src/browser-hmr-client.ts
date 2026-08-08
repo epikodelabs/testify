@@ -1,14 +1,31 @@
 export function getBrowserHmrClientScript(): string {
-    return `
+  return `
 // HMR Client Runtime
 window.HMRClient = (function() {
   const moduleRegistry = new Map();
-  
+
+  function normalizeHmrPath(filePath) {
+    if (
+      typeof normalizeTestifyFilePath === 'function'
+    ) {
+      return normalizeTestifyFilePath(
+        filePath,
+      );
+    }
+
+    return String(filePath)
+      .replace(/\\\\/g, '/')
+      .replace(/^\\/+/, '');
+  }
+
   function getEnv() {
     return window.jasmine?.getEnv?.();
   }
 
   function detachFilePathSuites(filePath) {
+    const normalizedFilePath =
+      normalizeHmrPath(filePath);
+
     const env = getEnv();
     if (!env) return;
 
@@ -21,13 +38,23 @@ window.HMRClient = (function() {
 
     const specIds = new Set(
       catalog.specs
-        .filter(spec => spec.file === filePath)
+        .filter(
+          (spec) =>
+            normalizeHmrPath(
+              spec.file ?? '',
+            ) === normalizedFilePath,
+        )
         .map(spec => spec.id)
     );
 
     const suiteIds = new Set(
       catalog.suites
-        .filter(suite => suite.file === filePath)
+        .filter(
+          (suite) =>
+            normalizeHmrPath(
+              suite.file ?? '',
+            ) === normalizedFilePath,
+        )
         .map(suite => suite.id)
     );
 
@@ -65,31 +92,38 @@ window.HMRClient = (function() {
     }
 
     cleanSuite(topSuite);
-    console.log(\`🧹 Detached catalog entries for file: \${filePath}\`);
+    console.log(
+      \`🧹 Detached catalog entries for file: \${normalizedFilePath}\`
+    );
   }
 
   async function hotUpdateSpec(filePath) {
-    detachFilePathSuites(filePath);
+    const normalizedFilePath =
+      normalizeHmrPath(filePath);
+
+    detachFilePathSuites(
+      normalizedFilePath,
+    );
 
     const module =
       await withTestifyRegistrationScope(
-        filePath,
+        normalizedFilePath,
         () =>
           import(
             '/' +
-            filePath +
+            normalizedFilePath +
             \`?t=\${Date.now()}\`
           ),
       );
 
     moduleRegistry.set(
-      filePath,
+      normalizedFilePath,
       module,
     );
 
     console.log(
       '✅ Hot updated Jasmine registrations from:',
-      filePath,
+      normalizedFilePath,
     );
 
     return module;
@@ -114,36 +148,47 @@ window.HMRClient = (function() {
         return;
       }
 
-      if (update.type === 'test-remove') {
-        detachFilePathSuites(
+      const updatePath =
+        normalizeHmrPath(
           update.path,
         );
 
+      if (update.type === 'test-remove') {
+        detachFilePathSuites(
+          updatePath,
+        );
+
         moduleRegistry.delete(
-          update.path,
+          updatePath,
         );
 
         console.log(
           '🗑️ Removed test registrations:',
-          update.path,
+          updatePath,
         );
 
         return;
       }
 
-      console.log('🔥 Hot updating:', update.path);
+      console.log(
+        '🔥 Hot updating:',
+        updatePath,
+      );
 
       try {
         await hotUpdateSpec(
-          update.path,
+          updatePath,
         );
 
         console.log(
           '✅ HMR update applied:',
-          update.path,
+          updatePath,
         );
       } catch (err) {
-        console.error('❌ HMR update failed:', err);
+        console.error(
+          '❌ HMR update failed:',
+          err,
+        );
         location.reload();
       }
     }
@@ -153,10 +198,17 @@ window.HMRClient = (function() {
     handleMessage,
     detachFilePathSuites,
     clearCache: (filePath) => {
-      if (filePath) moduleRegistry.delete(filePath);
-      else moduleRegistry.clear();
+      if (filePath) {
+        moduleRegistry.delete(
+          normalizeHmrPath(
+            filePath,
+          ),
+        );
+      } else {
+        moduleRegistry.clear();
+      }
     }
   };
 })();
 `;
-  }
+}

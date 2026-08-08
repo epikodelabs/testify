@@ -505,7 +505,10 @@ export class HmrManager extends EventEmitter {
         const output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
         logger.println(HmrMessages.fileAdded(capitalize(fileType), output));
         
-        this.queueRebuild(filePath, 'add');
+        await this.queueRebuild(
+          filePath,
+          'add',
+        );
       }
     }).catch(error => {
       logger.error(HmrMessages.errorInHandleFileAdd(error));

@@ -25,9 +25,6 @@ import {
 import {
   summarizeExecutionResults,
 } from './execution-result';
-import {
-  getEmbeddedNameHelperSource,
-} from './embedded-source';
 
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
@@ -46,9 +43,6 @@ export function getBrowserRuntimeScript(
 
   const catalogSource =
     getEmbeddedTestCatalogSource();
-
-  const nameHelperSource =
-    getEmbeddedNameHelperSource();
 
   const catalogIndexSource =
     getEmbeddedTestCatalogIndexSource();
@@ -79,8 +73,6 @@ export function getBrowserRuntimeScript(
 
   return `
 (function(globalThis) {
-  ${nameHelperSource}
-
   ${catalogSource}
 
   ${catalogIndexSource}
@@ -477,140 +469,281 @@ export function getBrowserRuntimeScript(
         currentPlanOptions,
       );
 
-    function printSessionHelp() {
-      const sections = [
-        {
-          title: 'Discover',
-          commands: [
-            'session.tests()',
-            'session.suites()',
-            'session.files()',
-          ],
-        },
-        {
-          title: 'Run',
-          commands: [
-            'await session.run(selector, options)',
-            "await session.runSpec('spec id or text', options)",
-            "await session.runSuite('suite id or text', options)",
-            "await session.runFile('file name or text', options)",
-          ],
-        },
-        {
-          title: 'Session',
-          commands: [
-            'session.state',
-            'session.stats()',
-            'session.revision()',
-            'session.changes()',
-            'session.refresh()',
-            'session.planningStats()',
-          ],
-        },
-        {
-          title: 'Plan',
-          commands: [
-            'session.plan(selector, options)',
-            'session.planSpec(selector, options)',
-            'session.planSuite(selector, options)',
-            'session.planFile(selector, options)',
-            'await session.execute(plan)',
-            'session.shard(plan, index, count)',
-            'session.partition(plan, count)',
-          ],
-        },
-        {
-          title: 'Advanced',
-          commands: [
-            'session.query()',
-            'session.catalog()',
-            'session.index()',
-            'session.invalidatePlans()',
-            'session.setSeed(12345)',
-            'session.resetSeed()',
-            'session.reload()',
-            'await session.exit()',
-          ],
-        },
-      ];
+    const warnDeprecated = (() => {
+      const shown = new Set();
 
-      const lines = [
-        'Testify Playground session',
-        ...sections.flatMap(
-          (section) => [
-            '',
-            section.title,
-            ...section.commands.map(
-              (command) =>
-                '  ' + command,
-            ),
-          ],
-        ),
-      ];
+      return (name, replacement) => {
+        if (shown.has(name)) return;
+        shown.add(name);
 
-      console.group(
-        '💡 Testify Playground commands',
-      );
-
-      for (const section of sections) {
-        console.log(
-          '📁 ' + section.title,
+        console.warn(
+          \`[Testify v2] runner.\${name}() is deprecated. Use \${replacement}.\`,
         );
+      };
+    })();
 
-        for (const command of section.commands) {
-          console.log(
-            '  ' + command,
-          );
-        }
-      }
 
-      console.log(
-        '💡 Tip: run session.help() again any time.',
-      );
+    function printRunnerHelp() {
+      const lines = [
+        'Testify interactive runner',
+        '',
+        'Discover',
+        '  runner.listTests()              List tests with test ID and suite ID',
+        '  runner.listSuites()             List suites and suite IDs',
+        '  runner.listFiles()              List test files and spec counts',
+        '',
+        'Run',
+        '  await runner.run()              Run all tests',
+        "  await runner.runTest('<test>')  Run matching test(s)",
+        "  await runner.runSuite('<suite>') Run matching suite(s)",
+        "  await runner.runFile('<file>')  Run tests from matching file(s)",
+        '',
+        'Search',
+        "  runner.findTests('snapshot')",
+        "  runner.findSuites('Membrane')",
+        "  runner.findFiles('lazy')",
+        '  Strings and regular expressions are supported.',
+        '',
+        'Plan / inspect',
+        '  runner.stats()                  Catalog counts',
+        '  runner.catalog()                Raw test catalog',
+        '  runner.revision()               Catalog revision',
+        '  runner.planningStats()          Planning cache statistics',
+        '  runner.plan(selector)           Create an execution plan',
+        '  runner.planSpec(selector)',
+        '  runner.planSuite(selector)',
+        '  runner.planFile(selector)',
+        '  await runner.execute(plan)',
+        '',
+        'Advanced',
+        '  runner.shard(plan, index, count)',
+        '  runner.partition(plan, count)',
+        '  runner.setSeed(12345)',
+        '  runner.resetSeed()',
+        '  runner.reload()                 Reload the browser',
+        '',
+        'Examples',
+        '  runner.listTests()',
+        "  await runner.runTest('spec42')",
+        "  await runner.runSuite('suite12')",
+        "  await runner.runFile('lazy-snapshots.spec.js')",
+      ];
 
-      console.groupEnd();
-
+      console.log(lines.join('\\n'));
       return lines;
     }
 
-    Object.assign(
+    function formatSelector(selector) {
+      if (selector instanceof RegExp) {
+        return selector.toString();
+      }
+
+      return JSON.stringify(selector);
+    }
+
+    async function runSelection(
+      kind,
+      selector,
+      findMatches,
+      runMatches,
+      listCommand,
+    ) {
+      if (
+        selector === undefined ||
+        selector === null ||
+        selector === ''
+      ) {
+        console.warn(
+          `[Testify] Missing ${kind} selector.`,
+        );
+
+        console.info(
+          `Try ${listCommand}`,
+        );
+
+        return summarizeExecutionResults([]);
+      }
+
+      const matches =
+        findMatches(selector);
+
+      if (!matches.length) {
+        console.warn(
+          `[Testify] No ${kind}s matched ${formatSelector(selector)}.`,
+        );
+
+        console.info(
+          `Try ${listCommand}`,
+        );
+
+        return summarizeExecutionResults([]);
+      }
+
+      if (matches.length > 1) {
+        console.info(
+          `[Testify] ${matches.length} ${kind}s matched ${formatSelector(selector)}.`,
+        );
+
+        console.table(
+          matches,
+        );
+      }
+
+      return runMatches(
+        selector,
+      );
+    }
+
+    globalThis.runner = {
       session,
-      {
-        help: printSessionHelp,
-        setSeed,
-        resetSeed,
-        reload: () =>
-          location.reload(),
-        exit: async () => {
-          const host =
-            globalThis.__testifyHost;
 
-          if (!host?.send) {
-            throw new Error(
-              'Testify host connection is unavailable.',
-            );
-          }
+      help: printRunnerHelp,
 
-          host.send({
-            type: 'session:exit',
-            timestamp: Date.now(),
-          });
-        },
+      catalog: () =>
+        session.catalog(),
+
+      index: () =>
+        session.index(),
+
+      stats: () =>
+        session.stats(),
+
+      revision: () =>
+        session.revision(),
+
+      planningStats: () =>
+        session.planningStats(),
+
+      listTests: () => {
+        const rows =
+          session.listTests();
+        console.table(rows);
+        return rows;
       },
-    );
 
-    globalThis.session = session;
+      listSuites: () => {
+        const rows =
+          session.listSuites();
+        console.table(rows);
+        return rows;
+      },
+
+      listFiles: () => {
+        const rows =
+          session.listFiles();
+        console.table(rows);
+        return rows;
+      },
+
+      findTests: (selector) =>
+        session.findTests(selector),
+
+      findSuites: (selector) =>
+        session.findSuites(selector),
+
+      findFiles: (selector) =>
+        session.findFiles(selector),
+
+      plan: (selector) =>
+        session.plan(selector),
+
+      planSpec: (selector) =>
+        session.planSpec(selector),
+
+      planSuite: (selector) =>
+        session.planSuite(selector),
+
+      planFile: (selector) =>
+        session.planFile(selector),
+
+      shard: (
+        plan,
+        index,
+        count,
+      ) =>
+        session.shard(
+          plan,
+          index,
+          count,
+        ),
+
+      partition: (
+        plan,
+        count,
+      ) =>
+        session.partition(
+          plan,
+          count,
+        ),
+
+      execute: (plan) =>
+        session.execute(plan),
+
+      run: (selector) =>
+        session.run(selector),
+
+      runTest: (selector) =>
+        runSelection(
+          'test',
+          selector,
+          (value) =>
+            session.findTests(value),
+          (value) =>
+            session.runSpec(value),
+          'runner.listTests() or runner.findTests(...)',
+        ),
+
+      runSuite: (selector) =>
+        runSelection(
+          'suite',
+          selector,
+          (value) =>
+            session.findSuites(value),
+          (value) =>
+            session.runSuite(value),
+          'runner.listSuites() or runner.findSuites(...)',
+        ),
+
+      runFile: (selector) =>
+        runSelection(
+          'file',
+          selector,
+          (value) =>
+            session.findFiles(value),
+          (value) =>
+            session.runFile(value),
+          'runner.listFiles() or runner.findFiles(...)',
+        ),
+
+      // Compatibility helper retained for v1 callers.
+      runTests: (...args) => {
+        warnDeprecated(
+          'runTests',
+          'runner.run() or runner.session.run()',
+        );
+
+        return runTests(...args);
+      },
+
+      setSeed,
+      resetSeed,
+
+      reload: () =>
+        location.reload(),
+    };
 
     console.log(
-      '%c✅ Testify Playground ready!',
+      '%c✅ Testify runner ready!',
       'color: green; font-weight: bold;',
     );
-    printSessionHelp();
+    console.log(
+      '💡 Browser console: runner.help() · runner.listTests() · runner.listSuites()',
+    );
   }
 
   init().catch((error) => {
     console.error(
-      'Failed to initialize Testify Playground:',
+      'Failed to initialize runner:',
       error,
     );
   });
