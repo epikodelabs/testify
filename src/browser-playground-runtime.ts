@@ -19,6 +19,14 @@ function installTestifyPlayground(
     session.suites.bind(session);
   const baseFiles =
     session.files.bind(session);
+  const basePlan =
+    session.plan.bind(session);
+  const basePlanSpec =
+    session.planSpec.bind(session);
+  const basePlanSuite =
+    session.planSuite.bind(session);
+  const basePlanFile =
+    session.planFile.bind(session);
 
   function observableCollection(
     kind,
@@ -140,28 +148,28 @@ function installTestifyPlayground(
   function planIntent(intent) {
     switch (intent?.kind) {
       case 'all':
-        return session.plan();
+        return basePlan();
 
       case 'run':
-        return session.plan(
+        return basePlan(
           intent.selector,
           intent.options,
         );
 
       case 'spec':
-        return session.planSpec(
+        return basePlanSpec(
           intent.selector,
           intent.options,
         );
 
       case 'suite':
-        return session.planSuite(
+        return basePlanSuite(
           intent.selector,
           intent.options,
         );
 
       case 'file':
-        return session.planFile(
+        return basePlanFile(
           intent.selector,
           intent.options,
         );
@@ -179,11 +187,10 @@ function installTestifyPlayground(
         const selectedIds =
           new Set(specIds);
 
-        return session
-          .plan(
-            undefined,
-            currentPlanOptions(),
-          )
+        return basePlan(
+          undefined,
+          currentPlanOptions(),
+        )
           .filter(
             (test) =>
               selectedIds.has(
