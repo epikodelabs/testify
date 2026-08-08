@@ -1,6 +1,6 @@
 {
   "name": "@epikodelabs/testify",
-  "version": "1.0.37",
+  "version": "1.0.38",
   "description": "Serve and run your Jasmine specs in a browser",
   "bin": {
     "jasmine": "bin/jasmine",
@@ -45,6 +45,7 @@
   },
   "homepage": "https://github.com/epikodelabs/testify#readme",
   "dependencies": {
+    "@epikodelabs/testify": "file:epikodelabs-testify-1.0.37.tgz",
     "chokidar": "^5.0.0",
     "esbuild": "^0.28.1",
     "glob": "^13.0.6",
@@ -58,9 +59,9 @@
     "picomatch": "^4.0.5",
     "playwright": "^1.62.0",
     "rollup": "^4.62.3",
+    "tsx": "^4.20.0",
     "vite": "^8.1.5",
-    "ws": "^8.21.1",
-    "tsx": "^4.20.0"
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",

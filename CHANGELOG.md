@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Changelog
 
+## 1.0.38 - 2026-08-08
+
+### Fixed
+
+* Fixed browser-mode builds to emit and discover `.mjs` artifacts consistently, restoring `index.html` generation and normal browser startup.
+* Fixed browser-mode preprocessing to exclude Node-only specs from browser bundles instead of pulling in Playwright and other server-side dependencies.
+* Fixed generated runner HTML to embed the favicon directly, removing missing `favicon.ico` requests in the browser console.
+
+
 ## 1.0.37 - 2026-08-07
 
 ### Added
