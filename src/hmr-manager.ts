@@ -22,7 +22,7 @@ async function getViteBuild() {
 }
 
 export interface HmrUpdate {
-  type: 'update' | 'full-reload' | 'test-update';
+  type: 'update' | 'full-reload' | 'test-update' | 'test-add' | 'test-remove';
   path: string;
   timestamp: number;
   content?: string;
@@ -54,9 +54,12 @@ export interface HmrManagerOptions {
 }
 
 export class HmrManager extends EventEmitter {
+  private static readonly TEST_FILE_PATTERN = /\.(?:spec|test)\.(?:ts|js|mjs)$/i;
+
   private watcher: FSWatcher | null = null;
   private rebuildQueue: Set<string> = new Set();
   private directChanges: Set<string> = new Set();
+  private directChangeTypes: Map<string, 'add' | 'change' | 'unlink'> = new Map();
   private allFiles: string[] = [];
 
   // ✅ FIX: Add atomic operation queue
@@ -85,6 +88,9 @@ export class HmrManager extends EventEmitter {
 
   private primarySrcDir: string;
   private primaryTestDir: string;
+  private sourceDirs: string[];
+  private testDirs: string[];
+  private watchRoots: string[];
 
   constructor(
     private fileDiscovery: FileDiscoveryService,
@@ -94,10 +100,15 @@ export class HmrManager extends EventEmitter {
     options?: HmrManagerOptions
   ) {
     super();
-    const srcDir = Array.isArray(config.srcDirs) && config.srcDirs.length > 0 ? config.srcDirs[0] : './src';
-    const testDir = Array.isArray(config.testDirs) && config.testDirs.length > 0 ? config.testDirs[0] : './tests';
-    this.primarySrcDir = norm(srcDir);
-    this.primaryTestDir = norm(testDir);
+    this.sourceDirs = (Array.isArray(config.srcDirs) ? config.srcDirs : [config.srcDirs ?? './src'])
+      .filter(Boolean)
+      .map(dir => norm(dir));
+    this.testDirs = (Array.isArray(config.testDirs) ? config.testDirs : [config.testDirs ?? './tests'])
+      .filter(Boolean)
+      .map(dir => norm(dir));
+    this.watchRoots = [...new Set([...this.sourceDirs, ...this.testDirs])];
+    this.primarySrcDir = this.sourceDirs[0] ?? norm('./src');
+    this.primaryTestDir = this.testDirs[0] ?? norm('./tests');
     this.pathAliases = (this.viteConfigBuilder as any).createPathAliases();
     if (options?.fileFilter) this.fileFilter = { ...this.fileFilter, ...options.fileFilter };
     if (options?.rebuildMode) this.rebuildMode = options.rebuildMode;
@@ -144,9 +155,30 @@ export class HmrManager extends EventEmitter {
   /**
    * Determines if a file is a test file
    */
+  private isWithinDir(filePath: string, dirPath: string): boolean {
+    return filePath === dirPath || filePath.startsWith(`${dirPath}/`);
+  }
+
+  private isWithinDirs(filePath: string, dirPaths: string[]): boolean {
+    return dirPaths.some(dirPath => this.isWithinDir(filePath, dirPath));
+  }
+
+  private isWatchedPath(filePath: string): boolean {
+    const normalized = norm(filePath);
+    return this.isWithinDirs(normalized, this.watchRoots);
+  }
+
+  private isSpecFile(filePath: string): boolean {
+    return HmrManager.TEST_FILE_PATTERN.test(norm(filePath));
+  }
+
+  private getDisplayPath(filePath: string): string {
+    return norm(path.relative(process.cwd(), filePath));
+  }
+
   private isTestFile(filePath: string): boolean {
     const normalized = norm(filePath);
-    return normalized.startsWith(this.primaryTestDir);
+    return this.isWatchedPath(normalized) && this.isSpecFile(normalized);
   }
 
   /**
@@ -154,7 +186,7 @@ export class HmrManager extends EventEmitter {
    */
   private isSourceFile(filePath: string): boolean {
     const normalized = norm(filePath);
-    return normalized.startsWith(this.primarySrcDir);
+    return this.isWatchedPath(normalized) && !this.isSpecFile(normalized);
   }
 
   /**
@@ -164,6 +196,7 @@ export class HmrManager extends EventEmitter {
     if (!this.isSourceFile(filePath)) return false;
     
     const normalized = norm(filePath);
+    if (!this.isWithinDirs(normalized, this.sourceDirs)) return false;
     return this.criticalSourcePatterns.some(pattern => 
       picomatch.isMatch(normalized, pattern)
     );
@@ -183,8 +216,18 @@ export class HmrManager extends EventEmitter {
     // Test-only changes never require full reload
     if (!hasSourceChanges && hasTestChanges) {
       return {
-        type: 'test-update',
-        reason: 'Test files changed - incremental update'
+        type:
+          changeType === 'add' || changeType === 'addDir'
+            ? 'test-add'
+            : changeType === 'unlink' || changeType === 'unlinkDir'
+              ? 'test-remove'
+              : 'test-update',
+        reason:
+          changeType === 'add' || changeType === 'addDir'
+            ? 'Test files added - incremental update'
+            : changeType === 'unlink' || changeType === 'unlinkDir'
+              ? 'Test files removed - incremental update'
+              : 'Test files changed - incremental update'
       };
     }
 
@@ -472,10 +515,10 @@ export class HmrManager extends EventEmitter {
         
         const fileType = this.isTestFile(filePath) ? 'test' : 
                         this.isSourceFile(filePath) ? 'source' : 'unknown';
-        const output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
+        const output = this.getDisplayPath(filePath);
         logger.println(HmrMessages.fileAdded(capitalize(fileType), output));
         
-        this.queueRebuild(filePath, 'add');
+        await this.queueRebuild(filePath, 'add');
       }
     }).catch(error => {
       logger.error(HmrMessages.errorInHandleFileAdd(error));
@@ -494,6 +537,7 @@ export class HmrManager extends EventEmitter {
       // ✅ CRITICAL: Remove from rebuild queue immediately to prevent build errors
       this.rebuildQueue.delete(filePath);
       this.directChanges.delete(filePath);
+      this.directChangeTypes.delete(filePath);
       
       const affectedFiles = new Set<string>();
       const dependents = this.reverseDependencyGraph.get(filePath);
@@ -512,7 +556,7 @@ export class HmrManager extends EventEmitter {
 
       const fileType = this.isTestFile(filePath) ? 'test' : 
                       this.isSourceFile(filePath) ? 'source' : 'unknown';
-      let output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
+      let output = this.getDisplayPath(filePath);
       logger.println(HmrMessages.fileRemoved(capitalize(fileType), output));
 
       // Determine update strategy
@@ -525,11 +569,11 @@ export class HmrManager extends EventEmitter {
       if (fs.existsSync(map)) fs.rmSync(map);
     
       this.emit('hmr:update', {
-        type: strategy.type,
+        type: this.isTestFile(filePath) ? 'test-remove' : strategy.type,
         path: this.fileDiscovery.getOutputName(filePath),
         timestamp: Date.now(),
         affectedTests: this.isSourceFile(filePath) ? Array.from(affectedFiles).filter(f => this.isTestFile(f)) : undefined,
-        reason: strategy.reason
+        reason: this.isTestFile(filePath) ? 'Test file removed' : strategy.reason
       });
 
       if (this.rebuildMode === 'selective' && affectedFiles.size > 0) {
@@ -546,8 +590,8 @@ export class HmrManager extends EventEmitter {
     // ✅ FIX: Use operation queue
     this.operationQueue = this.operationQueue.then(async () => {
       dirPath = norm(dirPath);
-      const dirType = dirPath.startsWith(this.primaryTestDir) ? 'test': 'source';
-      const output = norm(dirPath.startsWith(this.primaryTestDir) ? path.relative(this.primaryTestDir, dirPath) : path.relative(this.primarySrcDir, dirPath));
+      const dirType = this.isWithinDirs(dirPath, this.testDirs) && !this.isWithinDirs(dirPath, this.sourceDirs) ? 'test': 'source';
+      const output = this.getDisplayPath(dirPath);
       logger.println(HmrMessages.directoryAdded(capitalize(dirType), output));
       
       const defaultExtensions = this.fileFilter.extensions!.join(',');
@@ -591,8 +635,8 @@ export class HmrManager extends EventEmitter {
     this.operationQueue = this.operationQueue.then(async () => {
       dirPath = norm(dirPath);
 
-      const dirType = dirPath.startsWith(this.primaryTestDir) ? 'test': 'source';
-      const output = norm(dirPath.startsWith(this.primaryTestDir) ? path.relative(this.primaryTestDir, dirPath) : path.relative(this.primarySrcDir, dirPath));
+      const dirType = this.isWithinDirs(dirPath, this.testDirs) && !this.isWithinDirs(dirPath, this.sourceDirs) ? 'test': 'source';
+      const output = this.getDisplayPath(dirPath);
       logger.println(HmrMessages.directoryRemoved(capitalize(dirType), output));
       
       const removedFiles = this.allFiles.filter(f => f.startsWith(dirPath + path.sep) || f === dirPath);
@@ -602,6 +646,7 @@ export class HmrManager extends EventEmitter {
       for (const file of removedFiles) {
         this.rebuildQueue.delete(file);
         this.directChanges.delete(file);
+        this.directChangeTypes.delete(file);
         
         const dependents = this.reverseDependencyGraph.get(file);
         dependents?.forEach(d => {
@@ -652,6 +697,7 @@ export class HmrManager extends EventEmitter {
     }
     
     this.directChanges.add(normalized);
+    this.directChangeTypes.set(normalized, changeType);
     this.rebuildQueue.add(normalized);
 
     // If a rebuild is already in progress, return the same promise.
@@ -694,6 +740,10 @@ export class HmrManager extends EventEmitter {
           return true;
         });
         this.directChanges.clear();
+        const directChangeTypes = new Map(
+          Array.from(this.directChangeTypes.entries()).filter(([file]) => directChangedFiles.includes(file))
+        );
+        this.directChangeTypes.clear();
 
         if (changedFiles.length === 0) {
           logger.println(HmrMessages.allQueuedFilesDeleted());
@@ -725,8 +775,8 @@ export class HmrManager extends EventEmitter {
 
         logger.println(HmrMessages.rebuildSummary(directChangedFiles.length, rebuiltFiles.length, validSourceFiles.length, validTestFiles.length));
 
-        // Only proceed if we have valid files to build
-        if (validSourceFiles.length === 0 && validTestFiles.length === 0) {
+        // Browser HMR updates are driven by rebuilt spec entries only.
+        if (validTestFiles.length === 0) {
           logger.println(HmrMessages.noValidSourceOrTestFiles());
           continue;
         }
@@ -735,7 +785,7 @@ export class HmrManager extends EventEmitter {
 
         // ✅ FIX: Pass ONLY valid existing files to Vite config builder
         const viteConfig = this.viteConfigBuilder.createViteConfigForFiles(
-          [...validSourceFiles, ...validTestFiles],
+          validTestFiles,
           this.viteCache
         );
 
@@ -750,17 +800,15 @@ export class HmrManager extends EventEmitter {
           // Check if it's due to missing entry files
           if (buildError.code === 'UNRESOLVED_ENTRY') {
             logger.println(HmrMessages.retryingWithFilteredEntries());
-            // Retry with additional filtering
-            const finalSourceFiles = validSourceFiles.filter(fs.existsSync);
             const finalTestFiles = validTestFiles.filter(fs.existsSync);
 
-            if (finalSourceFiles.length === 0 && finalTestFiles.length === 0) {
+            if (finalTestFiles.length === 0) {
               logger.println(HmrMessages.allEntryPointsDeleted());
               continue;
             }
 
             const retryConfig = this.viteConfigBuilder.createViteConfigForFiles(
-              [...finalSourceFiles, ...finalTestFiles],
+              finalTestFiles,
               this.viteCache
             );
             const result = await build(retryConfig);
@@ -770,8 +818,8 @@ export class HmrManager extends EventEmitter {
           }
         }
 
-        // Emit updates for successfully built files
-        for (const file of rebuiltFiles) {
+        // Emit updates for rebuilt spec entries only.
+        for (const file of validTestFiles) {
           const relative = this.fileDiscovery.getOutputName(file);
           const outputPath = path.join(this.config.outDir, relative);
 
@@ -784,7 +832,7 @@ export class HmrManager extends EventEmitter {
               .flatMap(f => this.getAffectedTests(f));
 
             this.emit('hmr:update', {
-              type: strategy.type,
+              type: directChangeTypes.get(file) === 'add' ? 'test-add' : strategy.type,
               path: relative,
               timestamp: Date.now(),
               content,

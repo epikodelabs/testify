@@ -558,21 +558,29 @@ window.HMRClient = (function() {
     return window.jasmine?.getEnv?.();
   }
 
+  function normalizeHmrPath(value) {
+    return String(value ?? '')
+      .replace(/\\\\/g, '/')
+      .replace(/^\/+/, '');
+  }
+
   function setFilePath(obj, filePath) {
     if (!obj) return;
+    const normalizedFilePath = normalizeHmrPath(filePath);
     try {
       Object.defineProperty(obj, '_filePath', {
-        value: filePath,
+        value: normalizedFilePath,
         enumerable: false,
         configurable: true,
         writable: true
       });
     } catch (e) {
-      obj._filePath = filePath;
+      obj._filePath = normalizedFilePath;
     }
   }
 
   async function attachFilePathToSuites(filePath, moduleExports) {
+    const normalizedFilePath = normalizeHmrPath(filePath);
     const env = getEnv();
     if (!env) return;
     
@@ -583,7 +591,7 @@ window.HMRClient = (function() {
       if (!suite) return;
 
       if (!suite._filePath) {
-        setFilePath(suite, filePath);
+        setFilePath(suite, normalizedFilePath);
       }
 
       if (suite.metadata && !suite.metadata.__suite) {
@@ -609,6 +617,7 @@ window.HMRClient = (function() {
   }
 
   function detachFilePathSuites(filePath) {
+    const normalizedFilePath = normalizeHmrPath(filePath);
     const env = getEnv();
     if (!env) return;
     
@@ -625,7 +634,7 @@ window.HMRClient = (function() {
 
         const child = childWrapper;
 
-        if (child._filePath === filePath) {
+        if (normalizeHmrPath(child._filePath) === normalizedFilePath) {
           continue;
         }
 
@@ -644,18 +653,30 @@ window.HMRClient = (function() {
       }
 
       if (Array.isArray(suite.specs)) {
-        suite.specs = suite.specs.filter(spec => spec._filePath !== filePath);
+        suite.specs = suite.specs.filter(
+          spec => normalizeHmrPath(spec._filePath) !== normalizedFilePath
+        );
       }
     }
 
     cleanSuite(topSuite);
-    console.log(\`🧹 Detached all suites/specs with _filePath: \${filePath}\`);
+    console.log(\`🧹 Detached all suites/specs with _filePath: \${normalizedFilePath}\`);
   }
 
-  async function hotUpdateSpec(filePath, moduleExports) {
-    detachFilePathSuites(filePath);
-    await attachFilePathToSuites(filePath, moduleExports);
-    console.log('✅ Hot updated Jasmine suites from:', filePath);
+  async function hotUpdateSpec(filePath) {
+    const normalizedFilePath = normalizeHmrPath(filePath);
+    const newModule = await import('/' + normalizedFilePath + \`?t=\${Date.now()}\`);
+    moduleRegistry.set(normalizedFilePath, newModule);
+    detachFilePathSuites(normalizedFilePath);
+    await attachFilePathToSuites(normalizedFilePath, newModule);
+    console.log('✅ Hot updated Jasmine suites from:', normalizedFilePath);
+  }
+
+  function handleRemovedSpec(filePath) {
+    const normalizedFilePath = normalizeHmrPath(filePath);
+    detachFilePathSuites(normalizedFilePath);
+    moduleRegistry.delete(normalizedFilePath);
+    console.log('🧹 Removed Jasmine suites for deleted spec:', normalizedFilePath);
   }
 
   async function handleMessage(message) {
@@ -680,13 +701,17 @@ window.HMRClient = (function() {
       console.log('🔥 Hot updating:', update.path);
 
       try {
-        let newModule = null;
-        if (update.content) {
-          newModule = await import('/' + update.path + \`?t=\${Date.now()}\`);
-          moduleRegistry.set(update.path, newModule);
+        if (update.type === 'test-remove') {
+          handleRemovedSpec(update.path);
+          return;
         }
 
-        await hotUpdateSpec(update.path, newModule);
+        if (!update.content) {
+          console.log('⏭️ Skipping HMR event without module content:', update.path, update.type);
+          return;
+        }
+
+        await hotUpdateSpec(update.path);
         console.log('✅ HMR update applied:', update.path);
       } catch (err) {
         console.error('❌ HMR update failed:', err);
@@ -700,7 +725,7 @@ window.HMRClient = (function() {
     attachFilePathToSuites,
     detachFilePathSuites,
     clearCache: (filePath) => {
-      if (filePath) moduleRegistry.delete(filePath);
+      if (filePath) moduleRegistry.delete(normalizeHmrPath(filePath));
       else moduleRegistry.clear();
     }
   };
