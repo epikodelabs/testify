@@ -2,9 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import type { ViteJasmineConfig } from './vite-jasmine-config';
-import { norm } from './utils';
-import { logger } from './logger';
-import { HtmlMessages } from './log-messages';
 import { resolveBrowserPreludeModules } from './prelude-modules';
 import { createBrowserPage } from './browser-page';
 import { getBrowserRuntimeScript } from './browser-runtime';
@@ -13,7 +10,46 @@ import { getBrowserWebSocketReporterScript } from './browser-websocket-runtime';
 import { getBrowserHmrClientScript } from './browser-hmr-client';
 import { getBrowserBootstrapScript } from './browser-bootstrap-runtime';
 
+function resolveEmbeddedFaviconHref():
+  string | null {
+  const __filename =
+    fileURLToPath(import.meta.url);
+  const __dirname =
+    path.dirname(__filename);
+  const candidatePaths = [
+    path.resolve(
+      process.cwd(),
+      'assets/favicon.ico',
+    ),
+    path.resolve(
+      __dirname,
+      '../assets/favicon.ico',
+    ),
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    if (!fs.existsSync(candidatePath)) {
+      continue;
+    }
+
+    const base64 =
+      fs.readFileSync(
+        candidatePath,
+      ).toString('base64');
+
+    return (
+      'data:image/x-icon;base64,' +
+      base64
+    );
+  }
+
+  return null;
+}
+
 export class BrowserPageBuilder {
+  private readonly faviconHref =
+    resolveEmbeddedFaviconHref();
+
   constructor(
     private readonly config: ViteJasmineConfig,
   ) {}
@@ -118,37 +154,14 @@ ${moduleImports}
   }
 
   private getFaviconTag(): string {
-    const moduleFilePath = norm(
-      fileURLToPath(import.meta.url),
-    );
-    const moduleDirectory = norm(
-      path.dirname(moduleFilePath),
-    );
-    const faviconPath = path.resolve(
-      moduleDirectory,
-      '../assets/favicon.ico',
-    );
-
-    if (fs.existsSync(faviconPath)) {
-      const faviconData =
-        fs.readFileSync(faviconPath);
-      const faviconBase64 =
-        faviconData.toString('base64');
-
-      return (
-        '<link rel="icon" type="image/x-icon" ' +
-        `href="data:image/x-icon;base64,${faviconBase64}">`
-      );
+    if (!this.faviconHref) {
+      return '';
     }
 
-    logger.println(
-      HtmlMessages.faviconNotFound(
-        faviconPath,
-      ),
-    );
-
     return (
-      '<link rel="icon" href="favicon.ico" ' +
+      '<link rel="icon" href="' +
+      this.faviconHref +
+      '" ' +
       'type="image/x-icon" />'
     );
   }

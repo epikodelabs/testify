@@ -25,6 +25,9 @@ import {
 import {
   summarizeExecutionResults,
 } from './execution-result';
+import {
+  getEmbeddedNameHelperSource,
+} from './embedded-source';
 
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
@@ -43,6 +46,9 @@ export function getBrowserRuntimeScript(
 
   const catalogSource =
     getEmbeddedTestCatalogSource();
+
+  const nameHelperSource =
+    getEmbeddedNameHelperSource();
 
   const catalogIndexSource =
     getEmbeddedTestCatalogIndexSource();
@@ -73,6 +79,8 @@ export function getBrowserRuntimeScript(
 
   return `
 (function(globalThis) {
+  ${nameHelperSource}
+
   ${catalogSource}
 
   ${catalogIndexSource}
@@ -482,9 +490,104 @@ export function getBrowserRuntimeScript(
       };
     })();
 
+    function printRunnerHelp() {
+      const sections = [
+        {
+          title: 'Discover',
+          commands: [
+            'runner.listTests()',
+            'runner.listSuites()',
+            'runner.listFiles()',
+          ],
+        },
+        {
+          title: 'Run',
+          commands: [
+            'await runner.run()',
+            "await runner.runTest('spec id or text')",
+            "await runner.runSuite('suite id or text')",
+            "await runner.runFile('file name or text')",
+          ],
+        },
+        {
+          title: 'Search',
+          commands: [
+            "runner.findTests('text')",
+            "runner.findSuites('text')",
+            "runner.findFiles('text')",
+          ],
+        },
+        {
+          title: 'Plan',
+          commands: [
+            'runner.stats()',
+            'runner.catalog()',
+            'runner.index()',
+            'runner.revision()',
+            'runner.planningStats()',
+            'runner.plan(selector)',
+            'runner.planSpec(selector)',
+            'runner.planSuite(selector)',
+            'runner.planFile(selector)',
+            'await runner.execute(plan)',
+          ],
+        },
+        {
+          title: 'Advanced',
+          commands: [
+            'runner.shard(plan, index, count)',
+            'runner.partition(plan, count)',
+            'runner.setSeed(12345)',
+            'runner.resetSeed()',
+            'runner.reload()',
+          ],
+        },
+      ];
+
+      const lines = [
+        'Testify watch mode runner',
+        ...sections.flatMap(
+          (section) => [
+            '',
+            section.title,
+            ...section.commands.map(
+              (command) =>
+                '  ' + command,
+            ),
+          ],
+        ),
+      ];
+
+      console.group(
+        '💡 Testify watch mode console commands',
+      );
+
+      for (const section of sections) {
+        console.log(
+          '📁 ' + section.title,
+        );
+
+        for (const command of section.commands) {
+          console.log(
+            '  ' + command,
+          );
+        }
+      }
+
+      console.log(
+        '💡 Tip: run runner.help() again any time.',
+      );
+
+      console.groupEnd();
+
+      return lines;
+    }
+
 
     globalThis.runner = {
       session,
+
+      help: printRunnerHelp,
 
       catalog: () =>
         session.catalog(),
@@ -599,6 +702,7 @@ export function getBrowserRuntimeScript(
       '%c✅ Testify runner ready!',
       'color: green; font-weight: bold;',
     );
+    printRunnerHelp();
   }
 
   init().catch((error) => {

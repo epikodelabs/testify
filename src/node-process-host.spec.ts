@@ -1,8 +1,11 @@
 import {
+  ndescribe,
+} from './env.spec';
+import {
   NodeProcessHost,
 } from './node-process-host';
 
-describe('NodeProcessHost', () => {
+ndescribe('NodeProcessHost', () => {
   it('attaches and detaches only its own handlers', () => {
     const beforeSigint =
       process.listenerCount(

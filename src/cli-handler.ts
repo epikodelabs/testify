@@ -183,7 +183,13 @@ export class CLIHandler {
 
       config = {
         ...config,
-        headless: headless || browserName === 'node' ? true : (config.headless || false),
+        headless:
+          headless ||
+          browserName === 'node'
+            ? true
+            : watch
+              ? false
+              : (config.headless || false),
         coverage: coverage ? true : (config.coverage || false),
         browser: hasBrowserArg ? browserName : (config.browser || 'chrome'),
         // CLI contract: plain `testify` always performs a one-shot run.

@@ -36,6 +36,10 @@ describe('Node runner module source', () => {
     expect(source).toContain(
       "./forms.spec.mjs",
     );
+
+    expect(source).toContain(
+      'function __name(target, value)',
+    );
   });
 
   it('keeps process lifecycle concerns out of the generated runner', () => {

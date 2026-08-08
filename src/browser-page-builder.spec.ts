@@ -46,5 +46,11 @@ describe('BrowserPageBuilder', () => {
     expect(html).toContain(
       '<title>Testify</title>',
     );
+    expect(html).toContain(
+      'data:image/x-icon;base64,',
+    );
+    expect(html).not.toContain(
+      'assets/favicon.ico',
+    );
   });
 });

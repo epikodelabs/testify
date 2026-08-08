@@ -11,6 +11,171 @@ import { norm } from './utils';
 import { logger } from './logger';
 import { HttpServerMessages } from './log-messages';
 
+interface ResolvedRequestPath {
+  rootDir: string;
+  resolvedPath: string;
+}
+
+interface StaticPathRoots {
+  outDir: string;
+  workspaceNodeModulesDir: string;
+  vendorDir: string;
+  assetDirs: string[];
+}
+
+export function resolveStaticRequestPath(
+  filePath: string,
+  roots: StaticPathRoots,
+): ResolvedRequestPath {
+  if (filePath.startsWith('/node_modules/')) {
+    const relativePath =
+      filePath.replace(
+        /^\/node_modules\//,
+        '',
+      );
+
+    const resolvedCandidate = [
+      roots.workspaceNodeModulesDir,
+      roots.vendorDir,
+    ]
+      .map((candidateRoot) => ({
+        rootDir: candidateRoot,
+        resolvedPath: path.resolve(
+          candidateRoot,
+          relativePath,
+        ),
+      }))
+      .find((candidate) =>
+        isPathInside(
+          candidate.rootDir,
+          candidate.resolvedPath,
+        ) &&
+        fs.existsSync(
+          candidate.resolvedPath,
+        ),
+      );
+
+    return {
+      rootDir:
+        resolvedCandidate?.rootDir ??
+        roots.workspaceNodeModulesDir,
+      resolvedPath: path.normalize(
+        resolvedCandidate?.resolvedPath ??
+          path.resolve(
+            roots.workspaceNodeModulesDir,
+            relativePath,
+          ),
+      ),
+    };
+  }
+
+  if (filePath === '/favicon.ico') {
+    const faviconCandidate =
+      roots.assetDirs
+        .map((assetDir) => ({
+          rootDir: assetDir,
+          resolvedPath: path.resolve(
+            assetDir,
+            'favicon.ico',
+          ),
+        }))
+        .find((candidate) =>
+          isPathInside(
+            candidate.rootDir,
+            candidate.resolvedPath,
+          ) &&
+          fs.existsSync(
+            candidate.resolvedPath,
+          ),
+        );
+
+    if (faviconCandidate) {
+      return {
+        rootDir:
+          faviconCandidate.rootDir,
+        resolvedPath: path.normalize(
+          faviconCandidate.resolvedPath,
+        ),
+      };
+    }
+  }
+
+  if (filePath.startsWith('/assets/')) {
+    const relativePath =
+      filePath.replace(
+        /^\/assets\//,
+        '',
+      );
+
+    const assetCandidate =
+      roots.assetDirs
+        .map((assetDir) => ({
+          rootDir: assetDir,
+          resolvedPath: path.resolve(
+            assetDir,
+            relativePath,
+          ),
+        }))
+        .find((candidate) =>
+          isPathInside(
+            candidate.rootDir,
+            candidate.resolvedPath,
+          ) &&
+          fs.existsSync(
+            candidate.resolvedPath,
+          ),
+        );
+
+    if (assetCandidate) {
+      return {
+        rootDir: assetCandidate.rootDir,
+        resolvedPath: path.normalize(
+          assetCandidate.resolvedPath,
+        ),
+      };
+    }
+
+    return {
+      rootDir: path.resolve(
+        roots.outDir,
+        'assets',
+      ),
+      resolvedPath: path.normalize(
+        path.resolve(
+          roots.outDir,
+          `.${filePath}`,
+        ),
+      ),
+    };
+  }
+
+  return {
+    rootDir: roots.outDir,
+    resolvedPath: path.normalize(
+      path.resolve(
+        roots.outDir,
+        `.${filePath}`,
+      ),
+    ),
+  };
+}
+
+function isPathInside(
+  root: string,
+  candidate: string,
+): boolean {
+  const relative = path.relative(
+    path.resolve(root),
+    path.resolve(candidate),
+  );
+
+  return (
+    relative === '' ||
+    (!relative.startsWith('..') &&
+      !path.isAbsolute(relative))
+  );
+}
+
 export class HttpServerManager {
   private server: http.Server | null = null;
 
@@ -22,6 +187,12 @@ export class HttpServerManager {
     const __dirname = norm(path.dirname(__filename));
     const vendorDir = path.resolve(path.join(__dirname, '../node_modules'));
     const workspaceNodeModulesDir = path.resolve(path.join(process.cwd(), 'node_modules'));
+    const packageRoot = path.resolve(path.join(__dirname, '..'));
+    const assetDirs = [
+      path.resolve(outDir, 'assets'),
+      path.resolve(process.cwd(), 'assets'),
+      path.resolve(packageRoot, 'assets'),
+    ];
 
     return createServer((req, res) => {
       let { pathname } = parse(req.url === '/' ? '/index.html' : req.url!, true);
@@ -41,32 +212,20 @@ export class HttpServerManager {
         return;
       }
 
-      let resolvedPath: string;
-      let rootDir: string;
+      const {
+        rootDir,
+        resolvedPath,
+      } = resolveStaticRequestPath(
+        filePath,
+        {
+          outDir,
+          workspaceNodeModulesDir,
+          vendorDir,
+          assetDirs,
+        },
+      );
 
-      if (filePath.startsWith('/node_modules/')) {
-        const relativePath = filePath.replace(/^\/node_modules\//, '');
-        const candidateRoots = [workspaceNodeModulesDir, vendorDir];
-        const resolvedCandidate = candidateRoots
-          .map((candidateRoot) => ({
-            rootDir: candidateRoot,
-            resolvedPath: path.resolve(candidateRoot, relativePath)
-          }))
-          .find((candidate) =>
-            this.isPathInside(candidate.rootDir, candidate.resolvedPath) &&
-            fs.existsSync(candidate.resolvedPath)
-          );
-
-        rootDir = resolvedCandidate?.rootDir ?? workspaceNodeModulesDir;
-        resolvedPath = resolvedCandidate?.resolvedPath ?? path.resolve(workspaceNodeModulesDir, relativePath);
-      } else {
-        rootDir = outDir;
-        resolvedPath = path.resolve(outDir, `.${filePath}`);
-      }
-
-      resolvedPath = path.normalize(resolvedPath);
-
-      if (!this.isPathInside(rootDir, resolvedPath)) {
+      if (!isPathInside(rootDir, resolvedPath)) {
         res.writeHead(403);
         res.end('Forbidden');
         return;
@@ -149,11 +308,6 @@ export class HttpServerManager {
       '.ico': 'image/x-icon'
     };
     return types[ext] || 'application/octet-stream';
-  }
-
-  private isPathInside(root: string, candidate: string): boolean {
-    const relative = path.relative(path.resolve(root), path.resolve(candidate));
-    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
   }
 
   async waitForServerReady(url: string, timeout = 5000): Promise<void> {

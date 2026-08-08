@@ -76,9 +76,9 @@ export class ViteJasmineRunner extends EventEmitter {
     
     this.config = {
       ...config,
-      browser: config.browser ?? 'node',
+      browser: config.browser ?? 'chrome',
       port: config.port ?? 8888,
-      headless: config.headless ?? true,
+      headless: config.headless ?? false,
       watch: config.watch ?? false,
       srcDirs: normalizedSrcDirs,
       testDirs: normalizedTestDirs,

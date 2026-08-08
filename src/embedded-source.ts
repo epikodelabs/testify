@@ -1,3 +1,21 @@
+export function getEmbeddedNameHelperSource():
+  string {
+  return `function __name(target, value) {
+  try {
+    Object.defineProperty(
+      target,
+      'name',
+      {
+        value,
+        configurable: true,
+      },
+    );
+  } catch {}
+
+  return target;
+}`;
+}
+
 export function embedFunctionSource(
   value: Function,
 ): string {

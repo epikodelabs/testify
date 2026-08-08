@@ -10,8 +10,8 @@
     "**/dist/**"
   ],
   "outDir": "./dist/.vite-jasmine-build",
-  "browser": "node",
-  "headless": true,
+  "browser": "chrome",
+  "headless": false,
   "watch": false,
   "coverage": false,
   "preserveOutputs": false,

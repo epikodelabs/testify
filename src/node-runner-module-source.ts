@@ -23,6 +23,9 @@ import {
 import {
   getEmbeddedCatalogQuerySource,
 } from './catalog-query';
+import {
+  getEmbeddedNameHelperSource,
+} from './embedded-source';
 
 export interface NodeRunnerModuleSourceOptions {
   jasmineCoreUrl: string;
@@ -41,6 +44,9 @@ export function createNodeRunnerModuleSource(
 
   const jasmineRuntimeSource =
     getEmbeddedNodeJasmineRuntimeSource();
+
+  const nameHelperSource =
+    getEmbeddedNameHelperSource();
 
   const catalogIndexSource =
     getEmbeddedTestCatalogIndexSource();
@@ -64,6 +70,8 @@ export function createNodeRunnerModuleSource(
     getEmbeddedRunnerSessionSource();
 
   return `// Auto-generated in-process Jasmine test runner
+${nameHelperSource}
+
 ${jasmineRuntimeSource}
 
 ${catalogIndexSource}

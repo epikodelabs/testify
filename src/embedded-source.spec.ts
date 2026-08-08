@@ -2,6 +2,9 @@ import {
   getEmbeddedCatalogStateSource,
 } from './catalog-state';
 import {
+  getEmbeddedNameHelperSource,
+} from './embedded-source';
+import {
   getEmbeddedPlanningEngineSource,
 } from './planning-engine';
 import {
@@ -9,6 +12,20 @@ import {
 } from './runner-session';
 
 describe('embedded class source', () => {
+  it('provides the __name helper for embedded transformed sources', () => {
+    expect(
+      getEmbeddedNameHelperSource(),
+    ).toContain(
+      'function __name(target, value)',
+    );
+
+    expect(
+      getEmbeddedNameHelperSource(),
+    ).toContain(
+      'return target;',
+    );
+  });
+
   it('binds embedded classes to stable names', () => {
     expect(
       getEmbeddedCatalogStateSource(),

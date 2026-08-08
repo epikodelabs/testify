@@ -3,6 +3,12 @@ import * as internals from './internals';
 
 describe('Testify 2 package surface', () => {
   it('exposes the stable engine at the root', () => {
+    const rootSurface =
+      testify as Record<
+        string,
+        unknown
+      >;
+
     expect(
       testify.RunnerSession,
     ).toBeDefined();
@@ -16,18 +22,45 @@ describe('Testify 2 package surface', () => {
     ).toBeDefined();
 
     expect(
-      (testify as any)
-        .PlanningEngine,
+      Object.keys(
+        rootSurface,
+      ),
+    ).not.toContain(
+      'PlanningEngine',
+    );
+
+    expect(
+      rootSurface[
+        'PlanningEngine'
+      ],
     ).toBeUndefined();
 
     expect(
-      (testify as any)
-        .CatalogState,
+      Object.keys(
+        rootSurface,
+      ),
+    ).not.toContain(
+      'CatalogState',
+    );
+
+    expect(
+      rootSurface[
+        'CatalogState'
+      ],
     ).toBeUndefined();
 
     expect(
-      (testify as any)
-        .NodeExecutionHost,
+      Object.keys(
+        rootSurface,
+      ),
+    ).not.toContain(
+      'NodeExecutionHost',
+    );
+
+    expect(
+      rootSurface[
+        'NodeExecutionHost'
+      ],
     ).toBeUndefined();
   });
 
