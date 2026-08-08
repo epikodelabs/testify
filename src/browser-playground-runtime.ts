@@ -110,6 +110,7 @@ function installTestifyPlayground(
 
   function resolveFailureSpecIds(
     failures,
+    tests,
   ) {
     const failedNames =
       new Set(
@@ -129,7 +130,7 @@ function installTestifyPlayground(
         ),
       );
 
-    return baseTests()
+    return tests
       .filter(
         (test) =>
           failedIds.has(
@@ -175,9 +176,15 @@ function installTestifyPlayground(
         );
 
       case 'retry': {
+        const plan =
+          basePlan(
+            undefined,
+            currentPlanOptions(),
+          );
         const specIds =
           resolveFailureSpecIds(
             intent.failures,
+            plan.tests(),
           );
 
         if (!specIds.length) {
@@ -187,10 +194,7 @@ function installTestifyPlayground(
         const selectedIds =
           new Set(specIds);
 
-        return basePlan(
-          undefined,
-          currentPlanOptions(),
-        )
+        return plan
           .filter(
             (test) =>
               selectedIds.has(
