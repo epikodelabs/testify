@@ -12,6 +12,9 @@ import { logger } from './logger';
 import { NodeRunnerMessages } from './log-messages';
 import { resolveNodePreludeModules } from './prelude-modules';
 import { getEmbeddedNodeJasmineRuntimeSource } from './jasmine-node-runtime';
+import {
+  discoverBrowserBuildArtifacts,
+} from './browser-build-artifacts';
 
 export interface TestRunnerOptions {
   cwd?: string;
@@ -53,10 +56,10 @@ export class NodeTestRunner {
       fs.mkdirSync(outDir, { recursive: true });
     }
 
-    const builtSpecFiles = fs
-      .readdirSync(outDir)
-      .filter((f) => /\.spec\.js$/i.test(f))
-      .sort();
+    const builtSpecFiles =
+      discoverBrowserBuildArtifacts(
+        outDir,
+      ).specFiles;
 
     if (builtSpecFiles.length === 0) {
       logger.println(NodeRunnerMessages.noJsFilesForRunner());
@@ -71,7 +74,7 @@ export class NodeTestRunner {
     ].join('\n');
 
     const runnerContent = this.generateRunnerTemplate(imports);
-    const testRunnerPath = norm(path.join(outDir, 'test-runner.js'));
+    const testRunnerPath = norm(path.join(outDir, 'test-runner.mjs'));
     fs.writeFileSync(testRunnerPath, runnerContent);
     logger.println(NodeRunnerMessages.generatedInProcessRunner(norm(path.relative(outDir, testRunnerPath))));
   }
@@ -326,7 +329,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     try {
       const childFile = path.resolve(
         this.options.cwd || process.cwd(),
-        this.options.file || path.join(this.config.outDir, 'test-runner.js'),
+        this.options.file || path.join(this.config.outDir, 'test-runner.mjs'),
       );
 
       logger.println(NodeRunnerMessages.startingTestRunner());

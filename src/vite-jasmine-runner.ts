@@ -19,8 +19,19 @@ import { logger } from './logger';
 import { setAnsiMode } from './symbols';
 import { RunnerMessages } from './log-messages';
 import { ExitCodeError, EXIT_CODES } from './exit-codes';
+import { applyBuildInputs } from './vite-build-inputs';
 
 const { build: viteBuild } = await import('vite');
+
+export function selectInitialEntryFiles(
+  browser: string | undefined,
+  srcFiles: string[],
+  specFiles: string[],
+): string[] {
+  return browser === 'node'
+    ? [...srcFiles, ...specFiles]
+    : specFiles;
+}
 
 export class ViteJasmineRunner extends EventEmitter {
   private viteCache: any = null;
@@ -97,7 +108,7 @@ export class ViteJasmineRunner extends EventEmitter {
     this.nodeTestRunner = new NodeTestRunner(this.config, {
       reporter: this.consoleReporter,
       cwd: this.config.outDir,
-      file: 'test-runner.js',
+      file: 'test-runner.mjs',
       coverage: this.config.coverage,
       suppressConsoleLogs: this.config.suppressConsoleLogs
     });
@@ -107,17 +118,56 @@ export class ViteJasmineRunner extends EventEmitter {
 
   async preprocess(): Promise<void> {
     try {
-      const { srcFiles, specFiles } = await this.fileDiscovery.discoverSources();
+      const {
+        srcFiles,
+        specFiles,
+        excludedSpecFiles,
+      } = await this.fileDiscovery.discoverSources();
+
+      if (
+        this.config.browser !== 'node' &&
+        excludedSpecFiles.length > 0
+      ) {
+        const skippedList =
+          excludedSpecFiles
+            .map((filePath) =>
+              `  - ${path.relative(process.cwd(), filePath)}`,
+            )
+            .join('\n');
+
+        if (specFiles.length === 0) {
+          throw new ExitCodeError(
+            EXIT_CODES.CONFIG_ERROR,
+            RunnerMessages.noBrowserCompatibleSpecs(
+              excludedSpecFiles.length,
+              skippedList,
+            ),
+          );
+        }
+
+        logger.println(
+          RunnerMessages.browserSpecsSkipped(
+            excludedSpecFiles.length,
+            skippedList,
+          ),
+        );
+      }
+
       if (specFiles.length === 0) {
         throw new ExitCodeError(EXIT_CODES.CONFIG_ERROR, 'No test files found');
       }
 
-      const entryFiles = [...srcFiles, ...specFiles];
+      const entryFiles =
+        selectInitialEntryFiles(
+          this.config.browser,
+          srcFiles,
+          specFiles,
+        );
       const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
       const input: Record<string, string> = {};
  
       const entryKeyFromOutput = (file: string) =>
-        this.fileDiscovery.getOutputName(file).replace(/\.js$/, '');
+        this.fileDiscovery.getOutputName(file).replace(/\.mjs$/, '');
 
       for (const file of entryFiles) {
         input[entryKeyFromOutput(file)] = file;
@@ -132,13 +182,16 @@ export class ViteJasmineRunner extends EventEmitter {
         fs.mkdirSync(this.config.outDir, { recursive: true });
       }
 
-      viteConfig.build!.rollupOptions!.input = input;
+      applyBuildInputs(
+        viteConfig,
+        input,
+      );
 
       logger.println(RunnerMessages.buildingFiles(Object.keys(input).length));
       this.viteCache = await viteBuild(viteConfig);
 
-      const jsFiles = (await glob(path.join(this.config.outDir, '**/*.js').replace(/\\/g, '/')))
-        .filter((f) => !/\.spec\.js$/i.test(f));
+      const jsFiles = (await glob(path.join(this.config.outDir, '**/*.mjs').replace(/\\/g, '/')))
+        .filter((f) => !/\.spec(?:[.-].*)?\.mjs$/i.test(f));
 
       for (const jsFile of jsFiles) {
         const result = await this.instrumenter.instrumentFile(jsFile);
@@ -165,7 +218,7 @@ export class ViteJasmineRunner extends EventEmitter {
         logger.println(RunnerMessages.preservingExistingHtml());
       }
 
-      const runnerPath = path.join(this.config.outDir, 'test-runner.js');
+      const runnerPath = path.join(this.config.outDir, 'test-runner.mjs');
       const preserveRunner = this.shouldPreserve() && fs.existsSync(runnerPath);
       if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
         this.nodeTestRunner.generateTestRunner();

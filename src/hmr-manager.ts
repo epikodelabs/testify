@@ -521,7 +521,7 @@ export class HmrManager extends EventEmitter {
       output = norm(path.join(this.config.outDir, this.fileDiscovery.getOutputName(filePath)));
 
       if (fs.existsSync(output)) fs.rmSync(output);
-      const map = output.replace(/\.js$/, '.js.map');
+      const map = output.replace(/\.mjs$/, '.mjs.map');
       if (fs.existsSync(map)) fs.rmSync(map);
     
       this.emit('hmr:update', {

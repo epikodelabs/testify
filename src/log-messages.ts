@@ -120,7 +120,7 @@ export const CLIMessages = {
     `%cross% Could not resolve project "${name}". It is not a directory and not a known package name.`,
 
   preserveOutputsEnabled: () =>
-    `%info%  Preserve outputs enabled (skip regenerating index.html and test-runner.js when present).`,
+    `%info%  Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
 
   failedToStartTestRunner: (error: unknown) =>
     `%cross% Failed to start test runner: ${error}`,
@@ -141,7 +141,7 @@ export const CLIMessages = {
     '  --seed <number>      Seed used for randomization order',
     '  --port <number>      Override the port from testify.json',
     '  --silent / --quiet    Suppress console logs when running in Node.js mode',
-    '  --preserve           Skip regenerating index.html and test-runner.js when outputs exist',
+    '  --preserve           Skip regenerating index.html and test-runner.mjs when outputs exist',
     '  --ansi               Use plain ASCII output (no colors, emoji, or cursor control)',
     '  --project <name>     Run tests only for the specified package or directory',
     '  --exclusive          Close any previously running testify instance before starting',
@@ -542,10 +542,16 @@ export const RunnerMessages = {
     `%info%  Preserving existing index.html (no regeneration).`,
 
   preservingExistingRunner: () =>
-    `%info%  Preserving existing test-runner.js (no regeneration).`,
+    `%info%  Preserving existing test-runner.mjs (no regeneration).`,
 
   buildingFiles: (count: number) =>
     `%box% Building ${count} files...`,
+
+  browserSpecsSkipped: (count: number, files: string) =>
+    `%warn%  Skipping ${count} Node-only spec${count === 1 ? '' : 's'} in browser mode:\n${files}\n%info%  Skipped specs are not built for browser targets. Use --browser node to run them.`,
+
+  noBrowserCompatibleSpecs: (count: number, files: string) =>
+    `%cross% No browser-compatible specs found. ${count} spec${count === 1 ? ' was' : 's were'} skipped as Node-only:\n${files}\n%info%  Use --browser node to run these tests.`,
 
   cleaningOutputDirectory: () =>
     `%broom% Cleaning output directory...`,

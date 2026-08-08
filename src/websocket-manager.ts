@@ -6,9 +6,11 @@ import { Reporter } from './compound-reporter';
 import { HmrManager, HmrUpdate } from './hmr-manager';
 import { FileDiscoveryService } from './file-discovery-service';
 import { ViteJasmineConfig } from './vite-jasmine-config';
-import path from 'path';
 import { logger } from './logger';
 import { WebSocketMessages } from './log-messages';
+import {
+  discoverBrowserBuildArtifacts,
+} from './browser-build-artifacts';
 
 export class WebSocketManager extends EventEmitter {
   private wss: WebSocketServer | null = null;
@@ -32,13 +34,13 @@ export class WebSocketManager extends EventEmitter {
       this.wsClients.push(ws);
       // Send HMR status on connection
       if (this.hmrEnabled) {
-        const files = await this.fileDiscovery.scanDir(this.config.outDir, '/**/*.{js,mjs}');
+        const files =
+          discoverBrowserBuildArtifacts(
+            this.config.outDir,
+          );
         this.sendToClient(ws, { 
           type: 'hmr:connected',
-          specFiles: files
-            .filter(file => /\.spec\.(?:js|mjs)$/i.test(file))
-            .map(file => path.basename(file))
-            .sort(),
+          specFiles: files.specFiles,
           enabled: true 
         });
       }

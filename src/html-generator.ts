@@ -7,6 +7,45 @@ import { FileDiscoveryService } from './file-discovery-service';
 import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 import { resolveBrowserPreludeModules } from './prelude-modules';
+import {
+  discoverBrowserBuildArtifacts,
+} from './browser-build-artifacts';
+
+function resolveEmbeddedFaviconHref():
+  string | null {
+  const __filename =
+    norm(fileURLToPath(import.meta.url));
+  const __dirname =
+    norm(path.dirname(__filename));
+  const candidatePaths = [
+    path.resolve(
+      process.cwd(),
+      'assets/favicon.ico',
+    ),
+    path.resolve(
+      __dirname,
+      '../assets/favicon.ico',
+    ),
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    if (!fs.existsSync(candidatePath)) {
+      continue;
+    }
+
+    const faviconData =
+      fs.readFileSync(candidatePath);
+    const faviconBase64 =
+      faviconData.toString('base64');
+
+    return (
+      'data:image/x-icon;base64,' +
+      faviconBase64
+    );
+  }
+
+  return null;
+}
 
 export class HtmlGenerator {
   constructor(private fileDiscovery: FileDiscoveryService, private config: ViteJasmineConfig) { }
@@ -17,16 +56,20 @@ export class HtmlGenerator {
       fs.mkdirSync(htmlDir, { recursive: true });
     }
 
-    const builtFiles = fs.readdirSync(htmlDir)
-      .filter(f => /\.(?:js|mjs)$/i.test(f))
-      .sort();
+    const builtFiles =
+      discoverBrowserBuildArtifacts(
+        htmlDir,
+      ).files;
 
     if (builtFiles.length === 0) {
       logger.println(HtmlMessages.noJsFilesForHtml());
       return;
     }
 
-    const specFiles = builtFiles.filter(f => /\.spec\.(?:js|mjs)$/i.test(f));
+    const specFiles =
+      discoverBrowserBuildArtifacts(
+        htmlDir,
+      ).specFiles;
     const imports = this.getStaticModuleImports(specFiles);
 
     const faviconTag = this.getFaviconTag();
@@ -50,18 +93,18 @@ export class HtmlGenerator {
   }
 
   private getFaviconTag(): string {
-    const __filename = norm(fileURLToPath(import.meta.url));
-    const __dirname = norm(path.dirname(__filename));
-    const faviconPath = path.resolve(__dirname, '../assets/favicon.ico');
-    
-    if (fs.existsSync(faviconPath)) {
-      const faviconData = fs.readFileSync(faviconPath);
-      const faviconBase64 = faviconData.toString('base64');
-      return `<link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,${faviconBase64}">`;
-    } else {
-      logger.println(HtmlMessages.faviconNotFound(faviconPath));
-      return `<link rel="icon" href="favicon.ico" type="image/x-icon" />`;
+    const faviconHref =
+      resolveEmbeddedFaviconHref();
+
+    if (!faviconHref) {
+      return '';
     }
+
+    return (
+      '<link rel="icon" type="image/x-icon" href="' +
+      faviconHref +
+      '">'
+    );
   }
 
   private generateHtmlTemplate(imports: string, faviconTag: string): string {

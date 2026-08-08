@@ -142,7 +142,7 @@ export class ViteConfigBuilder {
       if (this.isTypeOnlyModule(file)) {
         continue;
       }
-      const outputName = this.buildOutputName(file).replace(/\.js$/, '');
+      const outputName = this.buildOutputName(file).replace(/\.mjs$/, '');
       map[outputName] = norm(file);
     }
 
@@ -189,10 +189,10 @@ export class ViteConfigBuilder {
     const hash = createHash('sha1').update(normalizedPath).digest('hex').slice(0, 8);
 
     if (isSpecFile) {
-      return `${sanitizedBaseName}__${hash}.spec.js`;
+      return `${sanitizedBaseName}__${hash}.spec.mjs`;
     }
 
-    return `${sanitizedBaseName}__${hash}.js`;
+    return `${sanitizedBaseName}__${hash}.mjs`;
   }
 
   private isTypeOnlyModule(filePath: string): boolean {
@@ -264,6 +264,12 @@ export class ViteConfigBuilder {
 
       const tsconfigData = this.loadResolvedTsconfigData();
       const isNodeTarget = this.config.browser === 'node';
+      const outputOptions = {
+        format: 'es',
+        entryFileNames: '[name].mjs',
+        chunkFileNames: 'vendor.mjs',
+        manualChunks: (id: string) => this.vendorChunk(id)
+      };
 
       return {
         root: process.cwd(),
@@ -286,14 +292,12 @@ export class ViteConfigBuilder {
               : 'strict',
 
             onwarn,
-
-            output: {
-              format: 'es',
-              entryFileNames: '[name].js',
-              chunkFileNames: 'vendor.js',
-              manualChunks: id => this.vendorChunk(id)
-            }
-          }
+            output: outputOptions
+          },
+          rolldownOptions: {
+            input,
+            output: outputOptions,
+          } as any,
         },
 
         resolve: { alias: this.createPathAliases() },
