@@ -469,6 +469,20 @@ export function getBrowserRuntimeScript(
         currentPlanOptions,
       );
 
+    let lastExecutionResult = null;
+
+    async function rememberExecution(
+      work,
+    ) {
+      const result =
+        await work();
+
+      lastExecutionResult =
+        result;
+
+      return result;
+    }
+
     const warnDeprecated = (() => {
       const shown = new Set();
 
@@ -680,40 +694,57 @@ export function getBrowserRuntimeScript(
         session.execute(plan),
 
       run: (selector) =>
-        session.run(selector),
+        rememberExecution(
+          () =>
+            session.run(
+              selector,
+            ),
+        ),
 
       runTest: (selector) =>
-        runSelection(
-          'test',
-          selector,
-          (value) =>
-            session.findTests(value),
-          (value) =>
-            session.runSpec(value),
-          'runner.listTests() or runner.findTests(...)',
+        rememberExecution(
+          () =>
+            runSelection(
+              'test',
+              selector,
+              (value) =>
+                session.findTests(value),
+              (value) =>
+                session.runSpec(value),
+              'runner.listTests() or runner.findTests(...)',
+            ),
         ),
 
       runSuite: (selector) =>
-        runSelection(
-          'suite',
-          selector,
-          (value) =>
-            session.findSuites(value),
-          (value) =>
-            session.runSuite(value),
-          'runner.listSuites() or runner.findSuites(...)',
+        rememberExecution(
+          () =>
+            runSelection(
+              'suite',
+              selector,
+              (value) =>
+                session.findSuites(value),
+              (value) =>
+                session.runSuite(value),
+              'runner.listSuites() or runner.findSuites(...)',
+            ),
         ),
 
       runFile: (selector) =>
-        runSelection(
-          'file',
-          selector,
-          (value) =>
-            session.findFiles(value),
-          (value) =>
-            session.runFile(value),
-          'runner.listFiles() or runner.findFiles(...)',
+        rememberExecution(
+          () =>
+            runSelection(
+              'file',
+              selector,
+              (value) =>
+                session.findFiles(value),
+              (value) =>
+                session.runFile(value),
+              'runner.listFiles() or runner.findFiles(...)',
+            ),
         ),
+
+      last: () =>
+        lastExecutionResult,
 
       // Compatibility helper retained for v1 callers.
       runTests: (...args) => {
@@ -722,7 +753,7 @@ export function getBrowserRuntimeScript(
           'runner.run() or runner.session.run()',
         );
 
-        return runTests(...args);
+        return rememberExecution(\n          () => runTests(...args),\n        );
       },
 
       setSeed,
@@ -737,7 +768,7 @@ export function getBrowserRuntimeScript(
       'color: green; font-weight: bold;',
     );
     console.log(
-      '💡 Browser console: runner.help() · runner.listTests() · runner.listSuites()',
+      '💡 Browser console: runner.help() · runner.listTests() · runner.last()',
     );
   }
 
