@@ -371,15 +371,15 @@ describe('Browser Playground runtime', () => {
         harness.session.help();
 
       for (const command of [
-        'session.tests()',
-        'session.suites()',
-        'session.files()',
+        'session.tests(selector?)',
+        'session.suites(selector?)',
+        'session.files(selector?)',
         'session.last()',
         'session.failures()',
         'await session.rerun()',
         'await session.retry()',
         'session.refresh()',
-        'session.plan(selector, options)',
+        'session.plan(selector?, options?)',
         'plan.tests()',
         'plan.filter(test => ...)',
         'plan.slice(start, end)',

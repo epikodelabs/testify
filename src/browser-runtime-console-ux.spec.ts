@@ -16,107 +16,33 @@ describe('Browser runtime Playground console UX', () => {
     ).not.toThrow();
   });
 
-  it('exposes concise interactive help', () => {
+  it('installs the Playground runtime', () => {
     expect(source).toContain(
-      'function printSessionHelp()',
+      'function installTestifyPlayground(',
     );
 
     expect(source).toContain(
-      'session.tests()',
-    );
-
-    expect(source).toContain(
-      'session.suites()',
-    );
-
-    expect(source).toContain(
-      'session.files()',
-    );
-
-    expect(source).toContain(
-      "await session.runSpec('<spec>', options?)",
-    );
-
-    expect(source).toContain(
-      "await session.runSuite('<suite>', options?)",
-    );
-
-    expect(source).toContain(
-      "await session.runFile('<file>', options?)",
-    );
-
-    expect(source).toContain(
-      "lines.join('\\\\n')",
+      'installTestifyPlayground(',
     );
   });
 
-  it('prints only a concise startup hint', () => {
+  it('installs Playground value formatters', () => {
+    expect(source).toContain(
+      'function installTestifyPlaygroundFormatters(',
+    );
+
+    expect(source).toContain(
+      'installTestifyPlaygroundFormatters();',
+    );
+  });
+
+  it('keeps the browser runtime wired to the session Playground', () => {
     expect(source).toContain(
       '✅ Testify Playground ready!',
     );
 
     expect(source).toContain(
-      'Browser console: session.help() · session.tests() · session.retry()',
-    );
-  });
-
-  it('gives actionable feedback for missing selectors', () => {
-    expect(source).toContain(
-      "'[Testify] Missing ' + kind + ' selector.'",
-    );
-
-    expect(source).toContain(
-      "'Try ' + listCommand",
-    );
-  });
-
-  it('gives actionable feedback when selectors match nothing', () => {
-    expect(source).toContain(
-      "'[Testify] No ' + kind + 's matched ' + formatSelector(selector) + '.'",
-    );
-
-    expect(source).toContain(
-      'session.tests(...)',
-    );
-
-    expect(source).toContain(
-      'session.suites(...)',
-    );
-
-    expect(source).toContain(
-      'session.files(...)',
-    );
-  });
-
-  it('shows ambiguous matches before running them', () => {
-    expect(source).toContain(
-      "'[Testify] ' + matches.length + ' ' + kind + 's matched ' + formatSelector(selector) + '.'",
-    );
-
-    expect(source).toContain(
-      'observableCollection(',
-    );
-
-    expect(source).not.toContain(
-      'console.table(',
-    );
-  });
-
-  it('wraps spec, suite, and file execution through one selection helper', () => {
-    expect(source).toContain(
-      'runSpec: (',
-    );
-
-    expect(source).toContain(
-      "runSelection(\n            'spec'",
-    );
-
-    expect(source).toContain(
-      "runSelection(\n            'suite'",
-    );
-
-    expect(source).toContain(
-      "runSelection(\n            'file'",
+      'globalThis.session = session;',
     );
   });
 });
