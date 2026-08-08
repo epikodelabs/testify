@@ -1,6 +1,21 @@
 # Changelog
 
+### Session / Playground stabilization
+
+* Separated browser execution setup from Playground-only history, rerun, help, and host controls without changing the `session.*` surface.
+* Added behavioral coverage for the Playground contract so internal generated-code refactors no longer depend on helper-name string assertions.
+* Kept `session.help()` synchronized as the authoritative interactive reference.
+
 ## 2.0.0
+
+### Playground
+
+- Exposed the live `RunnerSession` directly as browser `session`; removed the separate `runner` façade.
+- Added synchronized `session.help()` guidance for discovery, planning, lifecycle, last-result inspection, reruns, and host exit.
+- Added `session.last()`, `session.lastPlan()`, `session.failed()`, `session.rerun()`, and `session.rerunFailed()` to the browser Playground workflow.
+- Added `session.exit()` as the Playground-to-host command for clean browser/watch shutdown.
+- Standardized selective execution on `runSpec()`, `runSuite()`, and `runFile()`; no `runTest()` compatibility alias is retained.
+
 
 ### Root v2 API
 
@@ -19,14 +34,10 @@
 - Added real declaration generation for root and v2 package entries.
 - Added compile-time package-surface tests and a 1.x → 2.0 migration guide.
 
-# Changelog
-
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-# Changelog
 
 ## 1.0.37 - 2026-08-07
 

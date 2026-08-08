@@ -443,7 +443,7 @@ session.query().suites(/Membrane/);
 session.query().files(/validation/);
 ```
 
-Compatibility methods may remain.
+No compatibility aliases are required for the Playground surface. The concise `tests()`, `suites()`, and `files()` helpers are intentional controls over the same catalog/query model.
 
 ---
 
@@ -1182,3 +1182,64 @@ Everything else follows from that.
 And the architectural hierarchy remains:
 
 > **Testify is an execution engine for tests. Jasmine is one test language hosted by it.**
+
+---
+
+## 26. Browser Playground surface
+
+The browser Playground exposes the live `RunnerSession` directly as `globalThis.session`.
+There is no separate `runner` façade and no compatibility alias.
+
+The reusable `RunnerSession` remains the engine boundary. Browser-only controls are attached by the browser runtime rather than added to the reusable class contract:
+
+```ts
+session.help();
+session.last();
+session.lastPlan();
+session.failed();
+await session.rerun();
+await session.rerunFailed();
+session.setSeed(12345);
+session.resetSeed();
+session.reload();
+await session.exit();
+```
+
+Execution helpers exposed in the Playground keep the `RunnerSession` vocabulary:
+
+```ts
+await session.run();
+await session.runSpec(selector, options);
+await session.runSuite(selector, options);
+await session.runFile(selector, options);
+```
+
+`session.exit()` is a Playground-to-host command. It asks the Testify host to close the controlled browser, clean up HMR/WebSocket/HTTP resources, and resolve watch mode successfully. `RunnerSession.close()` remains the lower-level programmatic lifecycle operation and is not the user-facing way to leave the Playground.
+
+The Playground may retain the last execution result and plan for interactive rerun workflows. This state belongs to the browser Playground layer, not to the reusable `RunnerSession` class, preserving the Session v1 rule that execution history is not fundamental engine state.
+
+
+### Playground implementation boundary
+
+The browser runtime should keep the engine and Playground responsibilities physically separate:
+
+```text
+browser-runtime
+  ├─ Jasmine/browser environment
+  ├─ RunnerSession construction
+  └─ Playground installation
+
+browser-playground-runtime
+  ├─ execution history
+  ├─ rerun helpers
+  ├─ selector diagnostics
+  ├─ console help
+  ├─ seed/reload controls
+  └─ host exit command
+```
+
+This is an internal boundary, not another public abstraction. The browser still exposes only `globalThis.session`.
+
+`session.help()` is treated as part of the Playground contract. Playground capability changes must update the help surface and its behavioral test in the same change.
+
+Generated-source assertions should be reserved for embedding and syntax boundaries. Playground behavior should be tested through the installed session surface so internal helper names can change without breaking public-contract tests.

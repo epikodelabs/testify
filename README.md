@@ -1,6 +1,8 @@
 # testify
 
-A test runner for Jasmine that runs tests in **real browsers** (Chrome, Firefox, Safari) or **Node.js**, with TypeScript, HMR, and code coverage out of the box.
+A programmable test engine for Jasmine that runs tests in **real browsers** (Chrome, Firefox, Safari) or **Node.js**, with TypeScript, HMR, and code coverage out of the box.
+
+**Testify is an execution engine for tests. Jasmine is one test language hosted by it.**
 
 <p align="center">
   <a href="https://github.com/epikodelabs/testify/actions/workflows/build.yml"><img src="https://github.com/epikodelabs/testify/actions/workflows/build.yml/badge.svg?branch=main" alt="Build Status"></a>
@@ -76,6 +78,26 @@ npx testify --watch           # HMR watch mode (headed only)
 - `--watch` requires headed browser mode; incompatible with `--headless`, `--coverage`, and `--browser node`.
 - `--coverage` is incompatible with `--watch`.
 - Suppress logs in Node mode: `--silent`, `--quiet`, or `"suppressConsoleLogs": true` in config.
+
+### Playground
+
+In headed watch mode, DevTools exposes the live Testify `session` directly:
+
+```js
+session.tests()
+session.suites()
+
+const plan = session.planSuite('Forms');
+await session.execute(plan);
+
+session.failed();
+await session.rerunFailed();
+
+session.help();
+await session.exit();
+```
+
+`session.help()` is the authoritative console reference for the current Playground surface.
 
 ---
 
