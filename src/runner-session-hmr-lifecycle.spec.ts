@@ -72,11 +72,6 @@ describe('RunnerSession HMR lifecycle', () => {
       session.revision(),
     ).toBe(1);
 
-    expect(
-      session.planningStats()
-        .cachedPlans,
-    ).toBe(1);
-
     catalog =
       createCatalog([
         'spec1',
@@ -95,11 +90,6 @@ describe('RunnerSession HMR lifecycle', () => {
     expect(
       session.revision(),
     ).toBe(2);
-
-    expect(
-      session.planningStats()
-        .cachedPlans,
-    ).toBe(0);
 
     const secondPlan =
       session.plan();
@@ -292,9 +282,5 @@ describe('RunnerSession HMR lifecycle', () => {
       session.revision(),
     ).toBe(1);
 
-    expect(
-      session.planningStats()
-        .cacheHits,
-    ).toBe(1);
   });
 });

@@ -1,33 +1,27 @@
 import type {
-  FileListRow,
-  SuiteListRow,
-  TestListRow,
-} from './catalog-query';
-import type {
   ExecutionResult,
 } from './execution-result';
+import type {
+  TestSelector,
+} from './test-selection';
 import {
   NodeRunnerHost,
 } from './node-runner-host';
 
-describe('NodeRunnerHost typed surfaces', () => {
-  it('exposes typed query/result methods', () => {
+describe('NodeRunnerHost typed surface', () => {
+  it('exposes one typed run operation', () => {
     const host =
       new NodeRunnerHost(
         'test-runner.mjs',
       );
 
-    const tests: TestListRow[] =
-      host.listTests();
+    const run:
+      (
+        reporter: jasmine.CustomReporter,
+        selector?: TestSelector,
+      ) => Promise<ExecutionResult> =
+        host.run.bind(host);
 
-    const suites: SuiteListRow[] =
-      host.listSuites();
-
-    const files: FileListRow[] =
-      host.listFiles();
-
-    void tests;
-    void suites;
-    void files;
+    void run;
   });
 });

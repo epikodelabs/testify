@@ -101,7 +101,7 @@ export class NodeTestRunner {
       );
 
       return await this.execution
-        .execute(
+        .run(
           this.reporter,
           {
             cwd: this.options.cwd,

@@ -74,11 +74,6 @@ export const LOG_MESSAGES = {
         icon: '🚀',
         text: () => '[rocket] Starting test runner in current process...',
     },
-    runnerDoesNotExportRunTests: {
-        type: 'warning',
-        icon: '⚠️',
-        text: () => '[warning] Test runner does not export a "runTests" function.',
-    },
     testProcessAlreadyRunning: {
         type: 'warning',
         icon: '⚠️',

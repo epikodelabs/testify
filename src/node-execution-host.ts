@@ -35,7 +35,7 @@ export class NodeExecutionHost {
       CoverageHost,
   ) {}
 
-  async execute(
+  async run(
     reporter: jasmine.CustomReporter,
     options:
       NodeExecutionHostOptions = {},
@@ -58,7 +58,7 @@ export class NodeExecutionHost {
             );
 
         const result =
-          await this.runtime.execute(
+          await this.runtime.run(
             host,
             reporter,
             options.selector,

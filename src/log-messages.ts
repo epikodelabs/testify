@@ -381,9 +381,6 @@ export const NodeRunnerMessages = {
   startingTestRunner: () =>
     `%rocket% Starting in-process test runner...`,
 
-  runnerDoesNotExportRunTests: () =>
-    `%cross% Runner module does not export runTests()`,
-
   testExecutionError: (message: string) =>
     `%cross% Test execution error: ${message}`,
 

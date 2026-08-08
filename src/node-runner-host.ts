@@ -3,56 +3,14 @@ import { pathToFileURL } from 'url';
 import { norm } from './utils';
 import type { TestSelector } from './test-selection';
 import type {
-  FileListRow,
-  SuiteListRow,
-  TestListRow,
-} from './catalog-query';
-import type {
   ExecutionResult,
 } from './execution-result';
 
 export interface NodeRunnerModule {
-  runTests(
+  run(
     reporter: jasmine.CustomReporter,
     selector?: TestSelector,
   ): Promise<ExecutionResult>;
-
-  runTest?(
-    reporter: jasmine.CustomReporter,
-    selector: string | RegExp,
-  ): Promise<ExecutionResult>;
-
-  runSuite?(
-    reporter: jasmine.CustomReporter,
-    selector: string | RegExp,
-  ): Promise<ExecutionResult>;
-
-  runFile?(
-    reporter: jasmine.CustomReporter,
-    selector: string | RegExp,
-  ): Promise<ExecutionResult>;
-
-  getCatalog?(): unknown;
-  getSession?(): unknown;
-  getStats?(): {
-    specs: number;
-    suites: number;
-    files: number;
-  };
-  getIndex?(): unknown;
-  getCatalogRevision?(): number;
-  getPlanningStats?(): {
-    catalogVersion: number;
-    cachedPlans: number;
-    cacheHits: number;
-    cacheMisses: number;
-  };
-  listTests?(): TestListRow[];
-  listSuites?(): SuiteListRow[];
-  listFiles?(): FileListRow[];
-  findTests?(selector: string | RegExp): TestListRow[];
-  findSuites?(selector: string | RegExp): SuiteListRow[];
-  findFiles?(selector: string | RegExp): FileListRow[];
 }
 
 export class NodeRunnerHost {
@@ -118,177 +76,18 @@ export class NodeRunnerHost {
     }
   }
 
-  async execute(
-    reporter: jasmine.CustomReporter,
-    selector?: TestSelector,
-  ): Promise<ExecutionResult> {
-    const runner =
-      this.runnerModule ??
-      await this.load();
-
-    return runner.runTests(
-      reporter,
-      selector,
-    );
-  }
-
   async run(
     reporter: jasmine.CustomReporter,
     selector?: TestSelector,
   ): Promise<ExecutionResult> {
-    return this.execute(
+    const runner =
+      this.runnerModule ??
+      await this.load();
+
+    return runner.run(
       reporter,
       selector,
     );
-  }
-
-  async runSpec(
-    reporter: jasmine.CustomReporter,
-    selector: string | RegExp,
-  ): Promise<ExecutionResult> {
-    const runner =
-      this.runnerModule ??
-      await this.load();
-
-    if (runner.runTest) {
-      return runner.runTest(
-        reporter,
-        selector,
-      );
-    }
-
-    return runner.runTests(
-      reporter,
-      { spec: selector },
-    );
-  }
-
-  async runSuite(
-    reporter: jasmine.CustomReporter,
-    selector: string | RegExp,
-  ): Promise<ExecutionResult> {
-    const runner =
-      this.runnerModule ??
-      await this.load();
-
-    if (runner.runSuite) {
-      return runner.runSuite(
-        reporter,
-        selector,
-      );
-    }
-
-    return runner.runTests(
-      reporter,
-      { suite: selector },
-    );
-  }
-
-  async runFile(
-    reporter: jasmine.CustomReporter,
-    selector: string | RegExp,
-  ): Promise<ExecutionResult> {
-    const runner =
-      this.runnerModule ??
-      await this.load();
-
-    if (runner.runFile) {
-      return runner.runFile(
-        reporter,
-        selector,
-      );
-    }
-
-    return runner.runTests(
-      reporter,
-      { file: selector },
-    );
-  }
-
-  getSession(): unknown {
-    return this.runnerModule
-      ?.getSession?.();
-  }
-
-  getStats(): {
-    specs: number;
-    suites: number;
-    files: number;
-  } {
-    return this.runnerModule
-      ?.getStats?.() ?? {
-        specs: 0,
-        suites: 0,
-        files: 0,
-      };
-  }
-
-  getIndex(): unknown {
-    return this.runnerModule
-      ?.getIndex?.();
-  }
-
-  getCatalogRevision(): number {
-    return this.runnerModule
-      ?.getCatalogRevision?.() ??
-      0;
-  }
-
-  getPlanningStats(): {
-    catalogVersion: number;
-    cachedPlans: number;
-    cacheHits: number;
-    cacheMisses: number;
-  } {
-    return this.runnerModule
-      ?.getPlanningStats?.() ?? {
-        catalogVersion: 0,
-        cachedPlans: 0,
-        cacheHits: 0,
-        cacheMisses: 0,
-      };
-  }
-
-  listTests(): TestListRow[] {
-    return this.runnerModule
-      ?.listTests?.() ??
-      [];
-  }
-
-  listSuites(): SuiteListRow[] {
-    return this.runnerModule
-      ?.listSuites?.() ??
-      [];
-  }
-
-  listFiles(): FileListRow[] {
-    return this.runnerModule
-      ?.listFiles?.() ??
-      [];
-  }
-
-  findTests(
-    selector: string | RegExp,
-  ): TestListRow[] {
-    return this.runnerModule
-      ?.findTests?.(selector) ??
-      [];
-  }
-
-  findSuites(
-    selector: string | RegExp,
-  ): SuiteListRow[] {
-    return this.runnerModule
-      ?.findSuites?.(selector) ??
-      [];
-  }
-
-  findFiles(
-    selector: string | RegExp,
-  ): FileListRow[] {
-    return this.runnerModule
-      ?.findFiles?.(selector) ??
-      [];
   }
 
   clear(): void {

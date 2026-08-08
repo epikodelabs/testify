@@ -6,7 +6,7 @@ import {
 } from './node-runner-host';
 
 describe('NodeRunnerHost', () => {
-  it('writes, loads, and executes a generated runner module', async () => {
+  it('writes, loads, and runs a generated runner module', async () => {
     const dir =
       fs.mkdtempSync(
         path.join(
@@ -28,7 +28,7 @@ describe('NodeRunnerHost', () => {
         );
 
       host.write(`
-        export async function runTests(
+        export async function run(
           reporter,
           selector
         ) {
@@ -46,15 +46,15 @@ describe('NodeRunnerHost', () => {
 
       const reporter: any = {};
 
-      const exitCode =
-        await host.execute(
+      const result =
+        await host.run(
           reporter,
           {
             suite: 'suite1',
           },
         );
 
-      expect(exitCode.exitCode).toBe(7);
+      expect(result.exitCode).toBe(7);
 
       expect(
         reporter.received,

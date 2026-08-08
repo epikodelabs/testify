@@ -2,7 +2,7 @@ import * as testify from './lib';
 import * as internals from './internals';
 
 describe('Testify 2 package surface', () => {
-  it('exposes the stable engine at the root', () => {
+  it('keeps the stable root focused on Session/Plan/Result contracts', () => {
     const rootSurface =
       testify as Record<
         string,
@@ -13,58 +13,45 @@ describe('Testify 2 package surface', () => {
       testify.RunnerSession,
     ).toBeDefined();
 
-    expect(
-      testify.createExecutionPlan,
-    ).toBeDefined();
-
-    expect(
-      testify.summarizeExecutionResults,
-    ).toBeDefined();
-
-    expect(
-      Object.keys(
-        rootSurface,
-      ),
-    ).not.toContain(
+    for (const internalName of [
+      'createExecutionPlan',
+      'summarizeExecutionResults',
+      'CatalogQuery',
+      'createTestCatalogIndex',
+      'listCatalogTests',
+      'findCatalogSpecs',
       'PlanningEngine',
-    );
-
-    expect(
-      rootSurface[
-        'PlanningEngine'
-      ],
-    ).toBeUndefined();
-
-    expect(
-      Object.keys(
-        rootSurface,
-      ),
-    ).not.toContain(
       'CatalogState',
-    );
+    ]) {
+      expect(
+        Object.keys(rootSurface),
+      ).not.toContain(
+        internalName,
+      );
 
-    expect(
-      rootSurface[
-        'CatalogState'
-      ],
-    ).toBeUndefined();
-
-    expect(
-      Object.keys(
-        rootSurface,
-      ),
-    ).not.toContain(
-      'NodeExecutionHost',
-    );
-
-    expect(
-      rootSurface[
-        'NodeExecutionHost'
-      ],
-    ).toBeUndefined();
+      expect(
+        rootSurface[internalName],
+      ).toBeUndefined();
+    }
   });
 
-  it('keeps advanced planning internals opt-in', () => {
+  it('keeps construction/query/planning helpers opt-in through internals', () => {
+    expect(
+      internals.createExecutionPlan,
+    ).toBeDefined();
+
+    expect(
+      internals.summarizeExecutionResults,
+    ).toBeDefined();
+
+    expect(
+      internals.CatalogQuery,
+    ).toBeDefined();
+
+    expect(
+      internals.createTestCatalogIndex,
+    ).toBeDefined();
+
     expect(
       internals.PlanningEngine,
     ).toBeDefined();

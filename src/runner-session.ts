@@ -17,12 +17,8 @@ import type {
   SuiteListRow,
   TestListRow,
 } from './catalog-query';
-import type {
-  TestCatalogIndex,
-} from './test-catalog-index';
 import {
   PlanningEngine,
-  type PlanningEngineStats,
 } from './planning-engine';
 import type {
   CatalogChangeSet,
@@ -106,18 +102,6 @@ export class RunnerSession<TResult> {
     };
   }
 
-  catalog(): TestCatalog {
-    this.refresh();
-
-    return this.planner.catalog;
-  }
-
-  index(): TestCatalogIndex {
-    this.refresh();
-
-    return this.planner.index;
-  }
-
   revision(): number {
     this.refresh();
 
@@ -130,29 +114,14 @@ export class RunnerSession<TResult> {
     return this.planner.changes;
   }
 
-  planningStats():
-    PlanningEngineStats {
-    this.refresh();
-
-    return this.planner.stats();
-  }
-
-  invalidatePlans(): void {
-    this.assertOpen();
-    this.planner.invalidate();
-  }
-
-
-  query(): CatalogQuery {
-    return new CatalogQuery(
-      this.catalog(),
-    );
-  }
-
   tests(
     selector?: string | RegExp,
   ): TestListRow[] {
-    return this.query().tests(
+    this.refresh();
+
+    return new CatalogQuery(
+      this.planner.catalog,
+    ).tests(
       selector,
     );
   }
@@ -160,7 +129,11 @@ export class RunnerSession<TResult> {
   suites(
     selector?: string | RegExp,
   ): SuiteListRow[] {
-    return this.query().suites(
+    this.refresh();
+
+    return new CatalogQuery(
+      this.planner.catalog,
+    ).suites(
       selector,
     );
   }
@@ -168,7 +141,11 @@ export class RunnerSession<TResult> {
   files(
     selector?: string | RegExp,
   ): FileListRow[] {
-    return this.query().files(
+    this.refresh();
+
+    return new CatalogQuery(
+      this.planner.catalog,
+    ).files(
       selector,
     );
   }
@@ -178,7 +155,8 @@ export class RunnerSession<TResult> {
     suites: number;
     files: number;
   } {
-    const catalog = this.catalog();
+    this.refresh();
+    const catalog = this.planner.catalog;
 
     return {
       specs: catalog.specs.length,

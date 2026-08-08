@@ -106,6 +106,8 @@ Playground values are designed to be useful when inspected directly in DevTools.
 
 `session.help()` is the authoritative console reference for the current Playground surface.
 
+Architecture rule: **one concept → one vocabulary → one owner**. See `docs/architecture-vocabulary.md` for the frozen Session/Plan/Result terminology.
+
 ---
 
 ## Code Coverage

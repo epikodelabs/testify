@@ -13,11 +13,11 @@ function installTestifyPlayground(
 
   const executeSessionPlan =
     session.execute.bind(session);
-  const queryTests =
+  const baseTests =
     session.tests.bind(session);
-  const querySuites =
+  const baseSuites =
     session.suites.bind(session);
-  const queryFiles =
+  const baseFiles =
     session.files.bind(session);
 
   function observableCollection(
@@ -100,16 +100,9 @@ function installTestifyPlayground(
     );
   }
 
-  function getFailures() {
-    return collectFailures();
-  }
-
   function resolveFailureSpecIds(
     failures,
   ) {
-    const catalog =
-      session.catalog();
-
     const failedNames =
       new Set(
         failures
@@ -128,19 +121,19 @@ function installTestifyPlayground(
         ),
       );
 
-    return catalog.specs
+    return baseTests()
       .filter(
-        (spec) =>
+        (test) =>
           failedIds.has(
-            spec.id,
+            test.id,
           ) ||
           failedNames.has(
-            spec.fullName,
+            test.fullName,
           ),
       )
       .map(
-        (spec) =>
-          spec.id,
+        (test) =>
+          test.id,
       );
   }
 
@@ -410,19 +403,19 @@ function installTestifyPlayground(
       tests: (selector) =>
         observableCollection(
           'tests',
-          queryTests(selector),
+          baseTests(selector),
         ),
 
       suites: (selector) =>
         observableCollection(
           'suites',
-          querySuites(selector),
+          baseSuites(selector),
         ),
 
       files: (selector) =>
         observableCollection(
           'files',
-          queryFiles(selector),
+          baseFiles(selector),
         ),
 
       execute: (plan) =>
@@ -515,7 +508,7 @@ function installTestifyPlayground(
         lastExecution,
 
       failures:
-        getFailures,
+        collectFailures,
 
       rerun:
         rerunLastExecution,

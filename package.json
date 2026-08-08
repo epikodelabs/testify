@@ -1,7 +1,7 @@
 {
   "name": "@epikodelabs/testify",
   "version": "2.0.0",
-  "description": "A Jasmine test runner for Node and browsers with Vite-powered execution, typed planning, and a programmatic Testify engine.",
+  "description": "A programmable test engine for Node and real browsers, with Jasmine as its first hosted test language.",
   "bin": {
     "jasmine": "bin/jasmine",
     "testify": "bin/testify"

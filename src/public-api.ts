@@ -1,7 +1,8 @@
 /**
  * Stable Testify public API.
  *
- * Testify 2 is now the root package API.
+ * The root package exposes the engine contracts users program against:
+ * Session creates and executes work, Plan shapes work, Result describes it.
  */
 export {
   RunnerSession,
@@ -15,15 +16,6 @@ export type {
   TestifyRunnerSession,
 } from './runner-session';
 
-export {
-  createExecutionPlan,
-  createFileExecutionPlan,
-  createSpecExecutionPlan,
-  createSuiteExecutionPlan,
-  partitionExecutionPlan,
-  shardExecutionPlan,
-} from './execution-plan';
-
 export type {
   ExecutionPlan,
   ExecutionPlanOptions,
@@ -32,41 +24,10 @@ export type {
   PlannedExecution,
 } from './execution-plan';
 
-export {
-  summarizeExecutionResults,
-} from './execution-result';
-
 export type {
   ExecutionResult,
   ExecutionSpecResult,
 } from './execution-result';
-
-export {
-  createTestCatalogIndex,
-} from './test-catalog-index';
-
-export type {
-  TestCatalogIndex,
-} from './test-catalog-index';
-
-export {
-  listCatalogFiles,
-  listCatalogSuites,
-  listCatalogTests,
-} from './catalog-query';
-
-export type {
-  FileListRow,
-  SuiteListRow,
-  TestListRow,
-} from './catalog-query';
-
-export {
-  findCatalogSpecs,
-  findCatalogSuites,
-  getSpecIdsForFiles,
-  resolveTestSelector,
-} from './test-selection';
 
 export type {
   TestSelector,
@@ -77,7 +38,3 @@ export type {
   TestCatalogSpec,
   TestCatalogSuite,
 } from './test-catalog';
-
-export {
-  CatalogQuery,
-} from './catalog-query-builder';

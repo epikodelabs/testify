@@ -73,7 +73,11 @@ describe('Node runner module source', () => {
     );
 
     expect(source).toContain(
-      "reject(error)",
+      'export async function run(',
+    );
+
+    expect(source).not.toContain(
+      'new Promise(',
     );
   });
 

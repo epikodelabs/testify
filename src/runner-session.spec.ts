@@ -108,32 +108,6 @@ describe('RunnerSession', () => {
     ).toBe('forms.spec.mjs');
   });
 
-  it('memoizes an index for the current catalog instance', () => {
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-      );
-
-    const first =
-      session.index();
-
-    const second =
-      session.index();
-
-    expect(second).toBe(first);
-
-    expect(
-      first.specById.get(
-        'spec1',
-      )?.description,
-    ).toBe('works');
-  });
-
   it('reports session stats', () => {
     const session =
       new RunnerSession(
@@ -154,7 +128,7 @@ describe('RunnerSession', () => {
     });
   });
 
-  it('reuses planning state across equivalent catalog snapshots', () => {
+  it('keeps the same revision across equivalent catalog snapshots', () => {
     let currentCatalog =
       catalog;
 
@@ -192,10 +166,6 @@ describe('RunnerSession', () => {
       session.revision(),
     ).toBe(1);
 
-    expect(
-      session.planningStats()
-        .cacheHits,
-    ).toBe(1);
   });
   it('exposes explicit refresh results', () => {
     let currentCatalog = catalog;

@@ -9,7 +9,7 @@ import type {
 } from './node-runner-host';
 
 export class NodeRuntimeHost {
-  async execute(
+  async run(
     host: NodeRunnerHost,
     reporter: jasmine.CustomReporter,
     selector?: TestSelector,
@@ -29,17 +29,17 @@ export class NodeRuntimeHost {
     }
 
     console.error(
-      '[Testify debug] generated runner loaded; starting runTests()',
+      '[Testify debug] generated runner loaded; starting run()',
     );
 
     try {
-      return await host.execute(
+      return await host.run(
         reporter,
         selector,
       );
     } catch (error) {
       console.error(
-        '[Testify debug] failure occurred inside runTests():',
+        '[Testify debug] failure occurred inside run():',
         error instanceof Error
           ? error.stack ??
             error.message

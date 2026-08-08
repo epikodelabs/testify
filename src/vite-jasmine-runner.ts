@@ -328,7 +328,16 @@ export class ViteJasmineRunner extends EventEmitter {
       await shutdown('browser');
     };
 
-    await this.browserManager.openBrowser(this.config.port!, onBrowserClose, { exitOnClose: false });
+    try {
+      await this.browserManager.openBrowser(
+        this.config.port!,
+        onBrowserClose,
+        { exitOnClose: false },
+      );
+    } catch {
+      await this.cleanup();
+      return EXIT_CODES.INTERNAL_ERROR;
+    }
 
     // Keep the runner alive until an explicit shutdown signal or browser close.
     return watchFinishedPromise;
@@ -485,7 +494,15 @@ export class ViteJasmineRunner extends EventEmitter {
       runFinishedResolve?.(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
     };
 
-    await this.browserManager.openBrowser(this.config.port!, onBrowserClose);
+    try {
+      await this.browserManager.openBrowser(
+        this.config.port!,
+        onBrowserClose,
+      );
+    } catch {
+      await this.cleanup();
+      return EXIT_CODES.INTERNAL_ERROR;
+    }
 
     // Keep the runner alive until the browser closes or an explicit shutdown signal.
     return runFinishedPromise;

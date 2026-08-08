@@ -366,16 +366,16 @@ try {
     `import assert from 'node:assert/strict';
 
 import {
-  CatalogQuery,
   RunnerSession,
-  createExecutionPlan,
-  partitionExecutionPlan,
-  summarizeExecutionResults,
 } from '@epikodelabs/testify';
 
 import {
+  CatalogQuery,
   CatalogState,
   PlanningEngine,
+  createExecutionPlan,
+  partitionExecutionPlan,
+  summarizeExecutionResults,
 } from '@epikodelabs/testify/internals';
 
 const catalog = {

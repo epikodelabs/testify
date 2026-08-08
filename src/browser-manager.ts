@@ -189,13 +189,21 @@ export class BrowserManager {
       if (browser && browser.isConnected()) {
         await browser.close().catch(() => {});
       }
+
+      this.clearBrowserState();
+
       if (error.code === 'MODULE_NOT_FOUND') {
-        logger.println(BrowserMessages.playwrightNotInstalledManual(url));
-        logger.println(BrowserMessages.playwrightAutoOpenTip());
+        logger.println(BrowserMessages.playwrightNotInstalled(browserName));
+        logger.println(BrowserMessages.playwrightInstallTip());
       } else {
-        logger.error(BrowserMessages.failedToOpenBrowser(error.message));
-        logger.println(BrowserMessages.openBrowserManually(url));
+        logger.error(
+          BrowserMessages.failedToOpenBrowser(
+            error?.message ?? String(error),
+          ),
+        );
       }
+
+      throw error;
     }
   }
 

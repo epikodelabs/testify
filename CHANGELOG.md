@@ -1,12 +1,16 @@
 # Changelog
 
-### Session / Playground stabilization
-
-* Separated browser execution setup from Playground-only history, rerun, help, and host controls without changing the `session.*` surface.
-* Added behavioral coverage for the Playground contract so internal generated-code refactors no longer depend on helper-name string assertions.
-* Kept `session.help()` synchronized as the authoritative interactive reference.
-
 ## 2.0.0
+
+### Playground API polish
+
+- Finalized the focused browser Playground vocabulary around `session`, plans, and execution results.
+- Removed duplicate `RunnerSession` `list*` / `find*` discovery methods in favor of `tests()`, `suites()`, and `files()`.
+- Kept rerun semantics explicit: `run` expresses new intent, `rerun` repeats intent, `retry` repeats failures, and `execute` runs an exact plan.
+- Added programmable plan inspection/filtering with `plan.tests()`, `plan.filter()`, and `plan.slice()`.
+- Made Playground collections observable even when empty through non-enumerable identity metadata and DevTools formatters.
+- Replaced console-specific table formatting with self-describing Playground values.
+- Documented the invariant: **Every value exposed by the Playground should be worth looking at.**
 
 ### Playground
 
@@ -22,7 +26,9 @@
 - Promoted the stable Testify 2 engine to `@epikodelabs/testify`.
 - Removed the temporary `/v2` package namespace.
 - Moved unstable engine internals to `@epikodelabs/testify/internals`.
-- Added `CatalogQuery` and `RunnerSession.query()` as the stable query surface.
+- Made `RunnerSession.tests()`, `suites()`, and `files()` the single stable discovery vocabulary.
+- Froze the public architecture around Session → Plan → Result ownership; moved catalog/index/planning construction helpers to `@epikodelabs/testify/internals`.
+- Collapsed the generated Node runner/host boundary to a single `run(reporter, selector?)` operation.
 
 
 ### v2 architecture
@@ -34,10 +40,14 @@
 - Added real declaration generation for root and v2 package entries.
 - Added compile-time package-surface tests and a 1.x → 2.0 migration guide.
 
+# Changelog
+
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+# Changelog
 
 ## 1.0.37 - 2026-08-07
 
