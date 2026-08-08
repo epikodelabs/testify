@@ -265,7 +265,12 @@ export class CatalogState {
       this.catalogValue =
         catalog;
 
-      this.changesValue = {
+      // An equivalent snapshot is not a new catalog revision. Return a
+      // transient no-change result to the caller, but preserve changesValue
+      // as the last structural change observed by this state. Otherwise any
+      // read that synchronizes again (revision(), catalog(), listTests(), ...)
+      // would erase the change information before changes() can inspect it.
+      return {
         version:
           this.versionValue,
         changed: false,
@@ -276,8 +281,6 @@ export class CatalogState {
         addedFiles: [],
         removedFiles: [],
       };
-
-      return this.changesValue;
     }
 
     const previous =

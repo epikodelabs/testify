@@ -477,75 +477,65 @@ export function getBrowserRuntimeScript(
         currentPlanOptions,
       );
 
-    const warnDeprecated = (() => {
-      const shown = new Set();
-
-      return (name, replacement) => {
-        if (shown.has(name)) return;
-        shown.add(name);
-
-        console.warn(
-          \`[Testify v2] runner.\${name}() is deprecated. Use \${replacement}.\`,
-        );
-      };
-    })();
-
-    function printRunnerHelp() {
+    function printSessionHelp() {
       const sections = [
         {
           title: 'Discover',
           commands: [
-            'runner.listTests()',
-            'runner.listSuites()',
-            'runner.listFiles()',
+            'session.tests()',
+            'session.suites()',
+            'session.files()',
           ],
         },
         {
           title: 'Run',
           commands: [
-            'await runner.run()',
-            "await runner.runTest('spec id or text')",
-            "await runner.runSuite('suite id or text')",
-            "await runner.runFile('file name or text')",
+            'await session.run(selector, options)',
+            "await session.runSpec('spec id or text', options)",
+            "await session.runSuite('suite id or text', options)",
+            "await session.runFile('file name or text', options)",
           ],
         },
         {
-          title: 'Search',
+          title: 'Session',
           commands: [
-            "runner.findTests('text')",
-            "runner.findSuites('text')",
-            "runner.findFiles('text')",
+            'session.state',
+            'session.stats()',
+            'session.revision()',
+            'session.changes()',
+            'session.refresh()',
+            'session.planningStats()',
           ],
         },
         {
           title: 'Plan',
           commands: [
-            'runner.stats()',
-            'runner.catalog()',
-            'runner.index()',
-            'runner.revision()',
-            'runner.planningStats()',
-            'runner.plan(selector)',
-            'runner.planSpec(selector)',
-            'runner.planSuite(selector)',
-            'runner.planFile(selector)',
-            'await runner.execute(plan)',
+            'session.plan(selector, options)',
+            'session.planSpec(selector, options)',
+            'session.planSuite(selector, options)',
+            'session.planFile(selector, options)',
+            'await session.execute(plan)',
+            'session.shard(plan, index, count)',
+            'session.partition(plan, count)',
           ],
         },
         {
           title: 'Advanced',
           commands: [
-            'runner.shard(plan, index, count)',
-            'runner.partition(plan, count)',
-            'runner.setSeed(12345)',
-            'runner.resetSeed()',
-            'runner.reload()',
+            'session.query()',
+            'session.catalog()',
+            'session.index()',
+            'session.invalidatePlans()',
+            'session.setSeed(12345)',
+            'session.resetSeed()',
+            'session.reload()',
+            'await session.exit()',
           ],
         },
       ];
 
       const lines = [
-        'Testify watch mode runner',
+        'Testify Playground session',
         ...sections.flatMap(
           (section) => [
             '',
@@ -559,7 +549,7 @@ export function getBrowserRuntimeScript(
       ];
 
       console.group(
-        '💡 Testify watch mode console commands',
+        '💡 Testify Playground commands',
       );
 
       for (const section of sections) {
@@ -575,7 +565,7 @@ export function getBrowserRuntimeScript(
       }
 
       console.log(
-        '💡 Tip: run runner.help() again any time.',
+        '💡 Tip: run session.help() again any time.',
       );
 
       console.groupEnd();
@@ -583,131 +573,44 @@ export function getBrowserRuntimeScript(
       return lines;
     }
 
-
-    globalThis.runner = {
+    Object.assign(
       session,
+      {
+        help: printSessionHelp,
+        setSeed,
+        resetSeed,
+        reload: () =>
+          location.reload(),
+        exit: async () => {
+          const host =
+            globalThis.__testifyHost;
 
-      help: printRunnerHelp,
+          if (!host?.send) {
+            throw new Error(
+              'Testify host connection is unavailable.',
+            );
+          }
 
-      catalog: () =>
-        session.catalog(),
-
-      index: () =>
-        session.index(),
-
-      stats: () =>
-        session.stats(),
-
-      revision: () =>
-        session.revision(),
-
-      planningStats: () =>
-        session.planningStats(),
-
-      listTests: () => {
-        const rows =
-          session.listTests();
-        console.table(rows);
-        return rows;
+          host.send({
+            type: 'session:exit',
+            timestamp: Date.now(),
+          });
+        },
       },
+    );
 
-      listSuites: () => {
-        const rows =
-          session.listSuites();
-        console.table(rows);
-        return rows;
-      },
-
-      listFiles: () => {
-        const rows =
-          session.listFiles();
-        console.table(rows);
-        return rows;
-      },
-
-      findTests: (selector) =>
-        session.findTests(selector),
-
-      findSuites: (selector) =>
-        session.findSuites(selector),
-
-      findFiles: (selector) =>
-        session.findFiles(selector),
-
-      plan: (selector) =>
-        session.plan(selector),
-
-      planSpec: (selector) =>
-        session.planSpec(selector),
-
-      planSuite: (selector) =>
-        session.planSuite(selector),
-
-      planFile: (selector) =>
-        session.planFile(selector),
-
-      shard: (
-        plan,
-        index,
-        count,
-      ) =>
-        session.shard(
-          plan,
-          index,
-          count,
-        ),
-
-      partition: (
-        plan,
-        count,
-      ) =>
-        session.partition(
-          plan,
-          count,
-        ),
-
-      execute: (plan) =>
-        session.execute(plan),
-
-      run: (selector) =>
-        session.run(selector),
-
-      runTest: (selector) =>
-        session.runSpec(selector),
-
-      runSuite: (selector) =>
-        session.runSuite(selector),
-
-      runFile: (selector) =>
-        session.runFile(selector),
-
-      // Compatibility helper retained for v1 callers.
-      runTests: (...args) => {
-        warnDeprecated(
-          'runTests',
-          'runner.run() or runner.session.run()',
-        );
-
-        return runTests(...args);
-      },
-
-      setSeed,
-      resetSeed,
-
-      reload: () =>
-        location.reload(),
-    };
+    globalThis.session = session;
 
     console.log(
-      '%c✅ Testify runner ready!',
+      '%c✅ Testify Playground ready!',
       'color: green; font-weight: bold;',
     );
-    printRunnerHelp();
+    printSessionHelp();
   }
 
   init().catch((error) => {
     console.error(
-      'Failed to initialize runner:',
+      'Failed to initialize Testify Playground:',
       error,
     );
   });

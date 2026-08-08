@@ -142,19 +142,45 @@ export class HmrManager extends EventEmitter {
   }
 
   /**
-   * Determines if a file is a test file
+   * Determines if a file is a test file.
+   *
+   * Test and source directories may intentionally overlap (for example both
+   * may be "./src"), so directory membership alone cannot classify a file.
    */
   private isTestFile(filePath: string): boolean {
-    const normalized = norm(filePath);
-    return normalized.startsWith(this.primaryTestDir);
+    const normalized =
+      norm(filePath);
+
+    if (
+      !normalized.startsWith(
+        this.primaryTestDir,
+      )
+    ) {
+      return false;
+    }
+
+    return /\.spec\.(?:ts|tsx|js|jsx|mts|cts|mjs)$/i
+      .test(normalized);
   }
 
   /**
-   * Determines if a file is a source file
+   * Determines if a file is a source file.
+   *
+   * Specs are never sources, even when testDirs and srcDirs point at the
+   * same directory.
    */
   private isSourceFile(filePath: string): boolean {
-    const normalized = norm(filePath);
-    return normalized.startsWith(this.primarySrcDir);
+    const normalized =
+      norm(filePath);
+
+    return (
+      normalized.startsWith(
+        this.primarySrcDir,
+      ) &&
+      !this.isTestFile(
+        normalized,
+      )
+    );
   }
 
   /**
@@ -719,25 +745,51 @@ export class HmrManager extends EventEmitter {
           continue;
         }
 
-        // ✅ CRITICAL FIX: Filter source and test files to ONLY include existing files
-        const validSourceFiles = rebuiltFiles.filter(f => this.isSourceFile(f) && fs.existsSync(f));
-        const validTestFiles = rebuiltFiles.filter(f => this.isTestFile(f) && fs.existsSync(f));
+        // Specs are the only build entries. Source files participate only in
+        // dependency analysis and determine which specs are affected.
+        const validSourceFiles =
+          rebuiltFiles.filter(
+            (file) =>
+              this.isSourceFile(file) &&
+              fs.existsSync(file),
+          );
 
-        logger.println(HmrMessages.rebuildSummary(directChangedFiles.length, rebuiltFiles.length, validSourceFiles.length, validTestFiles.length));
+        const validTestFiles =
+          rebuiltFiles.filter(
+            (file) =>
+              this.isTestFile(file) &&
+              fs.existsSync(file),
+          );
 
-        // Only proceed if we have valid files to build
-        if (validSourceFiles.length === 0 && validTestFiles.length === 0) {
-          logger.println(HmrMessages.noValidSourceOrTestFiles());
+        logger.println(
+          HmrMessages.rebuildSummary(
+            directChangedFiles.length,
+            rebuiltFiles.length,
+            validSourceFiles.length,
+            validTestFiles.length,
+          ),
+        );
+
+        // A source change with no dependent spec does not require a browser
+        // build. The source will be pulled transitively the next time a spec
+        // that imports it is rebuilt.
+        if (validTestFiles.length === 0) {
+          logger.println(
+            HmrMessages.noValidSourceOrTestFiles(),
+          );
           continue;
         }
 
-        await this.buildDependencyGraph(rebuiltFiles);
-
-        // ✅ FIX: Pass ONLY valid existing files to Vite config builder
-        const viteConfig = this.viteConfigBuilder.createViteConfigForFiles(
-          [...validSourceFiles, ...validTestFiles],
-          this.viteCache
+        await this.buildDependencyGraph(
+          rebuiltFiles,
         );
+
+        const viteConfig =
+          this.viteConfigBuilder
+            .createViteConfigForFiles(
+              validTestFiles,
+              this.viteCache,
+            );
 
         const build = await getViteBuild();
         const startBuildTime = Date.now();
@@ -750,19 +802,28 @@ export class HmrManager extends EventEmitter {
           // Check if it's due to missing entry files
           if (buildError.code === 'UNRESOLVED_ENTRY') {
             logger.println(HmrMessages.retryingWithFilteredEntries());
-            // Retry with additional filtering
-            const finalSourceFiles = validSourceFiles.filter(fs.existsSync);
-            const finalTestFiles = validTestFiles.filter(fs.existsSync);
+            // Retry with the remaining spec entries only.
+            const finalTestFiles =
+              validTestFiles.filter(
+                fs.existsSync,
+              );
 
-            if (finalSourceFiles.length === 0 && finalTestFiles.length === 0) {
-              logger.println(HmrMessages.allEntryPointsDeleted());
+            if (
+              finalTestFiles.length === 0
+            ) {
+              logger.println(
+                HmrMessages
+                  .allEntryPointsDeleted(),
+              );
               continue;
             }
 
-            const retryConfig = this.viteConfigBuilder.createViteConfigForFiles(
-              [...finalSourceFiles, ...finalTestFiles],
-              this.viteCache
-            );
+            const retryConfig =
+              this.viteConfigBuilder
+                .createViteConfigForFiles(
+                  finalTestFiles,
+                  this.viteCache,
+                );
             const result = await build(retryConfig);
             this.viteCache = result;
           } else {
@@ -770,27 +831,70 @@ export class HmrManager extends EventEmitter {
           }
         }
 
-        // Emit updates for successfully built files
-        for (const file of rebuiltFiles) {
-          const relative = this.fileDiscovery.getOutputName(file);
-          const outputPath = path.join(this.config.outDir, relative);
+        // Only spec entries have stable output names. Source modules are
+        // dependency chunks and must never be addressed as HMR entries.
+        for (
+          const file of
+          validTestFiles
+        ) {
+          const relative =
+            this.fileDiscovery
+              .getOutputName(file);
 
-          if (fs.existsSync(outputPath)) {
-            const content = fs.readFileSync(outputPath, 'utf-8');
+          const outputPath =
+            path.join(
+              this.config.outDir,
+              relative,
+            );
 
-            const strategy = this.determineUpdateStrategy(directChangedFiles, 'change');
-            const affectedTests = directChangedFiles
-              .filter(f => this.isSourceFile(f))
-              .flatMap(f => this.getAffectedTests(f));
+          if (
+            fs.existsSync(
+              outputPath,
+            )
+          ) {
+            const content =
+              fs.readFileSync(
+                outputPath,
+                'utf-8',
+              );
 
-            this.emit('hmr:update', {
-              type: strategy.type,
-              path: relative,
-              timestamp: Date.now(),
-              content,
-              affectedTests: affectedTests.length > 0 ? affectedTests : undefined,
-              reason: strategy.reason
-            });
+            const strategy =
+              this.determineUpdateStrategy(
+                directChangedFiles,
+                'change',
+              );
+
+            const affectedTests =
+              directChangedFiles
+                .filter(
+                  (changedFile) =>
+                    this.isSourceFile(
+                      changedFile,
+                    ),
+                )
+                .flatMap(
+                  (changedFile) =>
+                    this.getAffectedTests(
+                      changedFile,
+                    ),
+                );
+
+            this.emit(
+              'hmr:update',
+              {
+                type: strategy.type,
+                path: relative,
+                timestamp:
+                  Date.now(),
+                content,
+                affectedTests:
+                  affectedTests.length > 0
+                    ? affectedTests
+                    : undefined,
+                reason:
+                  strategy.reason,
+              },
+            );
           }
         }
 

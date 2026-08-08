@@ -3,7 +3,7 @@ import {
 } from './browser-runtime';
 
 describe('Browser runtime', () => {
-  it('prints runner help and exposes it on the global runner', () => {
+  it('exposes the RunnerSession directly as the Playground session', () => {
     const source =
       getBrowserRuntimeScript({
         stopOnSpecFailure: false,
@@ -12,23 +12,49 @@ describe('Browser runtime', () => {
       });
 
     expect(source).toContain(
-      'function printRunnerHelp()',
+      'function printSessionHelp()',
     );
 
     expect(source).toContain(
-      'console.group(',
+      'Testify Playground commands',
     );
 
     expect(source).toContain(
-      'Testify watch mode console commands',
+      'globalThis.session = session;',
     );
 
     expect(source).toContain(
-      'help: printRunnerHelp',
+      'help: printSessionHelp',
     );
 
     expect(source).toContain(
-      'printRunnerHelp();',
+      'printSessionHelp();',
+    );
+
+    for (const command of [
+      'session.tests()',
+      'session.suites()',
+      'session.files()',
+      'session.state',
+      'session.refresh()',
+      'session.revision()',
+      'session.changes()',
+      'session.plan(selector, options)',
+      'await session.execute(plan)',
+      'session.query()',
+      'session.invalidatePlans()',
+      'session.reload()',
+      'await session.exit()',
+    ]) {
+      expect(source).toContain(command);
+    }
+
+    expect(source).toContain(
+      "type: 'session:exit'",
+    );
+
+    expect(source).not.toContain(
+      'globalThis.runner =',
     );
   });
 });

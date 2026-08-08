@@ -40,14 +40,37 @@ export interface RunnerSessionAdapter<TResult> {
   execute(
     plan: ExecutionPlan,
   ): Promise<TResult>;
+
+  close?():
+    | void
+    | Promise<void>;
 }
 
 export interface RunnerSessionOptions
   extends ExecutionPlanOptions {}
 
+export type RunnerSessionState =
+  | 'ready'
+  | 'closing'
+  | 'closed';
+
+export interface RunnerSessionRefreshResult {
+  changed: boolean;
+  previousRevision: number;
+  revision: number;
+  changes: CatalogChangeSet;
+}
+
 export class RunnerSession<TResult> {
   private readonly planner:
     PlanningEngine;
+
+  private stateValue:
+    RunnerSessionState =
+      'ready';
+
+  private closePromise:
+    Promise<void> | null = null;
 
   constructor(
     private readonly getCatalogValue:
@@ -64,38 +87,63 @@ export class RunnerSession<TResult> {
       );
   }
 
+  get state(): RunnerSessionState {
+    return this.stateValue;
+  }
+
+  refresh():
+    RunnerSessionRefreshResult {
+    this.assertOpen();
+
+    const previousRevision =
+      this.planner.version;
+
+    const changes =
+      this.planner.update(
+        this.getCatalogValue(),
+      );
+
+    return {
+      changed: changes.changed,
+      previousRevision,
+      revision: this.planner.version,
+      changes,
+    };
+  }
+
   catalog(): TestCatalog {
-    this.syncCatalog();
+    this.refresh();
 
     return this.planner.catalog;
   }
 
   index(): TestCatalogIndex {
-    this.syncCatalog();
+    this.refresh();
 
     return this.planner.index;
   }
 
   revision(): number {
-    this.syncCatalog();
+    this.refresh();
 
     return this.planner.version;
   }
 
   changes(): CatalogChangeSet {
-    this.syncCatalog();
+    this.assertOpen();
 
     return this.planner.changes;
   }
 
   planningStats():
     PlanningEngineStats {
-    this.syncCatalog();
+    this.refresh();
 
     return this.planner.stats();
   }
 
   invalidatePlans(): void {
+    this.assertOpen();
     this.planner.invalidate();
   }
 
@@ -103,6 +151,30 @@ export class RunnerSession<TResult> {
   query(): CatalogQuery {
     return new CatalogQuery(
       this.catalog(),
+    );
+  }
+
+  tests(
+    selector?: string | RegExp,
+  ): TestListRow[] {
+    return this.query().tests(
+      selector,
+    );
+  }
+
+  suites(
+    selector?: string | RegExp,
+  ): SuiteListRow[] {
+    return this.query().suites(
+      selector,
+    );
+  }
+
+  files(
+    selector?: string | RegExp,
+  ): FileListRow[] {
+    return this.query().files(
+      selector,
     );
   }
 
@@ -186,7 +258,7 @@ export class RunnerSession<TResult> {
     return {
       specs: catalog.specs.length,
       suites: catalog.suites.length,
-      files: this.listFiles().length,
+      files: this.files().length,
     };
   }
 
@@ -216,37 +288,47 @@ export class RunnerSession<TResult> {
 
   plan(
     selector?: TestSelector,
+    options: ExecutionPlanOptions = {},
   ): ExecutionPlan {
-    this.syncCatalog();
+    this.refresh();
 
     return this.planner.plan(
       selector,
-      this.getOptions(),
+      {
+        ...this.getOptions(),
+        ...options,
+      },
     );
   }
 
   planSpec(
     selector: string | RegExp,
+    options: ExecutionPlanOptions = {},
   ): ExecutionPlan {
-    return this.plan({
-      spec: selector,
-    });
+    return this.plan(
+      { spec: selector },
+      options,
+    );
   }
 
   planSuite(
     selector: string | RegExp,
+    options: ExecutionPlanOptions = {},
   ): ExecutionPlan {
-    return this.plan({
-      suite: selector,
-    });
+    return this.plan(
+      { suite: selector },
+      options,
+    );
   }
 
   planFile(
     selector: string | RegExp,
+    options: ExecutionPlanOptions = {},
   ): ExecutionPlan {
-    return this.plan({
-      file: selector,
-    });
+    return this.plan(
+      { file: selector },
+      options,
+    );
   }
 
   shard(
@@ -254,6 +336,8 @@ export class RunnerSession<TResult> {
     index: number,
     count: number,
   ): ExecutionPlan {
+    this.assertOpen();
+
     return this.planner.shard(
       plan,
       index,
@@ -265,53 +349,134 @@ export class RunnerSession<TResult> {
     plan: ExecutionPlan,
     count: number,
   ): ExecutionPlan[] {
+    this.assertOpen();
+
     return this.planner.partition(
       plan,
       count,
     );
   }
 
-  private syncCatalog(): void {
-    this.planner.update(
-      this.getCatalogValue(),
-    );
-  }
-
-  execute(
+  async execute(
     plan: ExecutionPlan,
   ): Promise<TResult> {
-    return this.adapter.execute(plan);
+    this.assertOpen();
+    this.refresh();
+    this.validatePlan(plan);
+
+    return await this.adapter.execute(
+      plan,
+    );
   }
 
   run(
     selector?: TestSelector,
+    options: ExecutionPlanOptions = {},
   ): Promise<TResult> {
     return this.execute(
-      this.plan(selector),
+      this.plan(
+        selector,
+        options,
+      ),
     );
   }
 
   runSpec(
     selector: string | RegExp,
+    options: ExecutionPlanOptions = {},
   ): Promise<TResult> {
     return this.execute(
-      this.planSpec(selector),
+      this.planSpec(
+        selector,
+        options,
+      ),
     );
   }
 
   runSuite(
     selector: string | RegExp,
+    options: ExecutionPlanOptions = {},
   ): Promise<TResult> {
     return this.execute(
-      this.planSuite(selector),
+      this.planSuite(
+        selector,
+        options,
+      ),
     );
   }
 
   runFile(
     selector: string | RegExp,
+    options: ExecutionPlanOptions = {},
   ): Promise<TResult> {
     return this.execute(
-      this.planFile(selector),
+      this.planFile(
+        selector,
+        options,
+      ),
+    );
+  }
+
+  close(): Promise<void> {
+    if (this.stateValue === 'closed') {
+      return Promise.resolve();
+    }
+
+    if (this.closePromise) {
+      return this.closePromise;
+    }
+
+    this.stateValue = 'closing';
+
+    this.closePromise =
+      Promise.resolve()
+        .then(() =>
+          this.adapter.close?.(),
+        )
+        .then(
+          () => undefined,
+        )
+        .finally(() => {
+          this.stateValue = 'closed';
+        });
+
+    return this.closePromise;
+  }
+
+  private assertOpen(): void {
+    if (this.stateValue !== 'ready') {
+      throw new Error(
+        'Testify session is closed.',
+      );
+    }
+  }
+
+  private validatePlan(
+    plan: ExecutionPlan,
+  ): void {
+    if (
+      plan.catalogVersion === undefined ||
+      plan.catalogVersion ===
+        this.planner.version
+    ) {
+      return;
+    }
+
+    const knownSpecIds =
+      this.planner.index.specById;
+
+    const missing =
+      plan.specIds.filter(
+        (id) =>
+          !knownSpecIds.has(id),
+      );
+
+    if (!missing.length) {
+      return;
+    }
+
+    throw new Error(
+      `Execution plan is stale; missing spec ids: ${missing.join(', ')}.`,
     );
   }
 }

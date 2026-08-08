@@ -105,6 +105,10 @@ export class WebSocketManager extends EventEmitter {
           this.emit('testsCompleted', { success, hasPending, coverage });
           break;
 
+        case 'session:exit':
+          this.emit('sessionExitRequested');
+          break;
+
         case 'hmr:ready':
           logger.println(WebSocketMessages.hmrClientReady());
           break;

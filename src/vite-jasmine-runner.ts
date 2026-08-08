@@ -302,12 +302,30 @@ export class ViteJasmineRunner extends EventEmitter {
       watchFinishedResolve = resolve;
     });
 
-    const onBrowserClose = async () => {
+    const shutdown = async (source: 'browser' | 'session') => {
       if (shuttingDown) return;
       shuttingDown = true;
-      logger.println(RunnerMessages.browserWindowClosed());
+
+      if (source === 'session') {
+        logger.println(RunnerMessages.sessionExitRequested());
+        await this.browserManager.closeBrowser();
+      } else {
+        logger.println(RunnerMessages.browserWindowClosed());
+      }
+
       await this.cleanup();
       watchFinishedResolve?.(EXIT_CODES.SUCCESS);
+    };
+
+    this.webSocketManager.on(
+      'sessionExitRequested',
+      () => {
+        void shutdown('session');
+      },
+    );
+
+    const onBrowserClose = async () => {
+      await shutdown('browser');
     };
 
     await this.browserManager.openBrowser(this.config.port!, onBrowserClose, { exitOnClose: false });

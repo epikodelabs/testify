@@ -10,6 +10,8 @@ export {
 export type {
   RunnerSessionAdapter,
   RunnerSessionOptions,
+  RunnerSessionRefreshResult,
+  RunnerSessionState,
   TestifyRunnerSession,
 } from './runner-session';
 

@@ -19,6 +19,7 @@ export function getBrowserBootstrapScript(
 
   script.onload = () => {
     const forwarder = new WebSocketEventForwarder();
+    window.__testifyHost = forwarder;
     forwarder.connect();
     jasmine.getEnv().addReporter(forwarder);
 

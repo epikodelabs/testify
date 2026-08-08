@@ -71,12 +71,28 @@ window.HMRClient = (function() {
   async function hotUpdateSpec(filePath) {
     detachFilePathSuites(filePath);
 
-    await withTestifyRegistrationScope(
+    const module =
+      await withTestifyRegistrationScope(
+        filePath,
+        () =>
+          import(
+            '/' +
+            filePath +
+            \`?t=\${Date.now()}\`
+          ),
+      );
+
+    moduleRegistry.set(
       filePath,
-      () => import('/' + filePath + \`?t=\${Date.now()}\`),
+      module,
     );
 
-    console.log('✅ Hot updated Jasmine registrations from:', filePath);
+    console.log(
+      '✅ Hot updated Jasmine registrations from:',
+      filePath,
+    );
+
+    return module;
   }
 
   async function handleMessage(message) {
@@ -101,14 +117,14 @@ window.HMRClient = (function() {
       console.log('🔥 Hot updating:', update.path);
 
       try {
-        let newModule = null;
-        if (update.content) {
-          newModule = await import('/' + update.path + \`?t=\${Date.now()}\`);
-          moduleRegistry.set(update.path, newModule);
-        }
+        await hotUpdateSpec(
+          update.path,
+        );
 
-        await hotUpdateSpec(update.path, newModule);
-        console.log('✅ HMR update applied:', update.path);
+        console.log(
+          '✅ HMR update applied:',
+          update.path,
+        );
       } catch (err) {
         console.error('❌ HMR update failed:', err);
         location.reload();

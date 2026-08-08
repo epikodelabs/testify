@@ -520,6 +520,9 @@ export const RunnerMessages = {
   browserWindowClosed: () =>
     `%refresh% Browser window closed`,
 
+  sessionExitRequested: () =>
+    `%stop% Testify Playground requested session exit`,
+
   headlessBrowserUnavailable: () =>
     `%warn%  Headless browser not available. Falling back to Node.js runner.`,
 
