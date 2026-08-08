@@ -22,7 +22,11 @@ async function getViteBuild() {
 }
 
 export interface HmrUpdate {
-  type: 'update' | 'full-reload' | 'test-update';
+  type:
+    | 'update'
+    | 'full-reload'
+    | 'test-update'
+    | 'test-remove';
   path: string;
   timestamp: number;
   content?: string;
@@ -550,12 +554,32 @@ export class HmrManager extends EventEmitter {
       const map = output.replace(/\.js$/, '.js.map');
       if (fs.existsSync(map)) fs.rmSync(map);
     
+      const removedTest =
+        this.isTestFile(filePath);
+
       this.emit('hmr:update', {
-        type: strategy.type,
-        path: this.fileDiscovery.getOutputName(filePath),
-        timestamp: Date.now(),
-        affectedTests: this.isSourceFile(filePath) ? Array.from(affectedFiles).filter(f => this.isTestFile(f)) : undefined,
-        reason: strategy.reason
+        type:
+          removedTest
+            ? 'test-remove'
+            : strategy.type,
+        path:
+          this.fileDiscovery
+            .getOutputName(filePath),
+        timestamp:
+          Date.now(),
+        affectedTests:
+          this.isSourceFile(filePath)
+            ? Array.from(
+                affectedFiles,
+              ).filter(
+                (file) =>
+                  this.isTestFile(file),
+              )
+            : undefined,
+        reason:
+          removedTest
+            ? 'Test file removed'
+            : strategy.reason,
       });
 
       if (this.rebuildMode === 'selective' && affectedFiles.size > 0) {

@@ -114,6 +114,23 @@ window.HMRClient = (function() {
         return;
       }
 
+      if (update.type === 'test-remove') {
+        detachFilePathSuites(
+          update.path,
+        );
+
+        moduleRegistry.delete(
+          update.path,
+        );
+
+        console.log(
+          '🗑️ Removed test registrations:',
+          update.path,
+        );
+
+        return;
+      }
+
       console.log('🔥 Hot updating:', update.path);
 
       try {
