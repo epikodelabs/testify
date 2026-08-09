@@ -54,6 +54,20 @@ export interface PlannedExecution
     start?: number,
     end?: number,
   ): PlannedExecution;
+
+  add(
+    plan: PlannedExecution,
+  ): PlannedExecution;
+
+  subtract(
+    plan: PlannedExecution,
+  ): PlannedExecution;
+
+  intersect(
+    plan: PlannedExecution,
+  ): PlannedExecution;
+
+  not(): PlannedExecution;
 }
 
 export interface ExecutionPlanOptions {
@@ -74,11 +88,64 @@ function snapshotExecutionPlanTest(
   });
 }
 
+function getExecutionPlanUniverse(
+  plan: PlannedExecution,
+): readonly ExecutionPlanTest[] {
+  return (
+    plan as PlannedExecution & {
+      readonly __testifyPlanUniverse:
+        readonly ExecutionPlanTest[];
+    }
+  ).__testifyPlanUniverse;
+}
+
+function assertCompatibleExecutionPlans(
+  left: PlannedExecution,
+  right: PlannedExecution,
+): void {
+  if (!isPlannedExecution(right)) {
+    throw new TypeError(
+      'Execution plan operation expects another planned execution.',
+    );
+  }
+
+  if (
+    left.catalogVersion !== undefined &&
+    right.catalogVersion !== undefined &&
+    left.catalogVersion !== right.catalogVersion
+  ) {
+    throw new Error(
+      'Cannot combine execution plans from different catalog revisions.',
+    );
+  }
+
+  const leftUniverse =
+    getExecutionPlanUniverse(left);
+  const rightUniverse =
+    getExecutionPlanUniverse(right);
+
+  if (
+    leftUniverse.length !==
+      rightUniverse.length ||
+    leftUniverse.some(
+      (test, index) =>
+        test.id !==
+        rightUniverse[index]?.id,
+    )
+  ) {
+    throw new Error(
+      'Cannot combine execution plans from different catalogs.',
+    );
+  }
+}
+
 function attachExecutionPlanOperations(
   plan: ExecutionPlan,
   testSnapshot: readonly ExecutionPlanTest[],
+  universeSnapshot: readonly ExecutionPlanTest[],
 ): PlannedExecution {
   const tests = [...testSnapshot];
+  const universe = [...universeSnapshot];
 
   Object.defineProperty(
     tests,
@@ -92,10 +159,42 @@ function attachExecutionPlanOperations(
   );
 
   Object.freeze(tests);
+  Object.freeze(universe);
+
+  const createDerivedPlan = (
+    selected: readonly ExecutionPlanTest[],
+    options: {
+      clearShard?: boolean;
+    } = {},
+  ): PlannedExecution => {
+    const nextPlan =
+      cloneExecutionPlanData(
+        plan,
+        selected.map(
+          (test) => test.id,
+        ),
+      );
+
+    if (options.clearShard) {
+      delete nextPlan.shard;
+    }
+
+    return attachExecutionPlanOperations(
+      nextPlan,
+      selected,
+      universe,
+    );
+  };
 
   Object.defineProperties(
     plan,
     {
+      __testifyPlanUniverse: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: universe,
+      },
       tests: {
         enumerable: false,
         configurable: false,
@@ -117,7 +216,7 @@ function attachExecutionPlanOperations(
             );
           }
 
-          const selected =
+          return createDerivedPlan(
             tests.filter(
               (test, index) =>
                 Boolean(
@@ -127,16 +226,7 @@ function attachExecutionPlanOperations(
                     tests,
                   ),
                 ),
-            );
-
-          return attachExecutionPlanOperations(
-            cloneExecutionPlanData(
-              plan,
-              selected.map(
-                (test) => test.id,
-              ),
             ),
-            selected,
           );
         },
       },
@@ -147,21 +237,116 @@ function attachExecutionPlanOperations(
         value: (
           start?: number,
           end?: number,
-        ) => {
-          const selected =
+        ) =>
+          createDerivedPlan(
             tests.slice(
               start,
               end,
-            );
+            ),
+          ),
+      },
+      add: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: (
+          other: PlannedExecution,
+        ) => {
+          const current =
+            plan as PlannedExecution;
 
-          return attachExecutionPlanOperations(
-            cloneExecutionPlanData(
-              plan,
-              selected.map(
+          assertCompatibleExecutionPlans(
+            current,
+            other,
+          );
+
+          const selectedIds =
+            new Set(
+              tests.map(
                 (test) => test.id,
               ),
-            ),
+            );
+          const selected = [...tests];
+
+          for (const test of other.tests()) {
+            if (!selectedIds.has(test.id)) {
+              selectedIds.add(test.id);
+              selected.push(test);
+            }
+          }
+
+          return createDerivedPlan(
             selected,
+            { clearShard: true },
+          );
+        },
+      },
+      subtract: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: (
+          other: PlannedExecution,
+        ) => {
+          const current =
+            plan as PlannedExecution;
+
+          assertCompatibleExecutionPlans(
+            current,
+            other,
+          );
+
+          const excluded =
+            new Set(other.specIds);
+
+          return createDerivedPlan(
+            tests.filter(
+              (test) =>
+                !excluded.has(test.id),
+            ),
+          );
+        },
+      },
+      intersect: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: (
+          other: PlannedExecution,
+        ) => {
+          const current =
+            plan as PlannedExecution;
+
+          assertCompatibleExecutionPlans(
+            current,
+            other,
+          );
+
+          const included =
+            new Set(other.specIds);
+
+          return createDerivedPlan(
+            tests.filter(
+              (test) =>
+                included.has(test.id),
+            ),
+          );
+        },
+      },
+      not: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: () => {
+          const excluded =
+            new Set(plan.specIds);
+
+          return createDerivedPlan(
+            universe.filter(
+              (test) =>
+                !excluded.has(test.id),
+            ),
+            { clearShard: true },
           );
         },
       },
@@ -192,12 +377,17 @@ export function createPlannedExecution(
   plan: ExecutionPlan,
   catalog: TestCatalog,
 ): PlannedExecution {
-  const specsById =
+  const universe =
+    catalog.specs.map(
+      snapshotExecutionPlanTest,
+    );
+
+  const testsById =
     new Map(
-      catalog.specs.map(
-        (spec) => [
-          spec.id,
-          spec,
+      universe.map(
+        (test) => [
+          test.id,
+          test,
         ] as const,
       ),
     );
@@ -205,15 +395,11 @@ export function createPlannedExecution(
   const tests =
     plan.specIds.flatMap(
       (id) => {
-        const spec =
-          specsById.get(id);
+        const test =
+          testsById.get(id);
 
-        return spec
-          ? [
-              snapshotExecutionPlanTest(
-                spec,
-              ),
-            ]
+        return test
+          ? [test]
           : [];
       },
     );
@@ -221,6 +407,7 @@ export function createPlannedExecution(
   return attachExecutionPlanOperations(
     plan,
     tests,
+    universe,
   );
 }
 
@@ -233,7 +420,16 @@ export function isPlannedExecution(
   return (
     typeof candidate.tests === 'function' &&
     typeof candidate.filter === 'function' &&
-    typeof candidate.slice === 'function'
+    typeof candidate.slice === 'function' &&
+    typeof candidate.add === 'function' &&
+    typeof candidate.subtract === 'function' &&
+    typeof candidate.intersect === 'function' &&
+    typeof candidate.not === 'function' &&
+    Array.isArray(
+      (candidate as PlannedExecution & {
+        __testifyPlanUniverse?: unknown;
+      }).__testifyPlanUniverse,
+    )
   );
 }
 
@@ -393,6 +589,7 @@ export function shardExecutionPlan(
           test.id,
         ),
     ),
+    getExecutionPlanUniverse(plan),
   );
 }
 
@@ -433,6 +630,8 @@ export function getEmbeddedExecutionPlanSource():
   return [
     snapshotExecutionPlanTest,
     cloneExecutionPlanData,
+    getExecutionPlanUniverse,
+    assertCompatibleExecutionPlans,
     attachExecutionPlanOperations,
     createPlannedExecution,
     isPlannedExecution,

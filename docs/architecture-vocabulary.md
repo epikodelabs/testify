@@ -39,6 +39,7 @@ specIds
 tests()
 filter()
 slice()
+add() / subtract() / intersect() / not()
 shard
 partition
 ```

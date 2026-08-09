@@ -194,6 +194,115 @@ describe('ExecutionPlan programmable selection', () => {
     ]);
   });
 
+
+  it('supports plan set operations', () => {
+    const all =
+      createExecutionPlan(catalog);
+    const forms =
+      all.filter(
+        (test) =>
+          test.file === 'forms.spec.mjs',
+      );
+    const second =
+      all.filter(
+        (test) =>
+          test.id === 'spec2',
+      );
+    const other =
+      all.filter(
+        (test) =>
+          test.id === 'spec3',
+      );
+
+    expect(
+      second.add(other).specIds,
+    ).toEqual([
+      'spec2',
+      'spec3',
+    ]);
+
+    expect(
+      forms.subtract(second).specIds,
+    ).toEqual([
+      'spec1',
+    ]);
+
+    expect(
+      forms.intersect(second).specIds,
+    ).toEqual([
+      'spec2',
+    ]);
+
+    expect(
+      forms.not().specIds,
+    ).toEqual([
+      'spec3',
+    ]);
+  });
+
+  it('keeps set operations immutable and preserves left-plan options', () => {
+    const left =
+      createExecutionPlan(
+        catalog,
+        undefined,
+        {
+          random: true,
+          seed: 42,
+          stopOnFailure: true,
+        },
+      ).slice(0, 1);
+    const right =
+      createExecutionPlan(catalog)
+        .slice(1, 3);
+
+    const combined =
+      left.add(right);
+
+    expect(left.specIds).toEqual([
+      'spec1',
+    ]);
+    expect(combined.specIds).toEqual([
+      'spec1',
+      'spec2',
+      'spec3',
+    ]);
+    expect(combined.random).toBeTrue();
+    expect(combined.seed).toBe(42);
+    expect(combined.stopOnFailure).toBeTrue();
+  });
+
+  it('rejects plan operations across catalog revisions', () => {
+    const left =
+      createExecutionPlan(catalog);
+    const right =
+      createExecutionPlan(catalog);
+
+    left.catalogVersion = 1;
+    right.catalogVersion = 2;
+
+    expect(
+      () => left.add(right),
+    ).toThrowError(
+      /different catalog revisions/,
+    );
+  });
+
+  it('rejects plan operations across different catalogs', () => {
+    const left =
+      createExecutionPlan(catalog);
+    const right =
+      createExecutionPlan({
+        ...catalog,
+        specs: catalog.specs.slice(0, 2),
+      });
+
+    expect(
+      () => left.intersect(right),
+    ).toThrowError(
+      /different catalogs/,
+    );
+  });
+
   it('keeps plan operations out of serialized execution data', () => {
     const plan =
       createExecutionPlan(catalog);
@@ -208,6 +317,14 @@ describe('ExecutionPlan programmable selection', () => {
     expect(serialized.filter)
       .toBeUndefined();
     expect(serialized.slice)
+      .toBeUndefined();
+    expect(serialized.add)
+      .toBeUndefined();
+    expect(serialized.subtract)
+      .toBeUndefined();
+    expect(serialized.intersect)
+      .toBeUndefined();
+    expect(serialized.not)
       .toBeUndefined();
     expect(serialized.specIds).toEqual([
       'spec1',

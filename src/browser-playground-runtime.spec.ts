@@ -383,6 +383,10 @@ describe('Browser Playground runtime', () => {
         'plan.tests()',
         'plan.filter(test => ...)',
         'plan.slice(start, end)',
+        'plan.add(other)',
+        'plan.subtract(other)',
+        'plan.intersect(other)',
+        'plan.not()',
         'await session.execute(plan)',
         'await session.exit()',
       ]) {

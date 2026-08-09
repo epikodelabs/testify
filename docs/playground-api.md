@@ -52,11 +52,15 @@ const plan = session.plan(selector?, options?)
 plan.tests()
 plan.filter(test => ...)
 plan.slice(start, end)
+plan.add(other)
+plan.subtract(other)
+plan.intersect(other)
+plan.not()
 
 await session.execute(plan)
 ```
 
-Plans remain serializable execution data. Interactive operations and collection identity are non-enumerable. Transformations are immutable and preserve execution options and plan identity metadata.
+Plans remain serializable execution data. Interactive operations and collection identity are non-enumerable. Transformations are immutable and preserve execution options and plan identity metadata. `add`, `subtract`, and `intersect` combine plans from the same catalog revision; `not()` selects the complement within that plan's catalog snapshot.
 
 ## Session
 
