@@ -73,18 +73,16 @@ export interface PlannedExecution
 
   not(): PlannedExecution;
 
-  passed(
+  where(
     result: ExecutionResult,
-  ): PlannedExecution;
-
-  failed(
-    result: ExecutionResult,
-  ): PlannedExecution;
-
-  unresolved(
-    result: ExecutionResult,
+    outcome: ExecutionPlanOutcome,
   ): PlannedExecution;
 }
+
+export type ExecutionPlanOutcome =
+  | 'passed'
+  | 'failed'
+  | 'unresolved';
 
 export interface ExecutionPlanOptions {
   random?: boolean;
@@ -165,18 +163,25 @@ function getExecutionResultCatalogVersion(
   ).__testifyCatalogVersion;
 }
 
-function classifyExecutionPlanByResult(
+function selectExecutionPlanByResult(
   plan: PlannedExecution,
   tests: readonly ExecutionPlanTest[],
   result: ExecutionResult,
-  outcome:
-    | 'passed'
-    | 'failed'
-    | 'unresolved',
+  outcome: ExecutionPlanOutcome,
 ): readonly ExecutionPlanTest[] {
   if (!result || !Array.isArray(result.specResults)) {
     throw new TypeError(
       'Execution plan outcome selection expects an execution result.',
+    );
+  }
+
+  if (
+    outcome !== 'passed' &&
+    outcome !== 'failed' &&
+    outcome !== 'unresolved'
+  ) {
+    throw new TypeError(
+      'Execution plan where expects passed, failed, or unresolved.',
     );
   }
 
@@ -443,45 +448,20 @@ function attachExecutionPlanOperations(
           );
         },
       },
-      passed: {
+      where: {
         enumerable: false,
         configurable: false,
         writable: false,
-        value: (result: ExecutionResult) =>
+        value: (
+          result: ExecutionResult,
+          outcome: ExecutionPlanOutcome,
+        ) =>
           createDerivedPlan(
-            classifyExecutionPlanByResult(
+            selectExecutionPlanByResult(
               plan as PlannedExecution,
               tests,
               result,
-              'passed',
-            ),
-          ),
-      },
-      failed: {
-        enumerable: false,
-        configurable: false,
-        writable: false,
-        value: (result: ExecutionResult) =>
-          createDerivedPlan(
-            classifyExecutionPlanByResult(
-              plan as PlannedExecution,
-              tests,
-              result,
-              'failed',
-            ),
-          ),
-      },
-      unresolved: {
-        enumerable: false,
-        configurable: false,
-        writable: false,
-        value: (result: ExecutionResult) =>
-          createDerivedPlan(
-            classifyExecutionPlanByResult(
-              plan as PlannedExecution,
-              tests,
-              result,
-              'unresolved',
+              outcome,
             ),
           ),
       },
@@ -560,6 +540,7 @@ export function isPlannedExecution(
     typeof candidate.subtract === 'function' &&
     typeof candidate.intersect === 'function' &&
     typeof candidate.not === 'function' &&
+    typeof candidate.where === 'function' &&
     Array.isArray(
       (candidate as PlannedExecution & {
         __testifyPlanUniverse?: unknown;
@@ -768,7 +749,7 @@ export function getEmbeddedExecutionPlanSource():
     getExecutionPlanUniverse,
     assertCompatibleExecutionPlans,
     getExecutionResultCatalogVersion,
-    classifyExecutionPlanByResult,
+    selectExecutionPlanByResult,
     attachExecutionPlanOperations,
     createPlannedExecution,
     isPlannedExecution,

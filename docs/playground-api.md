@@ -47,9 +47,9 @@ plan.add(other)
 plan.subtract(other)
 plan.intersect(other)
 plan.not()
-plan.passed(result)
-plan.failed(result)
-plan.unresolved(result)
+plan.where(result, 'passed')
+plan.where(result, 'failed')
+plan.where(result, 'unresolved')
 
 await session.execute(plan)
 ```

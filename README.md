@@ -111,7 +111,7 @@ const result = await session.execute(plan);
 Derive another plan from the outcome when needed:
 
 ```js
-const failed = plan.failed(result);
+const failed = plan.where(result, 'failed');
 ```
 
 Repeat the previous intent or retry its failures:

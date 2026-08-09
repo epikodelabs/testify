@@ -212,7 +212,7 @@ describe('Testify Playground DevTools formatters', () => {
 
     const help: any[] = [{
       section: 'Plan',
-      usage: 'plan.failed(result)',
+      usage: "plan.where(result, 'failed')",
       description: 'Keep tests that failed',
     }];
     Object.defineProperty(
@@ -240,7 +240,7 @@ describe('Testify Playground DevTools formatters', () => {
         formatter.body(help),
       ),
     ).toContain(
-      'plan.failed(result)',
+      "plan.where(result, 'failed')",
     );
   });
 });

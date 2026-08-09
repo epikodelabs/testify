@@ -334,13 +334,13 @@ describe('ExecutionPlan programmable selection', () => {
     );
 
     expect(
-      plan.passed(result).specIds,
+      plan.where(result, 'passed').specIds,
     ).toEqual(['spec1']);
     expect(
-      plan.failed(result).specIds,
+      plan.where(result, 'failed').specIds,
     ).toEqual(['spec2']);
     expect(
-      plan.unresolved(result).specIds,
+      plan.where(result, 'unresolved').specIds,
     ).toEqual(['spec3']);
   });
 
@@ -361,7 +361,7 @@ describe('ExecutionPlan programmable selection', () => {
     };
 
     expect(
-      plan.unresolved(result).specIds,
+      plan.where(result, 'unresolved').specIds,
     ).toEqual([
       'spec1',
       'spec2',
@@ -386,11 +386,11 @@ describe('ExecutionPlan programmable selection', () => {
       pending: 0,
     };
 
-    expect(plan.passed(result).specIds)
+    expect(plan.where(result, 'passed').specIds)
       .toEqual(['spec1']);
-    expect(plan.failed(result).specIds)
+    expect(plan.where(result, 'failed').specIds)
       .toEqual(['spec2']);
-    expect(plan.unresolved(result).specIds)
+    expect(plan.where(result, 'unresolved').specIds)
       .toEqual([]);
   });
 
@@ -414,7 +414,7 @@ describe('ExecutionPlan programmable selection', () => {
     );
 
     expect(
-      () => plan.failed(result),
+      () => plan.where(result, 'failed'),
     ).toThrowError(
       /different catalog revision/,
     );
@@ -434,7 +434,7 @@ describe('ExecutionPlan programmable selection', () => {
     };
 
     expect(
-      () => plan.failed(result),
+      () => plan.where(result, 'failed'),
     ).toThrowError(
       /outside this plan catalog/,
     );
@@ -475,4 +475,23 @@ describe('ExecutionPlan programmable selection', () => {
       'spec3',
     ]);
   });
+
+  it('rejects unknown outcome selectors', () => {
+    const plan = createExecutionPlan(catalog);
+    const result: any = {
+      specResults: [],
+      total: 0,
+      passed: 0,
+      failed: 0,
+      pending: 0,
+    };
+
+    expect(() =>
+      plan.where(result, 'unknown' as any),
+    ).toThrowError(
+      TypeError,
+      'Execution plan where expects passed, failed, or unresolved.',
+    );
+  });
+
 });
