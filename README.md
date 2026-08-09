@@ -105,17 +105,16 @@ const plan = session
 Run it:
 
 ```js
-await session.execute(plan);
+const result = await session.execute(plan);
 ```
 
-Inspect what happened:
+Derive another plan from the outcome when needed:
 
 ```js
-session.last()
-session.failures()
+const failed = plan.failed(result);
 ```
 
-Repeat the whole thing or just the failures:
+Repeat the previous intent or retry its failures:
 
 ```js
 await session.rerun()

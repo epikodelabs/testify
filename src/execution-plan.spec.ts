@@ -303,6 +303,143 @@ describe('ExecutionPlan programmable selection', () => {
     );
   });
 
+  it('derives passed, failed, and unresolved plans from execution results', () => {
+    const plan =
+      createExecutionPlan(catalog);
+    plan.catalogVersion = 7;
+
+    const result: any = {
+      specResults: [
+        {
+          id: 'spec1',
+          description: 'one',
+          status: 'passed',
+        },
+        {
+          id: 'spec2',
+          description: 'two',
+          status: 'failed',
+        },
+      ],
+      total: 2,
+      passed: 1,
+      failed: 1,
+      pending: 0,
+    };
+
+    Object.defineProperty(
+      result,
+      '__testifyCatalogVersion',
+      { value: 7 },
+    );
+
+    expect(
+      plan.passed(result).specIds,
+    ).toEqual(['spec1']);
+    expect(
+      plan.failed(result).specIds,
+    ).toEqual(['spec2']);
+    expect(
+      plan.unresolved(result).specIds,
+    ).toEqual(['spec3']);
+  });
+
+  it('treats non-terminal statuses as unresolved', () => {
+    const plan =
+      createExecutionPlan(catalog);
+
+    const result: any = {
+      specResults: [
+        { id: 'spec1', description: 'one', status: 'pending' },
+        { id: 'spec2', description: 'two', status: 'incomplete' },
+        { id: 'spec3', description: 'three', status: 'disabled' },
+      ],
+      total: 3,
+      passed: 0,
+      failed: 0,
+      pending: 2,
+    };
+
+    expect(
+      plan.unresolved(result).specIds,
+    ).toEqual([
+      'spec1',
+      'spec2',
+      'spec3',
+    ]);
+  });
+
+  it('classifies only tests from the current plan', () => {
+    const plan =
+      createExecutionPlan(catalog)
+        .slice(0, 2);
+
+    const result: any = {
+      specResults: [
+        { id: 'spec1', description: 'one', status: 'passed' },
+        { id: 'spec2', description: 'two', status: 'failed' },
+        { id: 'spec3', description: 'three', status: 'passed' },
+      ],
+      total: 3,
+      passed: 2,
+      failed: 1,
+      pending: 0,
+    };
+
+    expect(plan.passed(result).specIds)
+      .toEqual(['spec1']);
+    expect(plan.failed(result).specIds)
+      .toEqual(['spec2']);
+    expect(plan.unresolved(result).specIds)
+      .toEqual([]);
+  });
+
+  it('rejects outcome selection from a different catalog revision', () => {
+    const plan =
+      createExecutionPlan(catalog);
+    plan.catalogVersion = 1;
+
+    const result: any = {
+      specResults: [],
+      total: 0,
+      passed: 0,
+      failed: 0,
+      pending: 0,
+    };
+
+    Object.defineProperty(
+      result,
+      '__testifyCatalogVersion',
+      { value: 2 },
+    );
+
+    expect(
+      () => plan.failed(result),
+    ).toThrowError(
+      /different catalog revision/,
+    );
+  });
+
+  it('rejects results containing tests outside the plan catalog', () => {
+    const plan =
+      createExecutionPlan(catalog);
+    const result: any = {
+      specResults: [
+        { id: 'foreign', description: 'foreign', status: 'failed' },
+      ],
+      total: 1,
+      passed: 0,
+      failed: 1,
+      pending: 0,
+    };
+
+    expect(
+      () => plan.failed(result),
+    ).toThrowError(
+      /outside this plan catalog/,
+    );
+  });
+
   it('keeps plan operations out of serialized execution data', () => {
     const plan =
       createExecutionPlan(catalog);
@@ -325,6 +462,12 @@ describe('ExecutionPlan programmable selection', () => {
     expect(serialized.intersect)
       .toBeUndefined();
     expect(serialized.not)
+      .toBeUndefined();
+    expect(serialized.passed)
+      .toBeUndefined();
+    expect(serialized.failed)
+      .toBeUndefined();
+    expect(serialized.unresolved)
       .toBeUndefined();
     expect(serialized.specIds).toEqual([
       'spec1',

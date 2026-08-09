@@ -356,4 +356,36 @@ describe('RunnerSession', () => {
       );
   });
 
+
+  it('marks execution results with the plan catalog revision without changing serialization', async () => {
+    const result: any = {
+      specResults: [],
+      total: 0,
+      passed: 0,
+      failed: 0,
+      pending: 0,
+    };
+
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          execute: async () => result,
+        },
+      );
+
+    const plan = session.plan();
+    const executed =
+      await session.execute(plan);
+
+    expect(
+      (executed as any).__testifyCatalogVersion,
+    ).toBe(plan.catalogVersion);
+    expect(
+      JSON.stringify(executed),
+    ).not.toContain(
+      '__testifyCatalogVersion',
+    );
+  });
+
 });

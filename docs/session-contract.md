@@ -62,7 +62,7 @@ const plan = session.plan({
 });
 ```
 
-Plans carry their catalog revision and execution options. A plan remains exact work; Session never silently re-plans a supplied plan.
+Plans carry their catalog revision and execution options. A plan remains exact work; Session never silently re-plans a supplied plan. Plans can also derive outcome-specific subsets with `passed(result)`, `failed(result)`, and `unresolved(result)` without changing the Result contract.
 
 Interactive plans can be shaped immutably:
 

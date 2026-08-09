@@ -40,6 +40,9 @@ tests()
 filter()
 slice()
 add() / subtract() / intersect() / not()
+passed(result)
+failed(result)
+unresolved(result)
 shard
 partition
 ```
@@ -63,7 +66,7 @@ pending
 duration
 ```
 
-The Playground may derive `failures()` from the last result, but failure state is not a second execution model.
+Execution outcomes remain Result data; Plan may derive `passed(result)`, `failed(result)`, and `unresolved(result)` subsets without creating a second execution model.
 
 ### Catalog
 
@@ -114,7 +117,7 @@ The browser exposes the actual Session as:
 globalThis.session
 ```
 
-The Playground adds only interaction-specific controls such as `last`, `failures`, `rerun`, `retry`, `help`, `reload`, and `exit`.
+The Playground adds only interaction-specific controls such as `rerun`, `retry`, `help`, `reload`, and `exit`. Previous execution state remains private and exists only to support rerun/retry semantics.
 
 ## Observability invariant
 

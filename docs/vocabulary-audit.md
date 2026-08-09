@@ -13,7 +13,7 @@ Public language is polished aggressively. Internal vocabulary is also changed wh
 | Live execution context | `RunnerSession` | `session` | browser `runner` identity |
 | Discovery | `RunnerSession` | `tests`, `suites`, `files` | `list*`, `find*`, Session `query()` |
 | Planning | Session + Plan | `plan`, `planSpec`, `planSuite`, `planFile` | direct planner/cache controls on Session |
-| Exact work | `ExecutionPlan` / `PlannedExecution` | `tests`, `filter`, `slice`, `shard`, `partition` | competing plan presentation commands |
+| Exact work | `ExecutionPlan` / `PlannedExecution` | `tests`, `filter`, `slice`, `add`, `subtract`, `intersect`, `not`, `passed`, `failed`, `unresolved`, `shard`, `partition` | competing plan/result-selection commands |
 | Execution | `RunnerSession` | `run` for intent, `execute` for exact plan | aliases with identical meaning |
 | Retry loop | Playground | `rerun`, `retry` | `rerunFailed`, `failed` |
 | Catalog lifecycle | `RunnerSession` | `refresh`, `revision`, `changes` | raw catalog/index access on Session |

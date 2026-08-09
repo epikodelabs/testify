@@ -261,9 +261,35 @@ export class RunnerSession<TResult> {
     this.refresh();
     this.validatePlan(plan);
 
-    return await this.adapter.execute(
-      plan,
-    );
+    const result =
+      await this.adapter.execute(
+        plan,
+      );
+
+    if (
+      result !== null &&
+      typeof result === 'object' &&
+      Object.isExtensible(result) &&
+      !(
+        '__testifyCatalogVersion' in
+        (result as object)
+      )
+    ) {
+      Object.defineProperty(
+        result,
+        '__testifyCatalogVersion',
+        {
+          enumerable: false,
+          configurable: false,
+          writable: false,
+          value:
+            plan.catalogVersion ??
+            this.planner.version,
+        },
+      );
+    }
+
+    return result;
   }
 
   run(

@@ -6,6 +6,10 @@ import {
   resolveTestSelector,
   type TestSelector,
 } from './test-selection';
+import type {
+  ExecutionResult,
+  ExecutionSpecResult,
+} from './execution-result';
 
 export interface ExecutionPlan {
   specIds: string[];
@@ -68,6 +72,18 @@ export interface PlannedExecution
   ): PlannedExecution;
 
   not(): PlannedExecution;
+
+  passed(
+    result: ExecutionResult,
+  ): PlannedExecution;
+
+  failed(
+    result: ExecutionResult,
+  ): PlannedExecution;
+
+  unresolved(
+    result: ExecutionResult,
+  ): PlannedExecution;
 }
 
 export interface ExecutionPlanOptions {
@@ -137,6 +153,83 @@ function assertCompatibleExecutionPlans(
       'Cannot combine execution plans from different catalogs.',
     );
   }
+}
+
+function getExecutionResultCatalogVersion(
+  result: ExecutionResult,
+): number | undefined {
+  return (
+    result as ExecutionResult & {
+      readonly __testifyCatalogVersion?: number;
+    }
+  ).__testifyCatalogVersion;
+}
+
+function classifyExecutionPlanByResult(
+  plan: PlannedExecution,
+  tests: readonly ExecutionPlanTest[],
+  result: ExecutionResult,
+  outcome:
+    | 'passed'
+    | 'failed'
+    | 'unresolved',
+): readonly ExecutionPlanTest[] {
+  if (!result || !Array.isArray(result.specResults)) {
+    throw new TypeError(
+      'Execution plan outcome selection expects an execution result.',
+    );
+  }
+
+  const resultVersion =
+    getExecutionResultCatalogVersion(result);
+
+  if (
+    plan.catalogVersion !== undefined &&
+    resultVersion !== undefined &&
+    plan.catalogVersion !== resultVersion
+  ) {
+    throw new Error(
+      'Cannot classify an execution plan with a result from a different catalog revision.',
+    );
+  }
+
+  const universeIds = new Set(
+    getExecutionPlanUniverse(plan).map(
+      (test) => test.id,
+    ),
+  );
+  const resultsById =
+    new Map<string, ExecutionSpecResult>();
+
+  for (const specResult of result.specResults) {
+    if (!specResult || typeof specResult.id !== 'string') {
+      throw new TypeError(
+        'Execution result contains an invalid test identity.',
+      );
+    }
+
+    if (!universeIds.has(specResult.id)) {
+      throw new Error(
+        `Execution result contains tests outside this plan catalog: ${specResult.id}.`,
+      );
+    }
+
+    resultsById.set(specResult.id, specResult);
+  }
+
+  return tests.filter((test) => {
+    const status = resultsById.get(test.id)?.status;
+
+    if (outcome === 'passed') {
+      return status === 'passed';
+    }
+
+    if (outcome === 'failed') {
+      return status === 'failed';
+    }
+
+    return status !== 'passed' && status !== 'failed';
+  });
 }
 
 function attachExecutionPlanOperations(
@@ -349,6 +442,48 @@ function attachExecutionPlanOperations(
             { clearShard: true },
           );
         },
+      },
+      passed: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: (result: ExecutionResult) =>
+          createDerivedPlan(
+            classifyExecutionPlanByResult(
+              plan as PlannedExecution,
+              tests,
+              result,
+              'passed',
+            ),
+          ),
+      },
+      failed: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: (result: ExecutionResult) =>
+          createDerivedPlan(
+            classifyExecutionPlanByResult(
+              plan as PlannedExecution,
+              tests,
+              result,
+              'failed',
+            ),
+          ),
+      },
+      unresolved: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: (result: ExecutionResult) =>
+          createDerivedPlan(
+            classifyExecutionPlanByResult(
+              plan as PlannedExecution,
+              tests,
+              result,
+              'unresolved',
+            ),
+          ),
       },
     },
   );
@@ -632,6 +767,8 @@ export function getEmbeddedExecutionPlanSource():
     cloneExecutionPlanData,
     getExecutionPlanUniverse,
     assertCompatibleExecutionPlans,
+    getExecutionResultCatalogVersion,
+    classifyExecutionPlanByResult,
     attachExecutionPlanOperations,
     createPlannedExecution,
     isPlannedExecution,

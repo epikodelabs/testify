@@ -193,22 +193,9 @@ describe('Testify Playground DevTools formatters', () => {
     ).toBeTrue();
   });
 
-  it('formats execution results and execution records', () => {
+  it('formats execution results and help values', () => {
     const formatter =
       installFormatter();
-
-    const plan: any = {
-      specIds: ['spec-1'],
-      random: false,
-      source: { kind: 'all' },
-      tests: () => [{
-        id: 'spec-1',
-        description: 'works',
-        fullName: 'Forms works',
-      }],
-      filter: () => plan,
-      slice: () => plan,
-    };
 
     const result = {
       specResults: [{
@@ -223,12 +210,16 @@ describe('Testify Playground DevTools formatters', () => {
       pending: 0,
     };
 
-    const record = {
-      plan,
-      result,
-      intent: { kind: 'all' },
-      revision: 3,
-    };
+    const help: any[] = [{
+      section: 'Plan',
+      usage: 'plan.failed(result)',
+      description: 'Keep tests that failed',
+    }];
+    Object.defineProperty(
+      help,
+      '__testifyCollectionKind',
+      { value: 'help' },
+    );
 
     expect(
       JSON.stringify(
@@ -240,10 +231,33 @@ describe('Testify Playground DevTools formatters', () => {
 
     expect(
       JSON.stringify(
-        formatter.header(record),
+        formatter.header(help),
+      ),
+    ).toContain('Help');
+
+    expect(
+      JSON.stringify(
+        formatter.body(help),
       ),
     ).toContain(
-      'Execution',
+      'plan.failed(result)',
     );
   });
+
+  it('shows accepted help query parameters', () => {
+    const formatter = installFormatter();
+    const help: any[] = [];
+    Object.defineProperty(help, '__testifyCollectionKind', { value: 'help' });
+    Object.defineProperty(help, '__testifyHelp', {
+      value: {
+        usage: 'session.help(query?)',
+        sections: ['discover', 'run', 'plan', 'session'],
+      },
+    });
+
+    const body = JSON.stringify(formatter.body(help));
+    expect(body).toContain('session.help(query?)');
+    expect(body).toContain('discover | run | plan | session | any text');
+  });
+
 });

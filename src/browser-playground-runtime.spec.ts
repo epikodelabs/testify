@@ -192,7 +192,7 @@ describe('Browser Playground runtime', () => {
     }
   });
 
-  it('stores one execution record behind last()', async () => {
+  it('keeps previous execution state private', async () => {
     const harness = createHarness();
 
     try {
@@ -200,19 +200,12 @@ describe('Browser Playground runtime', () => {
         'Forms',
       );
 
-      const last =
-        harness.session.last();
-
-      expect(last.plan.source.kind)
-        .toBe('suite');
-      expect(last.result.specResults)
-        .toHaveSize(1);
-      expect(last.intent).toEqual({
-        kind: 'suite',
-        selector: 'Forms',
-        options: {},
-      });
-      expect(last.revision).toBe(1);
+      expect(
+        harness.session.last,
+      ).toBeUndefined();
+      expect(
+        harness.session.failures,
+      ).toBeUndefined();
     } finally {
       harness.restore();
     }
@@ -238,7 +231,8 @@ describe('Browser Playground runtime', () => {
           .catalogVersion,
       ).toBe(2);
       expect(
-        harness.session.last().intent.kind,
+        harness.executedPlans.at(-1)
+          .source.kind,
       ).toBe('suite');
     } finally {
       harness.restore();
@@ -266,33 +260,13 @@ describe('Browser Playground runtime', () => {
         harness.executedPlans.at(-1),
       ).toBe(plan);
       expect(
-        harness.session.last().intent.kind,
-      ).toBe('plan');
+        harness.executedPlans.at(-1),
+      ).toBe(plan);
     } finally {
       harness.restore();
     }
   });
 
-  it('failures derives failures from the last execution', async () => {
-    const harness = createHarness();
-
-    try {
-      await harness.session.execute({
-        specIds: ['failed-spec'],
-        source: {
-          kind: 'spec',
-          selector: 'failed-spec',
-        },
-        catalogVersion: 1,
-      });
-
-      expect(
-        harness.session.failures(),
-      ).toHaveSize(1);
-    } finally {
-      harness.restore();
-    }
-  });
 
   it('retry resolves previous failures against the current catalog', async () => {
     const harness = createHarness();
@@ -320,14 +294,15 @@ describe('Browser Playground runtime', () => {
           .catalogVersion,
       ).toBe(2);
       expect(
-        harness.session.last().intent.kind,
-      ).toBe('retry');
+        harness.executedPlans.at(-1)
+          .catalogVersion,
+      ).toBe(2);
     } finally {
       harness.restore();
     }
   });
 
-  it('keeps discovery and failure collections observable even when empty', async () => {
+  it('keeps discovery collections observable even when empty', () => {
     const harness = createHarness();
 
     try {
@@ -337,13 +312,6 @@ describe('Browser Playground runtime', () => {
       expect(
         (tests as any).__testifyCollectionKind,
       ).toBe('tests');
-
-      const failures =
-        harness.session.failures();
-
-      expect(
-        (failures as any).__testifyCollectionKind,
-      ).toBe('results');
     } finally {
       harness.restore();
     }
@@ -363,22 +331,27 @@ describe('Browser Playground runtime', () => {
     }
   });
 
-  it('keeps help synchronized with the execution language', () => {
+  it('keeps searchable help synchronized with the execution language', () => {
     const harness = createHarness();
 
     try {
       const help =
         harness.session.help();
 
+      expect(
+        (help as any).__testifyCollectionKind,
+      ).toBe('help');
+
+      const usages = help.map(
+        (entry: any) => entry.usage,
+      );
+
       for (const command of [
         'session.tests(selector?)',
         'session.suites(selector?)',
         'session.files(selector?)',
-        'session.last()',
-        'session.failures()',
         'await session.rerun()',
         'await session.retry()',
-        'session.refresh()',
         'session.plan(selector?, options?)',
         'plan.tests()',
         'plan.filter(test => ...)',
@@ -387,38 +360,68 @@ describe('Browser Playground runtime', () => {
         'plan.subtract(other)',
         'plan.intersect(other)',
         'plan.not()',
+        'plan.passed(result)',
+        'plan.failed(result)',
+        'plan.unresolved(result)',
         'await session.execute(plan)',
+        'session.refresh()',
         'await session.exit()',
       ]) {
-        expect(
-          help.some(
-            (line: string) =>
-              line.includes(command),
-          ),
-        ).toBeTrue();
+        expect(usages).toContain(command);
       }
 
+      expect(usages).not.toContain(
+        'session.last()',
+      );
+      expect(usages).not.toContain(
+        'session.failures()',
+      );
+
       expect(
-        help.some(
-          (line: string) =>
-            line.includes(
-              'useful when inspected directly',
+        (help as any).__testifyHelp,
+      ).toEqual(jasmine.objectContaining({
+        usage: 'session.help(query?)',
+        sections: [
+          'discover',
+          'run',
+          'plan',
+          'session',
+        ],
+        accepts: 'section name or free-text search',
+      }));
+
+      const planHelp =
+        harness.session.help('plan');
+
+      expect(planHelp.length)
+        .toBeGreaterThan(0);
+      expect(
+        planHelp.every(
+          (entry: any) =>
+            [
+              entry.section,
+              entry.usage,
+              entry.description,
+            ].some((value: string) =>
+              value.toLowerCase().includes('plan'),
             ),
         ),
       ).toBeTrue();
 
-      for (const removed of [
-        'session.failed()',
-        'session.rerunFailed()',
-        'session.lastPlan()',
-      ]) {
-        expect(
-          help.some(
-            (line: string) =>
-              line.includes(removed),
-          ),
-        ).toBeFalse();
-      }
+      expect(
+        () => harness.session.help(123),
+      ).toThrowError(
+        TypeError,
+        'session.help(query?) expects a string query.',
+      );
+
+      const missing =
+        harness.session.help('definitely-missing');
+
+      expect(missing).toHaveSize(0);
+      expect(
+        (missing as any).__testifyCollectionKind,
+      ).toBe('help');
     } finally {
       harness.restore();
     }

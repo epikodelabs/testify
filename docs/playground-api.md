@@ -35,15 +35,6 @@ retry    = previous failures → fresh plan → execute
 execute  = exact supplied plan → execute
 ```
 
-## Inspect
-
-```ts
-session.last()
-session.failures()
-```
-
-`last()` returns the last Playground execution record (`plan`, `result`, `intent`, `revision`). `failures()` is derived from that execution.
-
 ## Plan
 
 ```ts
@@ -56,9 +47,14 @@ plan.add(other)
 plan.subtract(other)
 plan.intersect(other)
 plan.not()
+plan.passed(result)
+plan.failed(result)
+plan.unresolved(result)
 
 await session.execute(plan)
 ```
+
+Outcome methods classify the current plan using an `ExecutionResult`: `passed` and `failed` select terminal outcomes; `unresolved` includes non-terminal or missing outcomes.
 
 Plans remain serializable execution data. Interactive operations and collection identity are non-enumerable. Transformations are immutable and preserve execution options and plan identity metadata. `add`, `subtract`, and `intersect` combine plans from the same catalog revision; `not()` selects the complement within that plan's catalog snapshot.
 
@@ -78,6 +74,16 @@ await session.exit()
 ```
 
 `exit()` is the Playground lifecycle control. `RunnerSession.close()` remains the lower-level programmatic lifecycle API.
+
+## Help
+
+```ts
+session.help()
+session.help('plan')
+session.help('retry')
+```
+
+`help()` returns the current Playground command registry. The optional `query` must be a string and accepts a section name (`discover`, `run`, `plan`, or `session`) or any free-text search. Matching is case-insensitive across section, usage, and description. Calling `session.help()` without a query shows the accepted query forms in DevTools. Help values remain observable even when the filtered result is empty.
 
 ## UX invariant
 

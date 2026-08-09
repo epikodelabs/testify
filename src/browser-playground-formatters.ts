@@ -55,21 +55,17 @@ function installTestifyPlaygroundFormatters() {
       value &&
       typeof value === 'object' &&
       Array.isArray(value.specResults) &&
-      typeof value.total === 'number' &&
-      typeof value.passed === 'number' &&
-      typeof value.failed === 'number',
+      value.counts &&
+      typeof value.counts.total === 'number' &&
+      typeof value.counts.passed === 'number' &&
+      typeof value.counts.failed === 'number' &&
+      typeof value.passed === 'function' &&
+      typeof value.failed === 'function' &&
+      typeof value.unresolved === 'function',
     );
   }
 
-  function isExecutionRecord(value) {
-    return Boolean(
-      value &&
-      typeof value === 'object' &&
-      isPlan(value.plan) &&
-      isExecutionResult(value.result) &&
-      typeof value.revision === 'number',
-    );
-  }
+
 
   function collectionKind(value) {
     if (!Array.isArray(value)) return null;
@@ -81,7 +77,8 @@ function installTestifyPlaygroundFormatters() {
       explicitKind === 'tests' ||
       explicitKind === 'suites' ||
       explicitKind === 'files' ||
-      explicitKind === 'results'
+      explicitKind === 'results' ||
+      explicitKind === 'help'
     ) {
       return explicitKind;
     }
@@ -225,16 +222,66 @@ function installTestifyPlaygroundFormatters() {
     );
   }
 
+  function helpMetaRows(value) {
+    const meta = value.__testifyHelp;
+    if (!meta) return [];
+
+    return [
+      row([
+        'usage',
+        meta.usage || 'session.help(query?)',
+        '',
+      ]),
+      row([
+        'query',
+        Array.isArray(meta.sections)
+          ? meta.sections.join(' | ') + ' | any text'
+          : 'section name | any text',
+        meta.query ? 'filter: ' + meta.query : '',
+      ]),
+    ];
+  }
+
+  function helpRows(entries) {
+    const rows = [];
+    let section = null;
+
+    for (const entry of entries) {
+      if (entry.section !== section) {
+        section = entry.section;
+        rows.push([
+          'div',
+          {
+            style:
+              'margin-top:6px;font-weight:600;color:#0b7a53',
+          },
+          text(section),
+        ]);
+      }
+
+      rows.push(
+        row([
+          '',
+          entry.usage,
+          entry.description,
+        ]),
+      );
+    }
+
+    return rows;
+  }
+
   function collectionHeader(kind, value) {
     const labels = {
       tests: 'Tests',
       suites: 'Suites',
       files: 'Files',
       results: 'Results',
+      help: 'Help',
     };
 
     const first = value[0];
-    let hint = value.length + ' items';
+    let hint = value.length + (kind === 'help' ? ' commands' : ' items');
 
     if (
       kind === 'results' &&
@@ -303,27 +350,17 @@ function installTestifyPlaygroundFormatters() {
         );
       }
 
-      if (isExecutionRecord(value)) {
-        const result = value.result;
-        return summarySpan(
-          'Execution',
-          result.passed +
-            ' passed · ' +
-            result.failed +
-            ' failed · revision ' +
-            value.revision,
-        );
-      }
+
 
       if (isExecutionResult(value)) {
         return summarySpan(
           'Execution Result',
-          value.passed +
+          value.counts.passed +
             ' passed · ' +
-            value.failed +
+            value.counts.failed +
             ' failed · ' +
-            value.pending +
-            ' pending',
+            value.counts.unresolved +
+            ' unresolved',
         );
       }
 
@@ -342,7 +379,6 @@ function installTestifyPlaygroundFormatters() {
       if (
         isSession(value) ||
         isPlan(value) ||
-        isExecutionRecord(value) ||
         isExecutionResult(value)
       ) {
         return true;
@@ -392,33 +428,7 @@ function installTestifyPlaygroundFormatters() {
         ];
       }
 
-      if (isExecutionRecord(value)) {
-        return [
-          'div',
-          {},
-          row([
-            'intent',
-            value.intent?.kind || 'plan',
-            '',
-          ]),
-          row([
-            'revision',
-            value.revision,
-            '',
-          ]),
-          row([
-            'result',
-            value.result.passed +
-              ' passed · ' +
-              value.result.failed +
-              ' failed',
-            '',
-          ]),
-          ...resultRows(
-            value.result.specResults,
-          ),
-        ];
-      }
+
 
       if (isExecutionResult(value)) {
         return [
@@ -442,6 +452,14 @@ function installTestifyPlaygroundFormatters() {
       }
       if (kind === 'results') {
         return ['div', {}, ...resultRows(value)];
+      }
+      if (kind === 'help') {
+        return [
+          'div',
+          {},
+          ...helpMetaRows(value),
+          ...helpRows(value),
+        ];
       }
 
       return null;

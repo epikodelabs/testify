@@ -15,8 +15,8 @@
 ### Playground
 
 - Exposed the live `RunnerSession` directly as browser `session`; removed the separate `runner` façade.
-- Added synchronized `session.help()` guidance for discovery, planning, lifecycle, last-result inspection, reruns, and host exit.
-- Added `session.last()`, `session.lastPlan()`, `session.failed()`, `session.rerun()`, and `session.rerunFailed()` to the browser Playground workflow.
+- Added synchronized, searchable `session.help(query?)` guidance for discovery, planning, lifecycle, reruns, and host exit.
+- Kept previous execution state private; `session.rerun()` and `session.retry()` use it without exposing a parallel history/failure API.
 - Added `session.exit()` as the Playground-to-host command for clean browser/watch shutdown.
 - Standardized selective execution on `runSpec()`, `runSuite()`, and `runFile()`; no `runTest()` compatibility alias is retained.
 
