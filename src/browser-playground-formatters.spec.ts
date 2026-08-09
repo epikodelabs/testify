@@ -243,21 +243,4 @@ describe('Testify Playground DevTools formatters', () => {
       'plan.failed(result)',
     );
   });
-
-  it('shows accepted help query parameters', () => {
-    const formatter = installFormatter();
-    const help: any[] = [];
-    Object.defineProperty(help, '__testifyCollectionKind', { value: 'help' });
-    Object.defineProperty(help, '__testifyHelp', {
-      value: {
-        usage: 'session.help(query?)',
-        sections: ['discover', 'run', 'plan', 'session'],
-      },
-    });
-
-    const body = JSON.stringify(formatter.body(help));
-    expect(body).toContain('session.help(query?)');
-    expect(body).toContain('discover | run | plan | session | any text');
-  });
-
 });

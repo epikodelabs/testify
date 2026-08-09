@@ -55,13 +55,10 @@ function installTestifyPlaygroundFormatters() {
       value &&
       typeof value === 'object' &&
       Array.isArray(value.specResults) &&
-      value.counts &&
-      typeof value.counts.total === 'number' &&
-      typeof value.counts.passed === 'number' &&
-      typeof value.counts.failed === 'number' &&
-      typeof value.passed === 'function' &&
-      typeof value.failed === 'function' &&
-      typeof value.unresolved === 'function',
+      typeof value.total === 'number' &&
+      typeof value.passed === 'number' &&
+      typeof value.failed === 'number' &&
+      typeof value.pending === 'number',
     );
   }
 
@@ -222,26 +219,6 @@ function installTestifyPlaygroundFormatters() {
     );
   }
 
-  function helpMetaRows(value) {
-    const meta = value.__testifyHelp;
-    if (!meta) return [];
-
-    return [
-      row([
-        'usage',
-        meta.usage || 'session.help(query?)',
-        '',
-      ]),
-      row([
-        'query',
-        Array.isArray(meta.sections)
-          ? meta.sections.join(' | ') + ' | any text'
-          : 'section name | any text',
-        meta.query ? 'filter: ' + meta.query : '',
-      ]),
-    ];
-  }
-
   function helpRows(entries) {
     const rows = [];
     let section = null;
@@ -355,12 +332,12 @@ function installTestifyPlaygroundFormatters() {
       if (isExecutionResult(value)) {
         return summarySpan(
           'Execution Result',
-          value.counts.passed +
+          value.passed +
             ' passed · ' +
-            value.counts.failed +
+            value.failed +
             ' failed · ' +
-            value.counts.unresolved +
-            ' unresolved',
+            value.pending +
+            ' pending',
         );
       }
 
@@ -454,12 +431,7 @@ function installTestifyPlaygroundFormatters() {
         return ['div', {}, ...resultRows(value)];
       }
       if (kind === 'help') {
-        return [
-          'div',
-          {},
-          ...helpMetaRows(value),
-          ...helpRows(value),
-        ];
+        return ['div', {}, ...helpRows(value)];
       }
 
       return null;
