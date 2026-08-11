@@ -15,12 +15,19 @@ export interface ExecutionSpecResult {
   pendingReason?: string;
 }
 
+export interface ExecutionGlobalFailure {
+  message?: string;
+  stack?: string;
+  [key: string]: unknown;
+}
+
 export interface ExecutionResult {
   specResults: ExecutionSpecResult[];
   total: number;
   passed: number;
   failed: number;
   pending: number;
+  globalFailures?: ExecutionGlobalFailure[];
   duration?: number;
   exitCode?: number;
 }
@@ -30,11 +37,18 @@ export function summarizeExecutionResults(
   options: {
     duration?: number;
     exitCode?: number;
+    globalFailures?: ExecutionGlobalFailure[];
   } = {},
 ): ExecutionResult {
   let passed = 0;
   let failed = 0;
   let pending = 0;
+  const globalFailures =
+    Array.isArray(
+      options.globalFailures,
+    )
+      ? [...options.globalFailures]
+      : [];
 
   for (const result of specResults) {
     if (result.status === 'passed') {
@@ -56,6 +70,7 @@ export function summarizeExecutionResults(
     passed,
     failed,
     pending,
+    globalFailures,
     duration: options.duration,
     exitCode: options.exitCode,
   };

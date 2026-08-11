@@ -62,7 +62,11 @@ function installTestifyPlaygroundFormatters() {
     );
   }
 
-
+  function globalFailureCount(value) {
+    return Array.isArray(value?.globalFailures)
+      ? value.globalFailures.length
+      : 0;
+  }
 
   function collectionKind(value) {
     if (!Array.isArray(value)) return null;
@@ -219,6 +223,17 @@ function installTestifyPlaygroundFormatters() {
     );
   }
 
+  function globalFailureRows(failures) {
+    return failures.map(
+      (failure) =>
+        row([
+          'error',
+          failure.message || failure.globalErrorType || 'Global error',
+          failure.globalErrorType || '',
+        ]),
+    );
+  }
+
   function helpRows(entries) {
     const rows = [];
     let section = null;
@@ -269,7 +284,7 @@ function installTestifyPlaygroundFormatters() {
       const failed = value.filter(
         (result) => result.status === 'failed',
       ).length;
-      hint = value.length + ' items · ' + failed + ' failed';
+      hint = value.length + ' items В· ' + failed + ' failed';
     } else if (
       (kind === 'tests' || kind === 'suites') &&
       first
@@ -279,7 +294,7 @@ function installTestifyPlaygroundFormatters() {
         first.name ||
         first.description;
       if (name) {
-        hint += ' · ' + name + (value.length > 1 ? ' …' : '');
+        hint += ' В· ' + name + (value.length > 1 ? ' вЂ¦' : '');
       }
     }
 
@@ -301,7 +316,7 @@ function installTestifyPlaygroundFormatters() {
 
         return summarySpan(
           'Testify Session',
-          text(value.state) + ' · revision ' + revision,
+          text(value.state) + ' В· revision ' + revision,
         );
       }
 
@@ -317,27 +332,40 @@ function installTestifyPlaygroundFormatters() {
         return summarySpan(
           'Execution Plan',
           tests.length +
-            ' tests · ' +
+            ' tests В· ' +
             files.size +
-            ' files · ' +
+            ' files В· ' +
             source +
             (value.catalogVersion !== undefined
-              ? ' · revision ' + value.catalogVersion
+              ? ' В· revision ' + value.catalogVersion
               : ''),
         );
       }
 
-
-
       if (isExecutionResult(value)) {
+        const globalErrors =
+          globalFailureCount(value);
+        const detailParts = [
+          value.passed + ' passed',
+          value.failed + ' failed',
+          value.pending + ' pending',
+        ];
+
+        if (globalErrors > 0) {
+          detailParts.push(
+            globalErrors +
+              ' global error' +
+              (globalErrors === 1
+                ? ''
+                : 's'),
+          );
+        }
+
         return summarySpan(
           'Execution Result',
-          value.passed +
-            ' passed · ' +
-            value.failed +
-            ' failed · ' +
-            value.pending +
-            ' pending',
+          detailParts.join(
+            ' В· ',
+          ),
         );
       }
 
@@ -389,7 +417,7 @@ function installTestifyPlaygroundFormatters() {
           ]),
           row([
             'controls',
-            'tests · plan · run · rerun · retry · exit',
+            'tests В· plan В· run В· rerun В· retry В· exit',
             '',
           ]),
         ];
@@ -405,14 +433,15 @@ function installTestifyPlaygroundFormatters() {
         ];
       }
 
-
-
       if (isExecutionResult(value)) {
         return [
           'div',
           {},
           ...resultRows(
             value.specResults,
+          ),
+          ...globalFailureRows(
+            value.globalFailures || [],
           ),
         ];
       }

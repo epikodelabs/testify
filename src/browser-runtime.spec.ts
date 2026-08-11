@@ -30,6 +30,38 @@ describe('Browser runtime', () => {
     );
   });
 
+  it('captures jasmineDone global failures in the execution result', () => {
+    expect(source).toContain(
+      'globalFailures:',
+    );
+
+    expect(source).toContain(
+      'result?.failedExpectations',
+    );
+  });
+
+  it('attributes async browser errors to the active spec before falling back to run-level failures', () => {
+    expect(source).toContain(
+      "window.addEventListener(\n        'unhandledrejection'",
+    );
+
+    expect(source).toContain(
+      'pendingSpecFailures: new Map()',
+    );
+
+    expect(source).toContain(
+      'currentSpecId =\n          config.id;',
+    );
+
+    expect(source).toContain(
+      'status:\n                  \'failed\'',
+    );
+
+    expect(source).toContain(
+      'this.attributedFailureSignatures',
+    );
+  });
+
   it('generates syntactically valid browser JavaScript', () => {
     expect(
       () => new Function(source),

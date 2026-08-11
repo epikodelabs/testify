@@ -2,6 +2,7 @@ import type { ExecutionPlan } from './execution-plan';
 import {
   summarizeExecutionResults,
   type ExecutionResult,
+  type ExecutionGlobalFailure,
   type ExecutionSpecResult,
 } from './execution-result';
 
@@ -16,7 +17,11 @@ export interface NodeExecutionEnvironment {
       specDone?(
         result: ExecutionSpecResult,
       ): void;
-      jasmineDone?(): void;
+      jasmineDone?(
+        result?: {
+          failedExpectations?: ExecutionGlobalFailure[];
+        },
+      ): void;
     },
   ): void;
 
@@ -32,16 +37,29 @@ export async function executeNodePlan(
 
   const specResults:
     ExecutionSpecResult[] = [];
+  let globalFailures:
+    ExecutionGlobalFailure[] =
+      [];
 
   env.addReporter?.({
     jasmineStarted() {
       specResults.length = 0;
+      globalFailures = [];
     },
 
     specDone(result) {
       if (specIdSet.has(result.id)) {
         specResults.push(result);
       }
+    },
+
+    jasmineDone(result) {
+      globalFailures =
+        Array.isArray(
+          result?.failedExpectations,
+        )
+          ? [...result.failedExpectations]
+          : [];
     },
   });
 
@@ -65,6 +83,7 @@ export async function executeNodePlan(
     {
       duration:
         Date.now() - startedAt,
+      globalFailures,
     },
   );
 }

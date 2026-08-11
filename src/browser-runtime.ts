@@ -150,11 +150,11 @@ export function getBrowserRuntimeScript(
     try {
       env = await waitForJasmine();
       console.log(
-        '✅ Jasmine environment found',
+        'вњ… Jasmine environment found',
       );
     } catch (error) {
       console.error(
-        '⚠️  Jasmine environment not found:',
+        'вљ пёЏ  Jasmine environment not found:',
         error.message,
       );
       return;
@@ -239,28 +239,240 @@ export function getBrowserRuntimeScript(
 
     let originalSpecFilter = null;
     let isExecuting = false;
+    let currentSpecId = null;
+    let errorHooksInstalled = false;
+
+    function failureSignature(
+      failure,
+    ) {
+      return [
+        failure?.message || '',
+        failure?.stack || '',
+      ].join('\\n@@\\n');
+    }
+
+    function dedupeFailures(
+      failures,
+      excludedSignatures,
+    ) {
+      const seen = new Set();
+      const deduped = [];
+
+      for (const failure of failures || []) {
+        const signature =
+          failureSignature(
+            failure,
+          );
+
+        if (
+          excludedSignatures?.has(
+            signature,
+          ) ||
+          seen.has(signature)
+        ) {
+          continue;
+        }
+
+        seen.add(signature);
+        deduped.push(failure);
+      }
+
+      return deduped;
+    }
+
+    function describeThrownValue(
+      value,
+    ) {
+      if (value instanceof Error) {
+        return {
+          message:
+            value.message ||
+            String(value),
+          stack:
+            value.stack ||
+            value.message ||
+            String(value),
+        };
+      }
+
+      if (
+        value &&
+        typeof value === 'object'
+      ) {
+        const message =
+          typeof value.message ===
+          'string'
+            ? value.message
+            : (() => {
+                try {
+                  return JSON.stringify(
+                    value,
+                  );
+                } catch {
+                  return String(value);
+                }
+              })();
+
+        return {
+          message,
+          stack:
+            typeof value.stack ===
+            'string'
+              ? value.stack
+              : undefined,
+        };
+      }
+
+      return {
+        message:
+          typeof value === 'string'
+            ? value
+            : String(value),
+        stack: undefined,
+      };
+    }
+
+    function createFailure(
+      type,
+      value,
+    ) {
+      const details =
+        describeThrownValue(
+          value,
+        );
+
+      return {
+        matcherName: '',
+        passed: false,
+        globalErrorType: type,
+        message:
+          details.message,
+        stack: details.stack,
+      };
+    }
 
     const inBrowserReporter = {
       results: [],
+      globalFailures: [],
+      pendingSpecFailures: new Map(),
+      attributedFailureSignatures:
+        new Set(),
       currentSpecIdSet: null,
 
       jasmineStarted() {
         this.results = [];
+        this.globalFailures = [];
+        this.pendingSpecFailures.clear();
+        this.attributedFailureSignatures.clear();
+        currentSpecId = null;
+      },
+
+      recordAsyncFailure(
+        type,
+        value,
+      ) {
+        const failure =
+          createFailure(
+            type,
+            value,
+          );
+        const signature =
+          failureSignature(
+            failure,
+          );
+
+        if (currentSpecId) {
+          const pending =
+            this.pendingSpecFailures.get(
+              currentSpecId,
+            ) ?? [];
+
+          if (
+            !pending.some(
+              (entry) =>
+                failureSignature(
+                  entry,
+                ) === signature,
+            )
+          ) {
+            pending.push(
+              failure,
+            );
+            this.pendingSpecFailures.set(
+              currentSpecId,
+              pending,
+            );
+          }
+
+          this.attributedFailureSignatures.add(
+            signature,
+          );
+          return;
+        }
+
+        if (
+          this.globalFailures.some(
+            (entry) =>
+              failureSignature(
+                entry,
+              ) === signature,
+          )
+        ) {
+          return;
+        }
+
+        this.globalFailures.push(
+          failure,
+        );
       },
 
       specStarted(config) {
+        currentSpecId =
+          config.id;
+
         if (
           this.currentSpecIdSet?.has(
             config.id,
           )
         ) {
           console.log(
-            \`▶️ Running [\${config.id}]: \${config.description}\`,
+            \`в–¶пёЏ Running [\${config.id}]: \${config.description}\`,
           );
         }
       },
 
       specDone(result) {
+        const pending =
+          this.pendingSpecFailures.get(
+            result.id,
+          ) ?? [];
+        const mergedResult =
+          pending.length > 0
+            ? {
+                ...result,
+                status:
+                  'failed',
+                failedExpectations:
+                  dedupeFailures([
+                    ...(Array.isArray(
+                      result.failedExpectations,
+                    )
+                      ? result.failedExpectations
+                      : []),
+                    ...pending,
+                  ]),
+              }
+            : result;
+
+        this.pendingSpecFailures.delete(
+          result.id,
+        );
+
+        if (currentSpecId === result.id) {
+          currentSpecId =
+            null;
+        }
+
         if (
           !this.currentSpecIdSet?.has(
             result.id,
@@ -269,16 +481,18 @@ export function getBrowserRuntimeScript(
           return;
         }
 
-        this.results.push(result);
-
-        console.log(
-          \`[\${result.status.toUpperCase()}] \${result.description}\`,
+        this.results.push(
+          mergedResult,
         );
 
-        result.failedExpectations?.forEach(
+        console.log(
+          \`[\${mergedResult.status.toUpperCase()}] \${mergedResult.description}\`,
+        );
+
+        mergedResult.failedExpectations?.forEach(
           (failure) =>
             console.error(
-              '❌',
+              'вќЊ',
               failure.message,
               failure.stack
                 ? '\\n' + failure.stack
@@ -287,7 +501,23 @@ export function getBrowserRuntimeScript(
         );
       },
 
-      jasmineDone() {
+      jasmineDone(result) {
+        currentSpecId = null;
+        this.globalFailures =
+          dedupeFailures(
+            [
+              ...(
+                Array.isArray(
+                  result?.failedExpectations,
+                )
+                  ? result.failedExpectations
+                  : []
+              ),
+              ...this.globalFailures,
+            ],
+            this.attributedFailureSignatures,
+          );
+
         if (originalSpecFilter !== null) {
           env.configure({
             specFilter:
@@ -299,9 +529,64 @@ export function getBrowserRuntimeScript(
       },
     };
 
+    function installErrorHooks() {
+      if (errorHooksInstalled) {
+        return;
+      }
+
+      errorHooksInstalled =
+        true;
+
+      window.addEventListener(
+        'unhandledrejection',
+        (event) => {
+          inBrowserReporter.recordAsyncFailure(
+            'unhandledRejection',
+            event.reason,
+          );
+        },
+      );
+
+      window.addEventListener(
+        'error',
+        (event) => {
+          if (event.error) {
+            inBrowserReporter.recordAsyncFailure(
+              'error',
+              event.error,
+            );
+            return;
+          }
+
+          const location =
+            typeof event.filename ===
+              'string' &&
+            event.filename
+              ? event.filename +
+                ':' +
+                event.lineno +
+                ':' +
+                event.colno
+              : undefined;
+
+          inBrowserReporter.recordAsyncFailure(
+            'error',
+            {
+              message:
+                event.message ||
+                'Uncaught browser error',
+              stack: location,
+            },
+          );
+        },
+      );
+    }
+
     env.addReporter(
       inBrowserReporter,
     );
+
+    installErrorHooks();
 
     function resetEnvironment() {
       const resetNode = (node) => {
@@ -326,7 +611,7 @@ export function getBrowserRuntimeScript(
     async function executePlan(plan) {
       if (isExecuting) {
         console.warn(
-          '⚠️  Execution already in progress. Please wait...',
+          'вљ пёЏ  Execution already in progress. Please wait...',
         );
         return summarizeExecutionResults([]);
       }
@@ -339,6 +624,10 @@ export function getBrowserRuntimeScript(
         isExecuting = true;
 
         inBrowserReporter.results = [];
+        inBrowserReporter.globalFailures = [];
+        inBrowserReporter.pendingSpecFailures.clear();
+        inBrowserReporter.attributedFailureSignatures.clear();
+        currentSpecId = null;
 
         const specIdSet =
           new Set(plan.specIds);
@@ -368,14 +657,19 @@ export function getBrowserRuntimeScript(
           inBrowserReporter.jasmineDone;
 
         inBrowserReporter.jasmineDone =
-          () => {
+          (result) => {
             originalDone.call(
               inBrowserReporter,
+              result,
             );
 
             resolve(
               summarizeExecutionResults(
                 inBrowserReporter.results,
+                {
+                  globalFailures:
+                    inBrowserReporter.globalFailures,
+                },
               ),
             );
 

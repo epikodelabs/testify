@@ -16,8 +16,217 @@ function WebSocketEventForwarder() {
   this.ws = null;
   this.connected = false;
   this.messageQueue = [];
+  this.currentSpecId = null;
+  this.pendingSpecFailures = new Map();
+  this.globalFailures = [];
+  this.attributedFailureSignatures = new Set();
+  this.errorHooksInstalled = false;
 
   const self = this;
+
+  this.failureSignature = function (failure) {
+    return [
+      failure?.message || '',
+      failure?.stack || '',
+    ].join('\\n@@\\n');
+  };
+
+  this.dedupeFailures = function (failures, excludedSignatures) {
+    const seen = new Set();
+    const deduped = [];
+
+    for (const failure of failures || []) {
+      const signature = self.failureSignature(failure);
+      if (excludedSignatures?.has(signature) || seen.has(signature)) {
+        continue;
+      }
+
+      seen.add(signature);
+      deduped.push(failure);
+    }
+
+    return deduped;
+  };
+
+  this.describeThrownValue = function (value) {
+    if (value instanceof Error) {
+      return {
+        message: value.message || String(value),
+        stack: value.stack || value.message || String(value),
+      };
+    }
+
+    if (value && typeof value === 'object') {
+      const message =
+        typeof value.message === 'string'
+          ? value.message
+          : (() => {
+              try {
+                return JSON.stringify(value);
+              } catch {
+                return String(value);
+              }
+            })();
+
+      return {
+        message,
+        stack:
+          typeof value.stack === 'string'
+            ? value.stack
+            : undefined,
+      };
+    }
+
+    return {
+      message:
+        typeof value === 'string'
+          ? value
+          : String(value),
+      stack: undefined,
+    };
+  };
+
+  this.createFailure = function (type, value) {
+    const details =
+      self.describeThrownValue(value);
+
+    return {
+      matcherName: '',
+      passed: false,
+      globalErrorType: type,
+      message: details.message,
+      stack: details.stack,
+    };
+  };
+
+  this.recordAsyncFailure = function (type, value) {
+    const failure =
+      self.createFailure(type, value);
+    const signature =
+      self.failureSignature(failure);
+
+    if (self.currentSpecId) {
+      const pending =
+        self.pendingSpecFailures.get(
+          self.currentSpecId,
+        ) ?? [];
+
+      if (
+        !pending.some(
+          (entry) =>
+            self.failureSignature(entry) === signature,
+        )
+      ) {
+        pending.push(failure);
+        self.pendingSpecFailures.set(
+          self.currentSpecId,
+          pending,
+        );
+      }
+
+      self.attributedFailureSignatures.add(
+        signature,
+      );
+      return;
+    }
+
+    if (
+      self.globalFailures.some(
+        (entry) =>
+          self.failureSignature(entry) === signature,
+      )
+    ) {
+      return;
+    }
+
+    self.globalFailures.push(failure);
+  };
+
+  this.installErrorHooks = function () {
+    if (self.errorHooksInstalled) {
+      return;
+    }
+
+    self.errorHooksInstalled = true;
+
+    window.addEventListener(
+      'unhandledrejection',
+      (event) => {
+        self.recordAsyncFailure(
+          'unhandledRejection',
+          event.reason,
+        );
+      },
+    );
+
+    window.addEventListener(
+      'error',
+      (event) => {
+        if (event.error) {
+          self.recordAsyncFailure(
+            'error',
+            event.error,
+          );
+          return;
+        }
+
+        const location =
+          typeof event.filename === 'string' && event.filename
+            ? event.filename + ':' + event.lineno + ':' + event.colno
+            : undefined;
+
+        self.recordAsyncFailure(
+          'error',
+          {
+            message:
+              event.message || 'Uncaught browser error',
+            stack: location,
+          },
+        );
+      },
+    );
+  };
+
+  this.mergePendingSpecFailures = function (result) {
+    const pending =
+      self.pendingSpecFailures.get(result.id) ?? [];
+
+    self.pendingSpecFailures.delete(
+      result.id,
+    );
+
+    if (!pending.length) {
+      return result;
+    }
+
+    return {
+      ...result,
+      status: 'failed',
+      failedExpectations:
+        self.dedupeFailures([
+          ...(Array.isArray(result.failedExpectations)
+            ? result.failedExpectations
+            : []),
+          ...pending,
+        ]),
+    };
+  };
+
+  this.collectRunLevelFailures = function (result) {
+    return self.dedupeFailures(
+      [
+        ...(
+          Array.isArray(result?.failedExpectations)
+            ? result.failedExpectations
+            : []
+        ),
+        ...self.globalFailures,
+      ],
+      self.attributedFailureSignatures,
+    );
+  };
+
+  this.installErrorHooks();
 
   this.connect = function () {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -165,15 +374,10 @@ function WebSocketEventForwarder() {
 
   // Jasmine reporter hooks
   this.jasmineStarted = function (config) {
-    let orderedSpecs = [];
-    let orderedSuites = [];
-
-    if (config.order) {
-      const random = !!config.order.random;
-      const seed = config.order.seed;
-      orderedSpecs = self.getOrderedSpecs(seed, random);
-      orderedSuites = self.getOrderedSuites(seed, random);
-    }
+    self.currentSpecId = null;
+    self.pendingSpecFailures.clear();
+    self.globalFailures = [];
+    self.attributedFailureSignatures.clear();
 
     self.send({
       type: 'jasmineStarted',
@@ -193,6 +397,8 @@ function WebSocketEventForwarder() {
   };
 
   this.specStarted = function (spec) {
+    self.currentSpecId = spec.id;
+
     self.send({
       type: 'specStarted',
       id: spec.id,
@@ -203,9 +409,16 @@ function WebSocketEventForwarder() {
   };
 
   this.specDone = function (result) {
+    const mergedResult =
+      self.mergePendingSpecFailures(result);
+
+    if (self.currentSpecId === result.id) {
+      self.currentSpecId = null;
+    }
+
     self.send({
       type: 'specDone',
-      ...result,
+      ...mergedResult,
       timestamp: Date.now()
     });
   };
@@ -221,10 +434,14 @@ function WebSocketEventForwarder() {
   };
 
   this.jasmineDone = function (result) {
+    self.currentSpecId = null;
+
     const coverage = globalThis.__coverage__;
     self.send({
       type: 'jasmineDone',
       ...result,
+      failedExpectations:
+        self.collectRunLevelFailures(result),
       coverage: coverage ? JSON.stringify(coverage) : null,
       timestamp: Date.now()
     });
@@ -239,4 +456,4 @@ function WebSocketEventForwarder() {
   };
 }
 `;
-  }
+}

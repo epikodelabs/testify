@@ -18,4 +18,32 @@ describe('Browser WebSocket runtime', () => {
       'self.getOrderedSpecs(42, true)',
     );
   });
+
+  it('captures browser async errors and attributes them to the active spec', () => {
+    const source =
+      getBrowserWebSocketReporterScript({
+        initialSeed: 0,
+        initialRandom: false,
+      });
+
+    expect(source).toContain(
+      "window.addEventListener(\n      'unhandledrejection'",
+    );
+
+    expect(source).toContain(
+      "window.addEventListener(\n      'error'",
+    );
+
+    expect(source).toContain(
+      'this.currentSpecId = null;',
+    );
+
+    expect(source).toContain(
+      'self.mergePendingSpecFailures(result)',
+    );
+
+    expect(source).toContain(
+      'self.collectRunLevelFailures(result)',
+    );
+  });
 });

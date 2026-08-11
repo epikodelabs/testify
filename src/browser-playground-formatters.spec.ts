@@ -208,6 +208,12 @@ describe('Testify Playground DevTools formatters', () => {
       passed: 1,
       failed: 0,
       pending: 0,
+      globalFailures: [{
+        message:
+          'Unhandled promise rejection: Error: authorization service unavailable',
+        globalErrorType:
+          'unhandledRejection',
+      }],
     };
 
     const help: any[] = [{
@@ -227,6 +233,22 @@ describe('Testify Playground DevTools formatters', () => {
       ),
     ).toContain(
       'Execution Result',
+    );
+
+    expect(
+      JSON.stringify(
+        formatter.header(result),
+      ),
+    ).toContain(
+      '1 global error',
+    );
+
+    expect(
+      JSON.stringify(
+        formatter.body(result),
+      ),
+    ).toContain(
+      'authorization service unavailable',
     );
 
     expect(

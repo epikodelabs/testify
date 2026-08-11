@@ -100,7 +100,13 @@ export class WebSocketManager extends EventEmitter {
           this.reporter?.jasmineDone(message);
           
           const coverage = message.coverage ? this.jsonCleaner.parse(message.coverage) : null;
-          const success = message.overallStatus === 'passed' && this.failedSpecsCount === 0;
+          const globalFailureCount =
+            Array.isArray(
+              message.failedExpectations,
+            )
+              ? message.failedExpectations.length
+              : 0;
+          const success = message.overallStatus === 'passed' && this.failedSpecsCount === 0 && globalFailureCount === 0;
           const hasPending = message.overallStatus === 'incomplete' || this.pendingSpecsCount > 0;
           this.emit('testsCompleted', { success, hasPending, coverage });
           break;

@@ -61,6 +61,7 @@ export class ConsoleReporter {
   private executableSpecCount: number;
   private failureCount: number;
   private failedSpecs: any[];
+  private globalFailures: any[];
   private pendingSpecs: any[];
   private ansi: Record<string, string>;
   private startTime: number;
@@ -93,6 +94,7 @@ export class ConsoleReporter {
     this.executableSpecCount = 0;
     this.failureCount = 0;
     this.failedSpecs = [];
+    this.globalFailures = [];
     this.pendingSpecs = [];
     this.startTime = 0;
 
@@ -297,6 +299,7 @@ export class ConsoleReporter {
     this.failureCount = 0;
     this.config = config;
     this.failedSpecs = [];
+    this.globalFailures = [];
     this.pendingSpecs = [];
     this.rootSuite = this.createRootSuite();
     this.suiteStack = [this.rootSuite];
@@ -431,6 +434,19 @@ export class ConsoleReporter {
   }
 
   jasmineDone(result?: any) {
+    const globalFailures =
+      Array.isArray(
+        result?.failedExpectations,
+      )
+        ? result.failedExpectations
+        : [];
+
+    this.globalFailures =
+      globalFailures;
+    this.failureCount =
+      this.failedSpecs.length +
+      globalFailures.length;
+
     const totalTimeMs =
       typeof result?.totalTime === 'number'
         ? result.totalTime
@@ -449,6 +465,14 @@ export class ConsoleReporter {
       this.printFailures();
     } else {
       this.failedSpecs = [];
+    }
+
+    this.failureCount =
+      this.failedSpecs.length +
+      this.globalFailures.length;
+
+    if (this.globalFailures.length > 0) {
+      this.printGlobalFailures();
     }
 
     if (actualPendingSpecs.length > 0) {
@@ -764,6 +788,92 @@ export class ConsoleReporter {
       // Extra spacing between specs
       this.print('\n');
     });
+  }
+
+  private printGlobalFailures() {
+    this.print('\n');
+    this.printSectionHeader(
+      'GLOBAL ERRORS',
+      'red',
+    );
+    this.print(
+      this.colored(
+        'red',
+        this.separator() + '\n',
+      ),
+    );
+
+    this.globalFailures.forEach(
+      (failure, idx) => {
+        const label =
+          failure.globalErrorType ||
+          failure.type ||
+          'global error';
+        const message =
+          normalize(
+            failure.message ??
+              String(failure),
+          );
+        const header = wrapLine(
+          `${idx + 1}) ${label}`,
+          this.lineWidth,
+          1,
+        );
+        header.forEach(
+          (line) => (
+            this.print(
+              this.colored(
+                'white',
+                line,
+              ),
+            ),
+            this.print('\n')
+          ),
+        );
+
+        const messageLines =
+          wrapLine(
+            `${SYMBOLS.cross_mark} ${message}`,
+            this.lineWidth,
+            1,
+          );
+        messageLines.forEach(
+          (line) => (
+            this.print(
+              this.colored(
+                'brightRed',
+                line,
+              ),
+            ),
+            this.print('\n')
+          ),
+        );
+
+        if (failure.stack) {
+          const stackLines =
+            wrapLine(
+              normalize(
+                failure.stack,
+              ),
+              this.lineWidth,
+              2,
+            );
+          stackLines.forEach(
+            (line) => (
+              this.print(
+                this.colored(
+                  'gray',
+                  line,
+                ),
+              ),
+              this.print('\n')
+            ),
+          );
+        }
+
+        this.print('\n');
+      },
+    );
   }
 
   private printPendingSpecs() {

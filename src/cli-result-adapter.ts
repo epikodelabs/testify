@@ -12,7 +12,10 @@ export function getExecutionExitCode(
     return result.exitCode;
   }
 
-  if (result.failed > 0) {
+  if (
+    result.failed > 0 ||
+    (result.globalFailures?.length ?? 0) > 0
+  ) {
     return EXIT_CODES.TEST_FAILURES;
   }
 
