@@ -11,6 +11,7 @@ export interface ViteJasmineConfig {
   testDirs: string[];
   exclude: string[];
   outDir: string;
+  lockFilePath?: string;
 
   browser?: string;
   port?: number;

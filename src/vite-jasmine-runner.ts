@@ -46,6 +46,28 @@ export class ViteJasmineRunner extends EventEmitter {
   private shouldPreserve(): boolean {
     return !!this.config.preserveOutputs;
   }
+
+  private cleanOutputDirectory(): void {
+    const outDir = path.resolve(this.config.outDir);
+    const lockFilePath =
+      this.config.lockFilePath
+        ? path.resolve(this.config.lockFilePath)
+        : null;
+
+    if (!lockFilePath || path.dirname(lockFilePath) !== outDir) {
+      fs.rmSync(outDir, { recursive: true, force: true });
+      return;
+    }
+
+    const lockFileName = path.basename(lockFilePath);
+    for (const entry of fs.readdirSync(outDir)) {
+      if (entry === lockFileName) {
+        continue;
+      }
+
+      fs.rmSync(path.join(outDir, entry), { recursive: true, force: true });
+    }
+  }
   
   constructor(config: ViteJasmineConfig) {
     super();
@@ -179,7 +201,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
       if (fs.existsSync(this.config.outDir) && !this.shouldPreserve()) {
         logger.println(RunnerMessages.cleaningOutputDirectory());
-        fs.rmSync(this.config.outDir, { recursive: true, force: true });
+        this.cleanOutputDirectory();
       }
 
       if (!fs.existsSync(this.config.outDir)) {

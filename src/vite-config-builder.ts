@@ -364,7 +364,7 @@ export class ViteConfigBuilder {
 
         build: {
           outDir: this.config.outDir,
-          emptyOutDir: !incremental,
+          emptyOutDir: false,
           sourcemap: true,
           target: 'es2022',
           minify: false,

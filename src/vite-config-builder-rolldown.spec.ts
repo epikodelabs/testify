@@ -44,5 +44,9 @@ describe('ViteConfigBuilder Rolldown contract', () => {
     expect(
       build.rollupOptions,
     ).toBeUndefined();
+
+    expect(
+      build.emptyOutDir,
+    ).toBeFalse();
   });
 });

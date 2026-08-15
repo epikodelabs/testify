@@ -8,8 +8,8 @@ import { norm } from './utils';
 export class ProcessLock {
   private pidFile: string;
 
-  constructor(projectPath?: string, port?: number) {
-    const cwd = norm(process.cwd());
+  constructor(projectPath?: string, port?: number, lockDir?: string) {
+    const cwd = norm(path.resolve(lockDir ?? process.cwd()));
     const parts: string[] = ['testify'];
     if (projectPath) {
       const sanitized = norm(path.resolve(projectPath))
@@ -27,6 +27,7 @@ export class ProcessLock {
     if (killPrevious) {
       await this.releasePrevious();
     }
+    fs.mkdirSync(path.dirname(this.pidFile), { recursive: true });
     fs.writeFileSync(this.pidFile, String(process.pid), 'utf-8');
   }
 
@@ -253,5 +254,9 @@ export class ProcessLock {
         }
       });
     });
+  }
+
+  getPidFilePath(): string {
+    return this.pidFile;
   }
 }

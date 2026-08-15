@@ -224,11 +224,15 @@ export class CLIHandler {
         logger.println(CLIMessages.preserveOutputsEnabled());
       }
 
-      const lock = new ProcessLock(config.project, config.port ?? 8888);
+      const resolvedOutDir = path.resolve(config.outDir ?? path.join(process.cwd(), 'dist/.vite-jasmine-build/'));
+      const lock = new ProcessLock(config.project, config.port ?? 8888, resolvedOutDir);
       await lock.acquire(exclusive);
       process.on('exit', () => lock.releaseSync());
 
-      const runner = createViteJasmineRunner(config);
+      const runner = createViteJasmineRunner({
+        ...config,
+        lockFilePath: lock.getPidFilePath(),
+      });
       this.runner = runner;
 
       const exitCode = watch ? await runner.watch() : await runner.start();
