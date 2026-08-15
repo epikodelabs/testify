@@ -972,7 +972,7 @@ export class ConsoleReporter {
     const hasPendingChildren = childStatuses.includes('pending') || childStatuses.includes('running');
     const hasIncompleteChildren = childStatuses.includes('incomplete');
 
-    // ⚠️ FIX: Check incomplete status BEFORE passed status
+    // 🚨 FIX: Check incomplete status BEFORE passed status
     if (failedCount > 0 || hasFailedChildren) {
       suite.status = 'failed';
     } else if (incompleteCount > 0 || hasIncompleteChildren) {

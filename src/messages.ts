@@ -26,7 +26,7 @@ export const LOG_MESSAGES = {
     },
     invalidExitCode: {
         type: 'warning',
-        icon: '⚠️',
+        icon: '🚨',
         text: (code: number) => `[warning] Exiting with an unusual code: ${code}.`,
     },
     
@@ -46,13 +46,13 @@ export const LOG_MESSAGES = {
     },
     browserCleanupFailed: {
         type: 'warning',
-        icon: '⚠️',
+        icon: '🚨',
         text: (pid: number, error: string) => `[warning] BrowserManager: Failed to terminate process ${pid}. Reason: ${error}`,
     },
     headlessModeImplied: {
         type: 'info',
-        icon: 'ℹ️',
-        text: () => '[ℹ️] Using --browser node implies --headless. Running in headless mode.',
+        icon: '💡',
+        text: () => '[info] Using --browser node implies --headless. Running in headless mode.',
     },
 
     // =================================================================
@@ -61,7 +61,7 @@ export const LOG_MESSAGES = {
     
     noJsFilesForRunner: {
         type: 'warning',
-        icon: '⚠️',
+        icon: '🚨',
         text: () => '[warning] No JS files found for test runner generation.',
     },
     generatedInProcessRunner: {
@@ -76,7 +76,7 @@ export const LOG_MESSAGES = {
     },
     testProcessAlreadyRunning: {
         type: 'warning',
-        icon: '⚠️',
+        icon: '🚨',
         text: () => '[warning] Test process already running.',
     },
     testExecutionError: {

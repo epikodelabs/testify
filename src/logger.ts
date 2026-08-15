@@ -33,7 +33,7 @@ export class Logger {
 
   constructor() {
     this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;
-    this.errorPrompt = `${colors.brightRed}> ${colors.reset}`;
+    this.errorPrompt = `${colors.bold}${colors.brightRed}> ${colors.reset}`;
   }
 
   // ─── New API: structured log messages ────────────────────

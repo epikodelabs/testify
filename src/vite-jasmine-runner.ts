@@ -23,6 +23,8 @@ import { getExecutionExitCode } from './cli-result-adapter';
 
 const { build: viteBuild } = await import('vite');
 
+type PreprocessResult = 'built' | 'no-specs';
+
 export class ViteJasmineRunner extends EventEmitter {
   private viteCache: any = null;
   private config: ViteJasmineConfig;
@@ -110,11 +112,49 @@ export class ViteJasmineRunner extends EventEmitter {
 
 
 
-  async preprocess(): Promise<void> {
+  private describeConfiguredTestDirs(): string {
+    const configured =
+      Array.isArray(this.config.testDirs)
+        ? this.config.testDirs
+        : [this.config.testDirs];
+
+    const relativeDirs =
+      configured
+        .filter((dir): dir is string => !!dir)
+        .map((dir) => {
+          const relative =
+            norm(
+              path.relative(
+                process.cwd(),
+                dir,
+              ),
+            );
+
+          return relative.length > 0
+            ? relative
+            : '.';
+        });
+
+    return relativeDirs.length > 0
+      ? relativeDirs.join(', ')
+      : norm(
+          path.relative(
+            process.cwd(),
+            this.primaryTestDir,
+          ),
+        ) || '.';
+  }
+
+  async preprocess(): Promise<PreprocessResult> {
     try {
       const { srcFiles, specFiles } = await this.fileDiscovery.discoverSources();
       if (specFiles.length === 0) {
-        throw new ExitCodeError(EXIT_CODES.CONFIG_ERROR, 'No test files found');
+        logger.println(
+          RunnerMessages.noTestFilesFound(
+            this.describeConfiguredTestDirs(),
+          ),
+        );
+        return 'no-specs';
       }
 
       const entryFiles = [...srcFiles, ...specFiles];
@@ -218,6 +258,8 @@ export class ViteJasmineRunner extends EventEmitter {
       } else if (this.config.headless && this.config.browser === 'node' && preserveRunner) {
         logger.println(RunnerMessages.preservingExistingRunner());
       }
+
+      return 'built';
     } catch (error) {
       logger.error(RunnerMessages.preprocessFailed(error));
       throw error;
@@ -252,7 +294,10 @@ export class ViteJasmineRunner extends EventEmitter {
     logger.println(this.config.headless ? RunnerMessages.startingHeadless() : RunnerMessages.startingServer());
 
     try {
-      await this.preprocess();
+      const preprocessResult = await this.preprocess();
+      if (preprocessResult === 'no-specs') {
+        return EXIT_CODES.SUCCESS;
+      }
     } catch (error) {
       logger.error(RunnerMessages.buildFailed(error));
       throw error instanceof ExitCodeError ? error : new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, String(error));
@@ -278,7 +323,10 @@ export class ViteJasmineRunner extends EventEmitter {
 
     this.config.watch = true;
     logger.println(RunnerMessages.startingWatchMode());
-    await this.preprocess();
+    const preprocessResult = await this.preprocess();
+    if (preprocessResult === 'no-specs') {
+      return EXIT_CODES.SUCCESS;
+    }
     return await this.runWatchMode();
   }
 

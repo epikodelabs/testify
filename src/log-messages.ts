@@ -5,13 +5,13 @@
 
 // %check%         → ✅  (success / done)
 // %cross%         → ❌  (error / failure)
-// %warn%          → ⚠️   (warning)
-// %info%          → ℹ️   (informational)
+// %warn%          → 🚨  (warning)
+// %info%          → 💡  (informational)
 // %globe%         → 🌐  (browser / network)
 // %doc%           → 📄  (file / document)
 // %puzzle%        → 🧩  (suite tree)
 // %stop%          → 🛑  (abort / halt)
-// %bulb%          → 💡  (tip / hint)
+// %bulb%          → 📌  (tip / hint)
 // %rocket%        → 🚀  (launch / start)
 // %hourglass%     → ⏳  (waiting / retry)
 // %circle_green%  → 🟢  (process ready)
@@ -32,10 +32,10 @@
 
 export const BrowserMessages = {
   unknownBrowserFallback: (name: string) =>
-    `%warn%  Unknown browser "${name}", falling back to Node.js mode`,
+    `%warn% Unknown browser "${name}", falling back to Node.js mode`,
 
   playwrightNotInstalled: (name: string) =>
-    `%info%  Playwright runtime not available. Browser "${name}" not available.`,
+    `%info% Playwright runtime not available. Browser "${name}" not available.`,
 
   playwrightInstallTip: () =>
     `%bulb% Tip: Reinstall dependencies, then install browsers explicitly:\n   npx playwright install`,
@@ -77,7 +77,7 @@ export const BrowserMessages = {
     `%globe% Opening ${name} browser...`,
 
   playwrightNotInstalledManual: (url: string) =>
-    `%info%  Playwright runtime not available. Please open browser manually: ${url}`,
+    `%info% Playwright runtime not available. Please open browser manually: ${url}`,
 
   playwrightAutoOpenTip: () =>
     `%bulb% Tip: Install browsers explicitly to enable automatic browser opening:\n   npx playwright install`,
@@ -120,7 +120,7 @@ export const CLIMessages = {
     `%cross% Could not resolve project "${name}". It is not a directory and not a known package name.`,
 
   preserveOutputsEnabled: () =>
-    `%info%  Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
+    `%info% Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
 
   failedToStartTestRunner: (error: unknown) =>
     `%cross% Failed to start test runner: ${error}`,
@@ -172,16 +172,16 @@ export const ConfigMessages = {
     `%cross% Failed to create default testify.json: ${error}`,
 
   createdDefaultConfig: (path: string) =>
-    `%info%  Created default test runner config at ${path}`,
+    `%info% Created default test runner config at ${path}`,
 
   configAlreadyExists: (path: string) =>
-    `%info%  Config already exists at ${path}`,
+    `%info% Config already exists at ${path}`,
 
   failedToWriteConfig: (error: unknown) =>
     `%cross% Failed to write testify.json: ${error}`,
 
   generatedDefaultConfig: (path: string) =>
-    `%info%  Generated default Vite Jasmine config at ${path}`,
+    `%info% Generated default Vite Jasmine config at ${path}`,
 };
 
 // ─── console-reporter.ts ─────────────────────────────────────────────────────
@@ -439,10 +439,10 @@ export const JasmineCLIMessages = {
     `%cross% \`npx jasmine init\` is only supported when run from VS Code.`,
 
   openVsCodeTerminalHint: () =>
-    `%info%  Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).`,
+    `%info% Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).`,
 
   createdVsCodeLaunchConfig: (path: string) =>
-    `%info%  Created VS Code launch config at ${path}`,
+    `%info% Created VS Code launch config at ${path}`,
 
   addedVsCodeConfiguration: (name: string) =>
     `Added configuration: ${name}`,
@@ -451,13 +451,13 @@ export const JasmineCLIMessages = {
     `%cross% Failed to parse existing VS Code launch config: ${path}`,
 
   addConfigManually: () =>
-    `%info%  Add this configuration manually:`,
+    `%info% Add this configuration manually:`,
 
   vsCodeConfigAlreadyContains: (name: string) =>
-    `%info%  VS Code launch config already contains: ${name}`,
+    `%info% VS Code launch config already contains: ${name}`,
 
   updatedVsCodeLaunchConfig: (path: string) =>
-    `%info%  Updated VS Code launch config at ${path}`,
+    `%info% Updated VS Code launch config at ${path}`,
 
   unhandledRejection: (message: string) =>
     `%cross% ${message}`,
@@ -490,6 +490,9 @@ export const RunnerMessages = {
 
   startingServer: () =>
     `%rocket% Starting Jasmine Test Server...`,
+
+  noTestFilesFound: (locations: string) =>
+    `%info% No matching spec files found in ${locations}. Nothing to run.`,
 
   buildFailed: (error: unknown) =>
     `%cross% Build failed: ${error}`,
@@ -540,10 +543,10 @@ export const RunnerMessages = {
     `%cross% Failed to finish headed browser run: ${error}`,
 
   preservingExistingHtml: () =>
-    `%info%  Preserving existing index.html (no regeneration).`,
+    `%info% Preserving existing index.html (no regeneration).`,
 
   preservingExistingRunner: () =>
-    `%info%  Preserving existing test-runner.mjs (no regeneration).`,
+    `%info% Preserving existing test-runner.mjs (no regeneration).`,
 
   buildingFiles: (count: number) =>
     `%box% Building ${count} files...`,
