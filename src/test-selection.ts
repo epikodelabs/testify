@@ -128,38 +128,49 @@ export function getSpecIdsForSuites(
     .map((spec) => spec.id);
 }
 
+function normalizeFileSelectorValue(value: string): string {
+  return value
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/\.(?:[cm]?[jt]sx?)$/i, '');
+}
+
+export function fileSelectorMatches(
+  selector: string | RegExp,
+  file: string,
+): boolean {
+  if (selector instanceof RegExp) {
+    selector.lastIndex = 0;
+    return selector.test(file);
+  }
+
+  const selected = normalizeFileSelectorValue(selector);
+  const candidate = normalizeFileSelectorValue(file);
+
+  return (
+    candidate === selected ||
+    candidate.endsWith('/' + selected) ||
+    candidate.split('/').at(-1) === selected.split('/').at(-1)
+  );
+}
+
 export function getSpecIdsForFiles(
   catalog: TestCatalog,
   selector: string | RegExp,
 ): string[] {
-  const index =
-    createTestCatalogIndex(
-      catalog,
-    );
-
-  if (typeof selector === 'string') {
-    const exact =
-      index.specIdsByFile.get(
-        selector,
-      );
-
-    if (exact) {
-      return [...exact];
-    }
-  }
-
   const matchingFiles =
-    searchIndexEntries(
-      index.fileSearch,
-      selector,
+    [...new Set(
+      catalog.specs
+        .map((spec) => spec.file)
+        .filter((file): file is string => !!file),
+    )].filter((file) =>
+      fileSelectorMatches(selector, file),
     );
 
-  return matchingFiles.flatMap(
-    (file) =>
-      index.specIdsByFile.get(
-        file,
-      ) ?? [],
-  );
+  const matching = new Set(matchingFiles);
+  return catalog.specs
+    .filter((spec) => !!spec.file && matching.has(spec.file))
+    .map((spec) => spec.id);
 }
 
 export function resolveTestSelector(
@@ -167,79 +178,62 @@ export function resolveTestSelector(
   selector: TestSelector,
 ): string[] {
   if (typeof selector === 'string') {
-    const index =
-      createTestCatalogIndex(catalog);
+    const index = createTestCatalogIndex(catalog);
+    const exactSpec = index.specById.get(selector);
+    if (exactSpec) return [exactSpec.id];
 
-    const exactSpec =
-      index.specById.get(selector);
-
-    if (exactSpec) {
-      return [exactSpec.id];
-    }
-
-    const exactSuite =
-      index.suiteById.get(selector);
-
+    const exactSuite = index.suiteById.get(selector);
     if (exactSuite) {
-      return getSpecIdsForSuitesFromIndex(
-        index,
-        [exactSuite.id],
-      );
+      return getSpecIdsForSuitesFromIndex(index, [exactSuite.id]);
     }
 
-    return findCatalogSpecs(
-      catalog,
-      selector,
-    ).map((spec) => spec.id);
+    return findCatalogSpecs(catalog, selector).map((spec) => spec.id);
   }
 
   if (selector instanceof RegExp) {
-    return findCatalogSpecs(
-      catalog,
-      selector,
-    ).map((spec) => spec.id);
+    return findCatalogSpecs(catalog, selector).map((spec) => spec.id);
   }
 
+  const selections: string[][] = [];
+
   if (selector.spec) {
-    return findCatalogSpecs(
-      catalog,
-      selector.spec,
-    ).map((spec) => spec.id);
+    selections.push(
+      findCatalogSpecs(catalog, selector.spec).map((spec) => spec.id),
+    );
   }
 
   if (selector.suite) {
-    const suites = findCatalogSuites(
-      catalog,
-      selector.suite,
-    );
-
-    return getSpecIdsForSuitesFromIndex(
-      createTestCatalogIndex(catalog),
-      suites.map((suite) => suite.id),
+    const suites = findCatalogSuites(catalog, selector.suite);
+    selections.push(
+      getSpecIdsForSuitesFromIndex(
+        createTestCatalogIndex(catalog),
+        suites.map((suite) => suite.id),
+      ),
     );
   }
 
   if (selector.file) {
-    return getSpecIdsForFiles(
-      catalog,
-      selector.file,
-    );
+    selections.push(getSpecIdsForFiles(catalog, selector.file));
   }
 
-  return [];
+  if (selections.length === 0) return [];
+  if (selections.length === 1) return selections[0];
+
+  const [first, ...rest] = selections;
+  const restSets = rest.map((ids) => new Set(ids));
+  return first.filter((id) => restSets.every((ids) => ids.has(id)));
 }
 
 
 export function getEmbeddedTestSelectionSource(): string {
   return [
-    createTestCatalogIndex,
-    getSpecIdsForSuitesFromIndex,
-    searchIndexEntries,
     matchesText,
     findCatalogSpecs,
     findCatalogSuites,
     getDescendantSuiteIds,
     getSpecIdsForSuites,
+    normalizeFileSelectorValue,
+    fileSelectorMatches,
     getSpecIdsForFiles,
     resolveTestSelector,
   ]

@@ -40,7 +40,7 @@ export default defineConfig({
     minify: false,
     chunkSizeWarningLimit: 5000,
     rollupOptions: {
-      input: path.resolve(configDirectory, './src/index.ts'),
+      input: path.resolve(configDirectory, './src/cli-entry.ts'),
       output: {
         entryFileNames: 'bin/testify',
         format: 'es',

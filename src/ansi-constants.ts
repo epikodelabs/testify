@@ -14,11 +14,16 @@ export const ANSI_FULL_REGEX =
 // ─── Emoji support ─────────────────────────────────────────
 let ansiMode = false;
 
+function getRuntimeProcess(): NodeJS.Process | undefined {
+  return typeof process === 'undefined' ? undefined : process;
+}
+
 export function setAnsiMode(value = true): void {
   ansiMode = value;
-  if (value) {
-    process.env.NO_EMOJI = '1';
-    process.env.NO_COLOR = '1';
+  const runtimeProcess = getRuntimeProcess();
+  if (value && runtimeProcess) {
+    runtimeProcess.env.NO_EMOJI = '1';
+    runtimeProcess.env.NO_COLOR = '1';
   }
 }
 
@@ -28,14 +33,18 @@ export function isAnsiMode(): boolean {
 
 export function supportsEmoji(): boolean {
   if (ansiMode) return false;
-  if (process.env.NO_EMOJI) return false;
-  if (process.env.FORCE_EMOJI) return true;
-  return process.stdout.isTTY ?? false;
+  const runtimeProcess = getRuntimeProcess();
+  if (!runtimeProcess) return false;
+  if (runtimeProcess.env.NO_EMOJI) return false;
+  if (runtimeProcess.env.FORCE_EMOJI) return true;
+  return runtimeProcess.stdout.isTTY ?? false;
 }
 
 export function supportsColor(): boolean {
   if (ansiMode) return false;
-  if (process.env.NO_COLOR) return false;
-  if (process.env.FORCE_COLOR === '1' || process.env.FORCE_COLOR === 'true' || process.env.FORCE_COLOR) return true;
-  return process.stdout.isTTY ?? false;
+  const runtimeProcess = getRuntimeProcess();
+  if (!runtimeProcess) return false;
+  if (runtimeProcess.env.NO_COLOR) return false;
+  if (runtimeProcess.env.FORCE_COLOR === '1' || runtimeProcess.env.FORCE_COLOR === 'true' || runtimeProcess.env.FORCE_COLOR) return true;
+  return runtimeProcess.stdout.isTTY ?? false;
 }

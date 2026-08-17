@@ -6,6 +6,9 @@ import {
   getEmbeddedExecutionPlanSource,
 } from './execution-plan';
 import {
+  getEmbeddedTestSelectionSource,
+} from './test-selection';
+import {
   getEmbeddedTestCatalogIndexSource,
 } from './test-catalog-index';
 import {
@@ -51,6 +54,9 @@ export function createNodeRunnerModuleSource(
   const catalogIndexSource =
     getEmbeddedTestCatalogIndexSource();
 
+  const testSelectionSource =
+    getEmbeddedTestSelectionSource();
+
   const executionPlanSource =
     getEmbeddedExecutionPlanSource();
 
@@ -75,6 +81,8 @@ ${nameHelperSource}
 ${jasmineRuntimeSource}
 
 ${catalogIndexSource}
+
+${testSelectionSource}
 
 ${executionPlanSource}
 

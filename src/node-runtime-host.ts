@@ -14,23 +14,29 @@ export class NodeRuntimeHost {
     reporter: jasmine.CustomReporter,
     selector?: TestSelector,
   ): Promise<ExecutionResult> {
-    console.error(
-      '[Testify debug] runner file:',
-      host.file,
-    );
+    if (process.env.TESTIFY_DEBUG === '1') {
+      console.error(
+        '[Testify debug] runner file:',
+        host.file,
+      );
+    }
 
     try {
       await host.load();
     } catch (error) {
-      console.error(
-        '[Testify debug] failure occurred while loading test-runner.mjs',
-      );
+      if (process.env.TESTIFY_DEBUG === '1') {
+        console.error(
+          '[Testify debug] failure occurred while loading test-runner.mjs',
+        );
+      }
       throw error;
     }
 
-    console.error(
-      '[Testify debug] generated runner loaded; starting run()',
-    );
+    if (process.env.TESTIFY_DEBUG === '1') {
+      console.error(
+        '[Testify debug] generated runner loaded; starting run()',
+      );
+    }
 
     try {
       return await host.run(
@@ -38,13 +44,15 @@ export class NodeRuntimeHost {
         selector,
       );
     } catch (error) {
-      console.error(
-        '[Testify debug] failure occurred inside run():',
-        error instanceof Error
-          ? error.stack ??
-            error.message
-          : error,
-      );
+      if (process.env.TESTIFY_DEBUG === '1') {
+        console.error(
+          '[Testify debug] failure occurred inside run():',
+          error instanceof Error
+            ? error.stack ??
+              error.message
+            : error,
+        );
+      }
       throw error;
     }
   }

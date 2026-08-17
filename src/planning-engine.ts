@@ -234,25 +234,23 @@ function serializeSelector(
     ].join(':');
   }
 
+  const parts: string[] = [];
+
   if (selector.spec) {
-    return `spec:${serializeSelectorValue(
-      selector.spec,
-    )}`;
+    parts.push(`spec:${serializeSelectorValue(selector.spec)}`);
   }
 
   if (selector.suite) {
-    return `suite:${serializeSelectorValue(
-      selector.suite,
-    )}`;
+    parts.push(`suite:${serializeSelectorValue(selector.suite)}`);
   }
 
   if (selector.file) {
-    return `file:${serializeSelectorValue(
-      selector.file,
-    )}`;
+    parts.push(`file:${serializeSelectorValue(selector.file)}`);
   }
 
-  return 'empty';
+  return parts.length > 0
+    ? parts.join('&')
+    : 'empty';
 }
 
 function serializeSelectorValue(

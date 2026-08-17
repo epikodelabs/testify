@@ -101,6 +101,8 @@ jasmine
   );
 
 ${moduleImports}
+
+${this.getStaticSuiteFilterScript()}
 </script>`,
       ],
     });
@@ -130,6 +132,61 @@ ${moduleImports}
         this.getRuntimeScript(),
       ],
     });
+  }
+
+
+  private getStaticSuiteFilterScript(): string {
+    const selector =
+      typeof this.config.selector === 'object' &&
+      !(this.config.selector instanceof RegExp)
+        ? this.config.selector.suite
+        : undefined;
+
+    if (!selector) return '';
+
+    const matcher =
+      selector instanceof RegExp
+        ? `const suiteMatcher = new RegExp(${JSON.stringify(selector.source)}, ${JSON.stringify(selector.flags)});
+const matchesSuite = (...values) => values.some((value) => {
+  if (!value) return false;
+  suiteMatcher.lastIndex = 0;
+  return suiteMatcher.test(value);
+});`
+        : `const suiteSelector = ${JSON.stringify(selector)};
+const matchesSuite = (...values) => values.some((value) =>
+  value === suiteSelector || value?.includes(suiteSelector)
+);`;
+
+    return `${matcher}
+const selectedSpecIds = new Set();
+const collectSpecs = (suite) => {
+  for (const child of suite?.children ?? []) {
+    if (Array.isArray(child?.children)) {
+      collectSpecs(child);
+    } else if (typeof child?.id === 'string') {
+      selectedSpecIds.add(child.id);
+    }
+  }
+};
+const visitSuites = (suite, isRoot = false) => {
+  if (!isRoot && matchesSuite(
+    suite?.description,
+    typeof suite?.getFullName === 'function' ? suite.getFullName() : undefined,
+  )) {
+    collectSpecs(suite);
+    return;
+  }
+
+  for (const child of suite?.children ?? []) {
+    if (Array.isArray(child?.children)) {
+      visitSuites(child, false);
+    }
+  }
+};
+visitSuites(jasmine.getEnv().topSuite(), true);
+jasmine.getEnv().configure({
+  specFilter: (spec) => selectedSpecIds.has(spec.id),
+});`;
   }
 
   private getPreludeModules(): string[] {

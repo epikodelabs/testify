@@ -53,4 +53,16 @@ describe('BrowserPageBuilder', () => {
       'assets/favicon.ico',
     );
   });
+  it('installs a static Jasmine specFilter for a suite selector', () => {
+    const builder = new BrowserPageBuilder({
+      ...config,
+      selector: { suite: 'Validation' },
+    });
+
+    const html = builder.buildStatic(['forms.spec.mjs']);
+
+    expect(html).toContain('specFilter');
+    expect(html).toContain('Validation');
+  });
+
 });

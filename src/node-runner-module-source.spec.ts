@@ -152,4 +152,25 @@ describe('Node runner module source', () => {
       ),
     );
   });
+
+  it('embeds test selection helpers so generated Node runners can honor CLI selectors', () => {
+    const source = createNodeRunnerModuleSource({
+      jasmineCoreUrl: 'file:///jasmine-core.js',
+      imports: '',
+      config: {
+        srcDirs: [],
+        testDirs: [],
+        exclude: [],
+        outDir: 'dist',
+        preserveOutputs: false,
+      },
+    });
+
+    expect(source).toContain('function resolveTestSelector');
+    expect(source).toContain('function fileSelectorMatches');
+    expect(
+      source.match(/function createTestCatalogIndex\(/g)?.length,
+    ).toBe(1);
+  });
+
 });

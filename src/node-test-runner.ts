@@ -40,6 +40,7 @@ export interface TestRunnerOptions {
 }
 
 export class NodeTestRunner {
+  private readonly selector: TestSelector | undefined;
   private readonly reporter:
     jasmine.CustomReporter;
 
@@ -56,6 +57,7 @@ export class NodeTestRunner {
     private readonly options:
       TestRunnerOptions = {},
   ) {
+    this.selector = options.selector ?? config.selector;
     this.reporter =
       options.reporter ??
       new ConsoleReporter();
@@ -111,7 +113,7 @@ export class NodeTestRunner {
               this.options
                 .suppressConsoleLogs,
             selector:
-              this.options.selector,
+              this.selector,
           },
         );
     } catch (error: unknown) {

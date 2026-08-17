@@ -12,8 +12,8 @@ describe('HMR new spec contract', () => {
         'utf8',
       );
 
-    expect(source).toContain(
-      "await this.queueRebuild(\\n          filePath,\\n          'add',",
+    expect(source.replace(/\s+/g, '')).toContain(
+      "awaitthis.queueRebuild(filePath,'add',",
     );
   });
 
@@ -27,8 +27,8 @@ describe('HMR new spec contract', () => {
         'utf8',
       );
 
-    expect(source).toContain(
-      '.createViteConfigForFiles(\\n              validTestFiles,',
+    expect(source.replace(/\s+/g, '')).toContain(
+      '.createViteConfigForFiles(validTestFiles,',
     );
 
     expect(source).not.toContain(

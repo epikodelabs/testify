@@ -1,8 +1,8 @@
-# testify
+# Testify
 
-Testify is a test execution engine for real browsers and Node.js. It gives you a simple path from install to running specs, then layers on smart features like watch mode, HMR, coverage, and a live browser Playground when you need them.
+Testify is a test execution engine for Jasmine that runs the same TypeScript test suites in real browsers or Node.js.
 
-Jasmine is the test language Testify currently hosts. Testify owns discovery, planning, runtime control, and execution. Jasmine owns `describe` and `it`. That split is what lets the same specs run in Node.js for speed or in a real browser when the DOM starts making demands.
+It handles test discovery, execution planning, runtime control, watch mode, HMR, coverage, and interactive browser debugging. Jasmine remains the test language and provides familiar `describe`, `it`, and `expect` APIs.
 
 <p align="center">
   <a href="https://github.com/epikodelabs/testify/actions/workflows/build.yml"><img src="https://github.com/epikodelabs/testify/actions/workflows/build.yml/badge.svg?branch=main" alt="Build Status"></a>
@@ -10,40 +10,45 @@ Jasmine is the test language Testify currently hosts. Testify owns discovery, pl
   <a href="https://www.npmjs.com/package/@epikodelabs/testify"><img src="https://img.shields.io/npm/dt/@epikodelabs/testify.svg?style=flat-square" alt="NPM Downloads"></a>
 </p>
 
----
+## Why Testify
 
-## Highlights
+Use Testify when you want one testing workflow across fast Node.js execution and real browser environments.
 
-- **Real browser testing** in Chrome, Firefox, and WebKit. No simulated DOM pretending to be brave.
-- **Fast Node.js execution** for specs that do not need a browser at all.
-- **Watch mode with HMR** so source and spec edits show up quickly without full-page drama.
-- **TypeScript and source maps** out of the box for readable stacks and reliable breakpoints.
-- **Code coverage** in HTML, LCOV, and text formats.
-- **Single-spec debugging** when one stubborn test needs a private conversation.
-- **A live Playground** in DevTools for inspecting tests, shaping plans, rerunning failures, and exploring the session interactively.
-
----
+- Run Jasmine specs in Chrome, Firefox, WebKit, or Node.js.
+- Use Node.js for fast tests that do not require browser APIs.
+- Run tests in real browsers when DOM or browser behavior matters.
+- Work with TypeScript and source maps without a separate test compilation workflow.
+- Use watch mode and HMR during development.
+- Generate HTML, LCOV, and text coverage reports.
+- Select tests by file or suite from the CLI.
+- Debug individual specs directly in Node.js.
+- Inspect and execute tests interactively through the browser Playground.
 
 ## Installation
 
+Install Testify as a development dependency:
+
 ```bash
 npm install --save-dev @epikodelabs/testify
+```
+
+Install the Playwright browser binaries if you plan to run browser tests:
+
+```bash
 npx playwright install
 ```
 
-`npm install` does not run a Testify postinstall script or quietly reshape your project. Browser binaries are installed only when you ask for them.
-
----
+Testify does not use a postinstall script to modify your project. Browser binaries are installed only when you explicitly install them.
 
 ## Quick Start
+
+Run the test suite:
 
 ```bash
 npx testify
 ```
 
-Testify is meant to be useful immediately. Install it, point it at your specs, and run.
-
-Write ordinary Jasmine specs:
+A standard Jasmine spec works without Testify-specific test syntax:
 
 ```typescript
 // tests/calculator.spec.ts
@@ -56,37 +61,106 @@ describe('Calculator', () => {
 });
 ```
 
-Run them in the mode that fits the moment:
+Choose the execution mode that fits the test:
 
 ```bash
+# Headed browser
 npx testify
+
+# Headless browser
 npx testify --headless
+
+# Node.js
 npx testify --browser node
+
+# Browser coverage
 npx testify --coverage
+
+# Development watch mode
 npx testify --watch
 ```
 
----
-
 ## Execution Modes
 
-| Mode | Command | Best For |
-|------|---------|----------|
-| Browser (headed) | `npx testify` | Development, debugging |
-| Headless browser | `npx testify --headless [--browser firefox\|webkit]` | CI/CD |
-| Node.js | `npx testify --browser node` | Fast unit tests |
-| Watch | `npx testify --watch` | Rapid iteration |
+| Mode | Command | Recommended use |
+|------|---------|-----------------|
+| Headed browser | `npx testify` | Local development and browser debugging |
+| Headless browser | `npx testify --headless` | Automated browser testing and CI |
+| Headless Firefox | `npx testify --headless --browser firefox` | Firefox-specific browser testing |
+| Headless WebKit | `npx testify --headless --browser webkit` | WebKit-specific browser testing |
+| Node.js | `npx testify --browser node` | Fast tests that do not require browser APIs |
+| Watch | `npx testify --watch` | Interactive development with HMR |
 
-Notes:
-- `--watch` requires headed browser mode and is incompatible with `--headless`, `--coverage`, and `--browser node`.
-- `--coverage` is incompatible with `--watch`.
-- If Node mode gets chatty, use `--silent` or `--quiet`.
+### Mode restrictions
 
-### Playground
+`--watch` requires headed browser mode. It cannot be combined with `--headless`, `--coverage`, or `--browser node`.
 
-In headed watch mode, DevTools gets a live `session` object. The console stops being a dump of log lines and becomes a control surface.
+`--coverage` cannot be combined with `--watch`.
 
-Start by seeing what exists:
+For quieter Node.js output, use `--silent` or `--quiet`.
+
+## Selecting Tests
+
+Testify can select tests by spec filename or suite name.
+
+### Select a file
+
+Use `--file` or `-f`:
+
+```bash
+npx testify --file forms.spec.ts
+npx testify -f forms.spec.ts
+```
+
+Quoting is optional for simple filenames:
+
+```bash
+npx testify --file "forms.spec.ts"
+npx testify --file forms.spec.ts
+```
+
+Use normal shell quoting when the filename contains spaces or shell-sensitive characters:
+
+```bash
+npx testify --file "forms (legacy).spec.ts"
+```
+
+Testify accepts source filenames such as `forms.spec.ts` and resolves them to the corresponding built test artifacts internally.
+
+### Select a suite
+
+Use `--suite` or `-s`:
+
+```bash
+npx testify --suite Validation
+npx testify -s Validation
+```
+
+Quote suite names that contain spaces or shell-sensitive characters:
+
+```bash
+npx testify --suite "Form Validation"
+npx testify -s "Validation (async)"
+```
+
+Selecting a suite includes its descendant suites.
+
+### Select a suite within a file
+
+File and suite selectors can be combined:
+
+```bash
+npx testify --file forms.spec.ts --suite Validation
+npx testify -f "forms (legacy).spec.ts" -s "Form Validation"
+```
+
+The resulting test set must match both selectors.
+
+## Playground
+
+In headed watch mode, Testify exposes a live `session` object in browser DevTools. It provides an interactive API for discovering tests, creating execution plans, running selected tests, and inspecting results.
+
+Inspect the current catalog:
 
 ```js
 session.tests()
@@ -94,7 +168,7 @@ session.suites()
 session.files()
 ```
 
-Build a plan:
+Create a plan:
 
 ```js
 const plan = session
@@ -102,56 +176,66 @@ const plan = session
   .filter(test => /validation/i.test(test.fullName));
 ```
 
-Run it:
+Execute it:
 
 ```js
 const result = await session.execute(plan);
 ```
 
-Derive another plan from the outcome when needed:
+Create another plan from failed results:
 
 ```js
 const failed = plan.where(result, 'failed');
 ```
 
-Repeat the previous intent or retry its failures:
+Repeat the previous run or retry its failures:
 
 ```js
 await session.rerun()
 await session.retry()
 ```
 
-Need the live reference:
+Display the interactive API reference:
 
 ```js
 session.help()
 ```
 
-Done for now:
+Close the session when finished:
 
 ```js
 await session.exit()
 ```
 
----
-
 ## Code Coverage
+
+Run browser tests with coverage enabled:
 
 ```bash
 npx testify --coverage
 ```
 
-This produces `coverage/index.html`, `coverage/lcov.info`, and a console summary.
+Testify generates:
 
----
+- `coverage/index.html`
+- `coverage/lcov.info`
+- a text summary in the console
 
-## Single Spec Debugging
+Coverage cannot be combined with watch mode.
 
-Run `npx jasmine init` once to prepare single-spec debugging and editor support. After that, the path from failing test to breakpoint is short and predictable.
+## Single-Spec Debugging
 
-The Jasmine CLI uses `tsx` and the nearest TypeScript project settings automatically. Testify also resolves extensionless relative files and directory indexes the same way the browser runner does, so imports like `../lib`, `../lib/forms`, and `./helper` behave consistently across runners.
+Testify also provides a Jasmine CLI for running an individual spec directly in Node.js.
 
-To run one spec directly:
+Initialize editor support once:
+
+```bash
+npx jasmine init
+```
+
+The Jasmine CLI uses `tsx` and the nearest TypeScript project configuration automatically. Testify also resolves extensionless relative imports and directory indexes consistently with its browser runner.
+
+Run a single spec:
 
 ```bash
 node --enable-source-maps \
@@ -159,61 +243,68 @@ node --enable-source-maps \
   --spec ./tests/example.spec.ts
 ```
 
-Then you can debug exactly that spec in VS Code instead of marching the whole suite into the room.
-
----
+This is useful when you want to debug one test file directly without running the complete suite.
 
 ## CLI Reference
 
 | Flag | Description |
 |------|-------------|
-| `--headless` | Run headless |
-| `--browser <name>` | `chrome`, `firefox`, `webkit`, `node` |
-| `--watch` | Watch mode |
+| `--headless` | Run in headless browser mode |
+| `--browser <name>` | Select `chrome`, `firefox`, `webkit`, or `node` |
+| `--watch` | Run headed browser mode with watch and HMR |
 | `--coverage` | Generate coverage reports |
-| `--seed <n>` | Randomization seed |
-| `--silent` / `--quiet` | Suppress console logs (Node) |
-| `--preserve` | Skip regenerating outputs |
-| `--help` | Show help |
+| `--file <file>`, `-f <file>` | Run specs matching a spec filename |
+| `--suite <name>`, `-s <name>` | Run a matching suite and its descendants |
+| `--seed <n>` | Set the randomization seed |
+| `--silent`, `--quiet` | Suppress console logs in Node.js mode |
+| `--preserve` | Preserve generated outputs instead of regenerating them |
+| `--help` | Display CLI help |
 
-**Exit codes:** `0` success, `1` failures, `2` invalid usage, `3` config error, `4` internal error, `130` SIGINT, `143` SIGTERM.
+### Exit codes
 
----
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Test failures |
+| `2` | Invalid CLI usage |
+| `3` | Configuration error |
+| `4` | Internal error |
+| `130` | Interrupted with SIGINT |
+| `143` | Terminated with SIGTERM |
 
-## CI/CD Example
+## CI Example
 
-A typical pipeline runs the fast Node.js suite first, then follows it with a slower headless browser pass plus coverage:
+A CI pipeline can run fast Node.js tests first and then execute the browser suite with coverage:
 
 ```yaml
 name: Tests
+
 on: [push, pull_request]
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with:
+          node-version: '20'
       - run: npm ci
       - run: npx playwright install --with-deps
       - run: npx testify --browser node
       - run: npx testify --headless --browser chrome --coverage
 ```
 
----
-
 ## Troubleshooting
 
-| Issue | Fix |
-|-------|-----|
-| Browser not found | `npx playwright install` |
-| Port in use | Pick a different port with `--port` |
-| No tests found | Check your spec locations, `.spec.ts` extension, and excludes |
-| TS errors | Make sure your TypeScript project resolves imports correctly |
-| Watch not working | Requires headed mode; incompatible with `--headless`, `--coverage`, `node` |
-| Coverage missing | Use `--coverage`; incompatible with `--watch` |
-
----
+| Problem | Suggested action |
+|---------|------------------|
+| Browser executable is unavailable | Run `npx playwright install` |
+| Configured port is already in use | Select another port with `--port` |
+| No tests are discovered | Check test directories, `.spec.ts` filenames, and exclude patterns |
+| TypeScript imports fail | Verify that the active TypeScript project resolves the imports |
+| Watch mode does not start | Use headed browser mode without `--headless`, `--coverage`, or `--browser node` |
+| Coverage is not generated | Run with `--coverage` and without `--watch` |
 
 ## License
 
