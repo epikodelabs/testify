@@ -16,7 +16,7 @@ describe('Logger prompt styling', () => {
     );
 
     expect(source).toContain(
-      ">> ",
+      "plainPrompt = '> '",
     );
   });
 });

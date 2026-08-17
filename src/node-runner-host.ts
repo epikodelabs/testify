@@ -41,10 +41,12 @@ export class NodeRunnerHost {
         ? `${fileUrl}?t=${Date.now()}`
         : fileUrl;
 
-    console.error(
-      '[Testify debug] importing generated runner:',
-      moduleUrl,
-    );
+    if (process.env.TESTIFY_DEBUG === '1') {
+      console.error(
+        '[Testify debug] importing generated runner:',
+        moduleUrl,
+      );
+    }
 
     try {
       const runnerModule =
@@ -52,25 +54,29 @@ export class NodeRunnerHost {
           moduleUrl
         ) as NodeRunnerModule;
 
-      console.error(
-        '[Testify debug] generated runner exports:',
-        Object.keys(
-          runnerModule,
-        ).sort(),
-      );
+      if (process.env.TESTIFY_DEBUG === '1') {
+        console.error(
+          '[Testify debug] generated runner exports:',
+          Object.keys(
+            runnerModule,
+          ).sort(),
+        );
+      }
 
       this.runnerModule =
         runnerModule;
 
       return runnerModule;
     } catch (error) {
-      console.error(
-        '[Testify debug] generated runner import failed:',
-        error instanceof Error
-          ? error.stack ??
-            error.message
-          : error,
-      );
+      if (process.env.TESTIFY_DEBUG === '1') {
+        console.error(
+          '[Testify debug] generated runner import failed:',
+          error instanceof Error
+            ? error.stack ??
+              error.message
+            : error,
+        );
+      }
 
       throw error;
     }

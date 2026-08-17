@@ -635,11 +635,14 @@ function inferSelectorKind(
     return 'selector';
   }
 
-  if (selector.spec) return 'spec';
-  if (selector.suite) return 'suite';
-  if (selector.file) return 'file';
+  const kinds = [
+    selector.spec ? 'spec' : undefined,
+    selector.suite ? 'suite' : undefined,
+    selector.file ? 'file' : undefined,
+  ].filter(Boolean);
 
-  return 'selector';
+  if (kinds.length !== 1) return 'selector';
+  return kinds[0] as 'spec' | 'suite' | 'file';
 }
 
 export function shardExecutionPlan(

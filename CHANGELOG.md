@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.40 - 2026-08-17
+
+### Added
+
+* Added `--file, -f <spec filename>` and `--suite, -s <suite name>` CLI selection.
+* `--file` and `--suite` can be combined; selectors are intersected.
+* Added `--version` and `-v` CLI version output.
+
+
 ## 1.0.39 - 2026-08-13
 
 ### Improved

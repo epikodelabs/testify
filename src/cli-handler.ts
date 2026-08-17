@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { parseArgs } from "node:util";
 import { ConfigManager } from "./config-manager";
 import { logger } from './logger';
 import { PackageResolver } from "./package-resolver";
@@ -15,6 +16,107 @@ export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineR
   return new ViteJasmineRunner(config);
 }
 
+// Keep runtime construction replaceable for tests. ESM namespace exports are
+// read-only, so Jasmine cannot safely spy on `createViteJasmineRunner` itself.
+export const cliDependencies = {
+  createViteJasmineRunner,
+};
+
+// ─── argv parsing ───────────────────────────────────────────────────────────
+// Declarative flag definitions consumed by node:util's built-in parseArgs.
+// Adding a new boolean/string flag means adding one entry here instead of
+// hand-scanning `process.argv` with indexOf/includes.
+
+const CLI_OPTIONS = {
+  help: { type: 'boolean', short: 'h' },
+  version: { type: 'boolean', short: 'v' },
+  watch: { type: 'boolean', short: 'w' },
+  headless: { type: 'boolean' },
+  coverage: { type: 'boolean', short: 'c' },
+  exclusive: { type: 'boolean' },
+  browser: { type: 'string', short: 'b' },
+  ansi: { type: 'boolean' },
+  seed: { type: 'string' },
+  project: { type: 'string', short: 'p' },
+  port: { type: 'string' },
+  silent: { type: 'boolean' },
+  quiet: { type: 'boolean', short: 'q' },
+  preserve: { type: 'boolean' },
+  config: { type: 'string' },
+  bail: { type: 'boolean' },
+  random: { type: 'boolean' },
+  'no-random': { type: 'boolean' },
+  timeout: { type: 'string' },
+  file: { type: 'string', short: 'f' },
+  suite: { type: 'string', short: 's' },
+} as const;
+
+interface ParsedValues {
+  help?: boolean;
+  version?: boolean;
+  watch?: boolean;
+  headless?: boolean;
+  coverage?: boolean;
+  exclusive?: boolean;
+  browser?: string | boolean;
+  ansi?: boolean;
+  seed?: string | boolean;
+  project?: string | boolean;
+  port?: string | boolean;
+  silent?: boolean;
+  quiet?: boolean;
+  preserve?: boolean;
+  config?: string | boolean;
+  bail?: boolean;
+  random?: boolean;
+  'no-random'?: boolean;
+  timeout?: string | boolean;
+  file?: string | boolean;
+  suite?: string | boolean;
+}
+
+interface ParsedCli {
+  helpRequested: boolean;
+  versionRequested: boolean;
+  initOnly: boolean;
+  watch: boolean;
+  headless: boolean;
+  coverage: boolean;
+  exclusive: boolean;
+  ansiFlag: boolean;
+  silentLogs: boolean;
+  preserveOutputsFlag: boolean;
+  hasBrowserArg: boolean;
+  hasProjectArg: boolean;
+  browserName: string;
+  seedValue?: number;
+  projectValue?: string;
+  portValue?: number;
+  configFileName: string;
+  bail: boolean;
+  randomValue?: boolean;
+  timeoutValue?: number;
+  fileValue?: string;
+  suiteValue?: string;
+}
+
+/**
+ * Reads a flag that requires a string value (e.g. `--browser chrome`).
+ * Returns `undefined` when the flag was not passed at all, and throws an
+ * ExitCodeError (with the supplied message) when the flag was passed but no
+ * usable value followed it -- either because it was the last token, or
+ * because the next token was itself another flag.
+ */
+function requireStringValue(value: string | boolean | undefined, missingMessage: () => string): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (normalized.length === 0 || normalized.startsWith('-')) {
+    logger.error(missingMessage());
+    throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, missingMessage());
+  }
+  return normalized;
+}
+
 export class CLIHandler {
   private static runner: ViteJasmineRunner | null = null;
 
@@ -22,6 +124,111 @@ export class CLIHandler {
     if (this.runner) {
       await this.runner.cleanup();
       this.runner = null;
+    }
+  }
+
+  private static parseCliArgs(argv: string[]): ParsedCli {
+    let parsedArgs;
+    try {
+      parsedArgs = parseArgs({
+      args: argv,
+      strict: true,
+      allowPositionals: true,
+      options: CLI_OPTIONS as any,
+      });
+    } catch (error) {
+      logger.error(CLIMessages.invalidArguments(error));
+      throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid command line arguments');
+    }
+
+    const { values, positionals } = parsedArgs;
+    const v = values as ParsedValues;
+
+    const hasBrowserArg = v.browser !== undefined;
+    const browserRaw = requireStringValue(v.browser, CLIMessages.browserArgMissing);
+    const browserName = browserRaw ?? 'chrome';
+
+    const hasProjectArg = v.project !== undefined;
+    const projectValue = requireStringValue(v.project, CLIMessages.projectArgMissing);
+
+    const configFileName = requireStringValue(v.config, CLIMessages.configArgMissing) ?? 'testify.json';
+    const fileValue = requireStringValue(v.file, CLIMessages.fileArgMissing);
+    const suiteValue = requireStringValue(v.suite, CLIMessages.suiteArgMissing);
+
+    const unknownPositionals = positionals.filter((value) => value !== 'init');
+    if (unknownPositionals.length > 0 || positionals.filter((value) => value === 'init').length > 1) {
+      logger.error(CLIMessages.unknownCommand(unknownPositionals[0] ?? 'init'));
+      throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Unknown command');
+    }
+
+    const seedRaw = requireStringValue(v.seed, CLIMessages.invalidSeed);
+    let seedValue: number | undefined;
+    if (seedRaw !== undefined) {
+      const parsed = Number(seedRaw);
+      if (!Number.isFinite(parsed)) {
+        logger.error(CLIMessages.invalidSeed());
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid seed value');
+      }
+      seedValue = parsed;
+    }
+
+    const portRaw = requireStringValue(v.port, CLIMessages.portArgMissing);
+    let portValue: number | undefined;
+    if (portRaw !== undefined) {
+      const parsed = Number(portRaw);
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535 || !Number.isInteger(parsed)) {
+        logger.error(CLIMessages.invalidPort());
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid port value');
+      }
+      portValue = parsed;
+    }
+
+    const timeoutRaw = requireStringValue(v.timeout, CLIMessages.timeoutArgMissing);
+    let timeoutValue: number | undefined;
+    if (timeoutRaw !== undefined) {
+      const parsed = Number(timeoutRaw);
+      if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
+        logger.error(CLIMessages.invalidTimeout());
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid timeout value');
+      }
+      timeoutValue = parsed;
+    }
+
+    const randomValue = v['no-random'] === true ? false : v.random === true ? true : undefined;
+
+    return {
+      helpRequested: v.help === true,
+      versionRequested: v.version === true,
+      initOnly: positionals.includes('init'),
+      watch: v.watch === true,
+      headless: v.headless === true,
+      coverage: v.coverage === true,
+      exclusive: v.exclusive === true,
+      ansiFlag: v.ansi === true,
+      silentLogs: v.silent === true || v.quiet === true,
+      preserveOutputsFlag: v.preserve === true,
+      hasBrowserArg,
+      hasProjectArg,
+      browserName,
+      seedValue,
+      projectValue,
+      portValue,
+      configFileName,
+      bail: v.bail === true,
+      randomValue,
+      timeoutValue,
+      fileValue,
+      suiteValue,
+    };
+  }
+
+  private static printVersion(): void {
+    try {
+      const pkgUrl = new URL('../package.json', import.meta.url);
+      const pkg = JSON.parse(fs.readFileSync(pkgUrl, 'utf8'));
+      logger.println(`testify ${pkg.version}`);
+    } catch {
+      logger.println('testify (version unknown)');
     }
   }
 
@@ -50,79 +257,50 @@ export class CLIHandler {
       process.exit(exitCode);
     });
 
-    const args = process.argv.slice(2);
-    const helpRequested = args.includes('--help') || args.includes('-h');
+    const rawArgs = process.argv.slice(2);
 
-    if (helpRequested) {
+    let parsed: ParsedCli;
+    try {
+      parsed = this.parseCliArgs(rawArgs);
+    } catch (error) {
+      return getExitCode(error);
+    }
+
+    if (parsed.helpRequested) {
       this.printHelp();
       return EXIT_CODES.SUCCESS;
     }
 
-    const initOnly = args.includes('init');
-    const watch = args.includes('--watch');
-    const headless = args.includes('--headless');
-    const coverage = args.includes('--coverage');
-    const exclusive = args.includes('--exclusive');
-    const browserIndex = args.findIndex((a) => a === '--browser');
-    const ansiFlag = args.includes('--ansi');
-    const seedIndex = args.findIndex((a) => a === '--seed');
-    const projectIndex = args.findIndex((a) => a === '--project');
-    const portIndex = args.findIndex((a) => a === '--port');
-    const silentLogs = args.includes('--silent') || args.includes('--quiet');
-    const hasBrowserArg = browserIndex !== -1;
-    const hasProjectArg = projectIndex !== -1;
-    let browserName = 'chrome';
-    let seedValue: number | undefined;
-    let projectValue: string | undefined;
-    let portValue: number | undefined;
-
-    if (seedIndex !== -1) {
-      const raw = args[seedIndex + 1];
-      const parsed = raw !== undefined && raw !== '' ? Number(raw) : NaN;
-      if (!Number.isFinite(parsed)) {
-        logger.error(CLIMessages.invalidSeed());
-        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid seed value');
-      }
-      seedValue = parsed;
+    if (parsed.versionRequested) {
+      this.printVersion();
+      return EXIT_CODES.SUCCESS;
     }
 
-    if (hasBrowserArg) {
-      if (browserIndex + 1 < args.length && !args[browserIndex + 1].startsWith('-')) {
-        browserName = args[browserIndex + 1];
-      } else {
-        logger.error(CLIMessages.browserArgMissing());
-        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Missing browser argument');
-      }
-    }
+    const {
+      initOnly,
+      watch,
+      headless,
+      coverage,
+      exclusive,
+      browserName,
+      ansiFlag,
+      seedValue,
+      projectValue: initialProjectValue,
+      portValue,
+      configFileName,
+      bail,
+      randomValue,
+      timeoutValue,
+      fileValue,
+      suiteValue,
+    } = parsed;
+    let projectValue = initialProjectValue;
 
-    if (hasProjectArg && projectIndex + 1 < args.length) {
-      projectValue = args[projectIndex + 1];
-    } else if (hasProjectArg) {
-      logger.error(CLIMessages.projectArgMissing());
-      throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Missing project argument');
-    }
-
-    const hasPortArg = portIndex !== -1;
-    if (hasPortArg) {
-      if (portIndex + 1 < args.length && !args[portIndex + 1].startsWith('-')) {
-        const parsed = Number(args[portIndex + 1]);
-        if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535 || !Number.isInteger(parsed)) {
-          logger.error(CLIMessages.invalidPort());
-          throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid port value');
-        }
-        portValue = parsed;
-      } else {
-        logger.error(CLIMessages.portArgMissing());
-        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Missing port argument');
-      }
-    }
-
-    const preserveOutputsFlag = args.includes('--preserve');
-    const preserveOutputsArg = preserveOutputsFlag ? true : undefined;
+    const preserveOutputsArg = parsed.preserveOutputsFlag ? true : undefined;
 
     if (initOnly) {
       try {
-        ConfigManager.initViteJasmineConfig();
+        ConfigManager.initViteJasmineConfig(configFileName);
         ProjectSetup.configure(process.cwd());
         return EXIT_CODES.SUCCESS;
       } catch (error) {
@@ -139,7 +317,7 @@ export class CLIHandler {
 
       if (invalidFlags.length > 0) {
         logger.error(CLIMessages.watchIncompatibleFlags(invalidFlags));
-        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, `Incompatible watch flags: ${invalidFlags.join(', ')}`);
+        return EXIT_CODES.INVALID_USAGE;
       }
     }
 
@@ -155,7 +333,7 @@ export class CLIHandler {
         return [dirConfig];
       };
 
-      let config = ConfigManager.loadViteJasmineBrowserConfig('testify.json');
+      let config = ConfigManager.loadViteJasmineBrowserConfig(configFileName);
 
       if (projectValue) {
         const resolver = new PackageResolver();
@@ -173,7 +351,7 @@ export class CLIHandler {
           }
         } else {
           logger.error(CLIMessages.couldNotResolveProject(projectValue));
-          throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, `Could not resolve project: ${projectValue}`);
+          return EXIT_CODES.INVALID_USAGE;
         }
       }
 
@@ -191,31 +369,39 @@ export class CLIHandler {
               ? false
               : (config.headless || false),
         coverage: coverage ? true : (config.coverage || false),
-        browser: hasBrowserArg ? browserName : (config.browser || 'chrome'),
+        browser: parsed.hasBrowserArg ? browserName : (config.browser || 'chrome'),
         // CLI contract: plain `testify` always performs a one-shot run.
         // Watch/HMR is opt-in through `--watch`; a stale `watch` value in
         // testify.json must not change the default CLI behavior.
         watch,
-        suppressConsoleLogs: silentLogs ? true : config.suppressConsoleLogs,
+        suppressConsoleLogs: parsed.silentLogs ? true : config.suppressConsoleLogs,
         srcDirs: normalizeDirConfig(config.srcDirs, './src'),
         testDirs: normalizeDirConfig(config.testDirs, './tests'),
         preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,
         project: projectValue ?? config.project,
         port: portValue ?? config.port,
         ansi: ansiFlag ? true : config.ansi,
+        fileFilter: fileValue ?? config.fileFilter,
+        selector:
+          suiteValue
+            ? { suite: suiteValue }
+            : config.selector,
       };
 
       if (config.ansi) {
         setAnsiMode();
       }
 
-      if (seedValue !== undefined) {
+      if (seedValue !== undefined || randomValue !== undefined || bail || timeoutValue !== undefined) {
         const env = config.jasmineConfig?.env ?? {};
         config.jasmineConfig = {
           ...config.jasmineConfig,
           env: {
             ...env,
-            seed: seedValue,
+            ...(seedValue !== undefined ? { seed: seedValue } : {}),
+            ...(randomValue !== undefined ? { random: randomValue } : {}),
+            ...(bail ? { stopSpecOnExpectationFailure: true } : {}),
+            ...(timeoutValue !== undefined ? { timeout: timeoutValue } : {}),
           },
         };
       }
@@ -229,7 +415,7 @@ export class CLIHandler {
       await lock.acquire(exclusive);
       process.on('exit', () => lock.releaseSync());
 
-      const runner = createViteJasmineRunner({
+      const runner = cliDependencies.createViteJasmineRunner({
         ...config,
         lockFilePath: lock.getPidFilePath(),
       });

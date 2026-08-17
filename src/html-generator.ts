@@ -26,7 +26,9 @@ export class HtmlGenerator {
       new BrowserPageBuilder(config);
   }
 
-  async generateHtmlFile(): Promise<void> {
+  async generateHtmlFile(
+    selectedSpecFiles?: string[],
+  ): Promise<void> {
     const htmlDir =
       this.ensureOutputDirectory();
 
@@ -42,10 +44,9 @@ export class HtmlGenerator {
       return;
     }
 
-    const htmlContent =
-      this.pageBuilder.buildStatic(
-        artifacts.specFiles,
-      );
+    const htmlContent = this.pageBuilder.buildStatic(
+      selectedSpecFiles ?? artifacts.specFiles,
+    );
 
     this.writePage(
       htmlContent,

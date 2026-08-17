@@ -10,10 +10,11 @@
     "**/dist/**"
   ],
   "outDir": "./dist/.vite-jasmine-build",
-  "browser": "chrome",
+  "browser": "node",
   "headless": false,
   "watch": false,
   "coverage": false,
+  "suppressConsoleLogs": true,
   "preserveOutputs": false,
   "viteConfig": {
     "build": {

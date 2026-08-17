@@ -1,11 +1,8 @@
 import {
-  ndescribe,
-} from './env.spec';
-import {
   NodeExecutionEnvironmentHost,
 } from './node-execution-environment-host';
 
-ndescribe('NodeExecutionEnvironmentHost', () => {
+describe('NodeExecutionEnvironmentHost', () => {
   it('applies and restores environment values', async () => {
     const originalNodeEnv =
       process.env.NODE_ENV;

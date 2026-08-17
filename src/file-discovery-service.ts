@@ -79,6 +79,15 @@ export class FileDiscoveryService {
   }
 
   async discoverSources(): Promise<{ srcFiles: string[]; specFiles: string[] }> {
+    const { srcFiles, specFiles } = await this.discoverAllSources();
+
+    return await this.filterBrowserCompatibleFiles(
+      srcFiles,
+      specFiles,
+    );
+  }
+
+  async discoverAllSources(): Promise<{ srcFiles: string[]; specFiles: string[] }> {
     try {
       const defaultSrcExclude = ["**/node_modules/**", "**/*.spec.*"];
       const defaultTestExclude = ["**/node_modules/**"];
@@ -107,10 +116,10 @@ export class FileDiscoveryService {
       const dedupedSpecFiles =
         [...new Set(specFiles)];
 
-      return await this.filterBrowserCompatibleFiles(
-        dedupedSrcFiles,
-        dedupedSpecFiles,
-      );
+      return {
+        srcFiles: dedupedSrcFiles,
+        specFiles: dedupedSpecFiles,
+      };
     } catch (error) {
       logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
       throw new Error("Failed to discover source and test files");

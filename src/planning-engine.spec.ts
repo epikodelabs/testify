@@ -138,6 +138,23 @@ describe('PlanningEngine', () => {
       'spec2',
     ]);
   });
+
+  it('keeps combined selector cache keys distinct', () => {
+    const catalog: TestCatalog = {
+      suites: [
+        { id: 'suite1', description: 'Forms', fullName: 'Forms' },
+      ],
+      specs: [
+        { id: 'spec1', description: 'one', fullName: 'Forms one', suiteId: 'suite1', file: 'a.spec.mjs' },
+        { id: 'spec2', description: 'two', fullName: 'Forms two', suiteId: 'suite1', file: 'b.spec.mjs' },
+      ],
+    };
+    const engine = new PlanningEngine(catalog);
+
+    expect(engine.plan({ suite: 'Forms', file: 'a.spec.ts' }).specIds).toEqual(['spec1']);
+    expect(engine.plan({ suite: 'Forms', file: 'b.spec.ts' }).specIds).toEqual(['spec2']);
+  });
+
 });
 
 describe('PlanningEngine programmable plans', () => {
@@ -222,4 +239,21 @@ describe('PlanningEngine programmable plans', () => {
       'spec2',
     ]);
   });
+
+  it('keeps combined selector cache keys distinct', () => {
+    const catalog: TestCatalog = {
+      suites: [
+        { id: 'suite1', description: 'Forms', fullName: 'Forms' },
+      ],
+      specs: [
+        { id: 'spec1', description: 'one', fullName: 'Forms one', suiteId: 'suite1', file: 'a.spec.mjs' },
+        { id: 'spec2', description: 'two', fullName: 'Forms two', suiteId: 'suite1', file: 'b.spec.mjs' },
+      ],
+    };
+    const engine = new PlanningEngine(catalog);
+
+    expect(engine.plan({ suite: 'Forms', file: 'a.spec.ts' }).specIds).toEqual(['spec1']);
+    expect(engine.plan({ suite: 'Forms', file: 'b.spec.ts' }).specIds).toEqual(['spec2']);
+  });
+
 });

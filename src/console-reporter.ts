@@ -278,8 +278,8 @@ export class ConsoleReporter {
 
   userAgent(message: any, suites: any, specs: any) {
     this.envInfo = this.gatherEnvironmentInfo();
-    this.orderedSuites = suites ?? null;
-    this.orderedSpecs = specs ?? null;
+    this.orderedSuites = Array.isArray(suites) ? suites : null;
+    this.orderedSpecs = Array.isArray(specs) ? specs : null;
 
     if (message) {
       const userAgent = { ...message };
@@ -290,6 +290,20 @@ export class ConsoleReporter {
         userAgent
       };
     }
+  }
+
+  /**
+   * Supplies the Node runner's catalog. Browser transports provide the two
+   * arrays through `userAgent`; the in-process runner already has the catalog
+   * in its canonical `{ suites, specs }` form.
+   */
+  setCatalog(catalog: any) {
+    this.orderedSuites = Array.isArray(catalog?.suites)
+      ? catalog.suites
+      : null;
+    this.orderedSpecs = Array.isArray(catalog?.specs)
+      ? catalog.specs
+      : null;
   }
 
   jasmineStarted(config: any) {

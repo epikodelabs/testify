@@ -75,4 +75,53 @@ describe('TestSelector', () => {
       ),
     ).toEqual(['spec1']);
   });
+
+  it('matches a source spec filename against the built .mjs catalog file', () => {
+    expect(
+      resolveTestSelector(
+        catalog,
+        { file: 'bindings.spec.ts' },
+      ),
+    ).toEqual(['spec2']);
+  });
+
+  it('matches a basename when the CLI does not provide the catalog path', () => {
+    const nestedCatalog: TestCatalog = {
+      ...catalog,
+      specs: catalog.specs.map((spec) => ({
+        ...spec,
+        file: spec.file ? `dist/tests/${spec.file}` : spec.file,
+      })),
+    };
+
+    expect(
+      resolveTestSelector(
+        nestedCatalog,
+        { file: 'bindings.spec.ts' },
+      ),
+    ).toEqual(['spec2']);
+  });
+
+  it('intersects file and suite selectors', () => {
+    expect(
+      resolveTestSelector(
+        catalog,
+        {
+          file: 'bindings.spec.ts',
+          suite: 'Forms',
+        },
+      ),
+    ).toEqual(['spec2']);
+
+    expect(
+      resolveTestSelector(
+        catalog,
+        {
+          file: 'forms.spec.ts',
+          suite: 'Bindings',
+        },
+      ),
+    ).toEqual([]);
+  });
+
 });

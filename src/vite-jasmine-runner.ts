@@ -169,7 +169,45 @@ export class ViteJasmineRunner extends EventEmitter {
 
   async preprocess(): Promise<PreprocessResult> {
     try {
-      const { srcFiles, specFiles } = await this.fileDiscovery.discoverSources();
+      let { srcFiles, specFiles: discoveredSpecFiles } = await this.fileDiscovery.discoverSources();
+      const normalizeSpecFile = (value: string) =>
+        norm(value)
+          .replace(/^\.\//, '')
+          .replace(/\.(?:[cm]?[jt]sx?)$/i, '');
+      const selectedFile = this.config.fileFilter
+        ? normalizeSpecFile(this.config.fileFilter)
+        : undefined;
+      const selector = selectedFile ?? '';
+      const matchesSelector = (file: string) => {
+            const candidate = normalizeSpecFile(
+              norm(path.relative(process.cwd(), file)),
+            );
+            return (
+              candidate === selector ||
+              candidate.endsWith('/' + selector) ||
+              path.posix.basename(candidate) === path.posix.basename(selector)
+            );
+          };
+
+      let specFiles = selectedFile
+        ? discoveredSpecFiles.filter(matchesSelector)
+        : discoveredSpecFiles;
+
+      if (selectedFile && specFiles.length === 0 && this.config.browser !== 'node') {
+        const { specFiles: allSpecFiles } = await this.fileDiscovery.discoverAllSources();
+        const nodeOnlyMatches = allSpecFiles.filter(matchesSelector);
+
+        if (nodeOnlyMatches.length > 0) {
+          // The requested spec belongs to the Node host graph. Switch the
+          // isolated run to the Node pipeline instead of handing its imports
+          // to Vite's browser resolver.
+          this.config.browser = 'node';
+          this.config.headless = true;
+          ({ srcFiles, specFiles: discoveredSpecFiles } = await this.fileDiscovery.discoverSources());
+          specFiles = discoveredSpecFiles.filter(matchesSelector);
+        }
+      }
+
       if (specFiles.length === 0) {
         logger.println(
           RunnerMessages.noTestFilesFound(
@@ -180,6 +218,9 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       const entryFiles = [...srcFiles, ...specFiles];
+      const selectedSpecArtifacts = specFiles.map((file) =>
+        this.fileDiscovery.getOutputName(file),
+      );
       const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
       const input: Record<string, string> = {};
  
@@ -267,7 +308,7 @@ export class ViteJasmineRunner extends EventEmitter {
         if (this.config.watch) {
           await this.htmlGenerator.generateHtmlFileWithHmr();
         } else {
-          await this.htmlGenerator.generateHtmlFile();
+          await this.htmlGenerator.generateHtmlFile(selectedSpecArtifacts);
         }
       } else if (preserveHtml) {
         logger.println(RunnerMessages.preservingExistingHtml());

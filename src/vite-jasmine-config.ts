@@ -1,3 +1,4 @@
+import type { TestSelector } from './test-selection';
 import type { InlineConfig } from "vite";
 import type { RollupOptions, WarningHandlerWithDefault } from "rollup";
 
@@ -21,6 +22,8 @@ export interface ViteJasmineConfig {
   suppressConsoleLogs?: boolean;
   preserveOutputs: boolean;
   ansi?: boolean;
+  selector?: TestSelector;
+  fileFilter?: string;
   
   tsconfig?: string;
   viteConfig?: InlineConfig;

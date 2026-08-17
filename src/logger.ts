@@ -17,6 +17,10 @@ const colors = {
 
 type LogMessageKey = keyof typeof LOG_MESSAGES;
 
+function areTestLogsSuppressed(): boolean {
+  return (globalThis as any).__testifySuppressLogs === true;
+}
+
 interface LoggedLine {
   text: string;
   isRaw?: boolean;
@@ -42,6 +46,8 @@ export class Logger {
     key: T,
     ...args: Parameters<(typeof LOG_MESSAGES)[T]['text']>
   ) {
+    if (areTestLogsSuppressed()) return;
+
     const template: LogMessageTemplate = LOG_MESSAGES[key];
     const rawMessage = template.text(...args);
     const { formattedMessage, stream } = this.formatStructured(rawMessage, template);
@@ -89,6 +95,8 @@ export class Logger {
   // ─── Legacy API: direct printing ─────────────────────────
 
   print(msg: string) {
+    if (areTestLogsSuppressed()) return true;
+
     msg = replacePlaceholders(msg);
     const prompt = supportsColor() ? this.prompt : this.plainPrompt;
     const fullMessage = this.showPrompt ? prompt + msg : msg;
@@ -103,6 +111,8 @@ export class Logger {
   }
 
   println(msg = '') {
+    if (areTestLogsSuppressed()) return true;
+
     if (msg) this.print(msg);
     process.stdout.write('\n');
     this.addLine('');
@@ -111,12 +121,16 @@ export class Logger {
   }
 
   printRaw(line: string) {
+    if (areTestLogsSuppressed()) return true;
+
     process.stdout.write(line);
     this.addLine(line, { isRaw: true });
     return true;
   }
 
   printlnRaw(line = '') {
+    if (areTestLogsSuppressed()) return true;
+
     this.printRaw(line);
     process.stdout.write('\n');
     this.addLine('', { isRaw: true });
@@ -124,6 +138,8 @@ export class Logger {
   }
 
   error(msg: string) {
+    if (areTestLogsSuppressed()) return true;
+
     msg = replacePlaceholders(msg);
     const prompt = supportsColor() ? this.errorPrompt : this.plainErrorPrompt;
     const fullMessage = this.showPrompt ? prompt + msg : msg;

@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'url';
+import path from 'path';
 import { CLIHandler } from './cli-handler';
 
 export { BrowserManager } from './browser-manager';
@@ -22,6 +23,9 @@ export { ViteJasmineRunner } from './vite-jasmine-runner';
 
 // === CLI Entry Point ===
 // @vite-ignore
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   CLIHandler.run().then((code) => process.exit(code)).catch(() => process.exit(1));
 }

@@ -13,7 +13,7 @@ describe('HMR source/test classification', () => {
       );
 
     expect(source).toContain(
-      '/\\.spec\\\\.(?:ts|tsx|js|jsx|mts|cts|mjs)$/i',
+      '/\\.spec\\.(?:ts|tsx|js|jsx|mts|cts|mjs)$/i',
     );
 
     expect(source).toContain(
