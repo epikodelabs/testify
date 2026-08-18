@@ -34,21 +34,26 @@ export default defineConfig({
   build: {
     target: 'node22',
     ssr: true,
+    modulePreload: false,
     outDir: 'dist/testify/',
     emptyOutDir: false,
     minify: false,
     chunkSizeWarningLimit: 5000,
     rollupOptions: {
-      input: path.resolve(configDirectory, './src/ts-jasmine-cli.ts'),
+      input: path.resolve(configDirectory, './src/cli-entry.ts'),
       output: {
-        entryFileNames: 'bin/jasmine',
+        entryFileNames: 'bin/testify',
         format: 'es',
         inlineDynamicImports: true,
         banner: `#!/usr/bin/env node
 import { createRequire as ___createRequire } from 'module';
 const require = ___createRequire(import.meta.url);
 `,
-        manualChunks: undefined
+        manualChunks: undefined,
+        paths: (id) => {
+          const match = id.match(/node_modules[\\/](.+?)([\\/]|$)/);
+          return match ? match[1] : id;
+        }
       },
       external: (id) => {
         if (id.includes('node_modules')) return true;
