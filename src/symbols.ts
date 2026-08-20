@@ -2,7 +2,8 @@ import { supportsEmoji, setAnsiMode as setAnsiModeConstant, isAnsiMode } from '.
 
 // ─── TTY symbols (emojis & fancy unicode) ──────────────────
 export const TTY_SYMBOLS: Record<string, string> = {
-  check: '✅',
+  checked: '✓',
+  cross: '✕',
   warn: '🚨',
   info: '💡',
   globe: '🌐',
@@ -29,8 +30,6 @@ export const TTY_SYMBOLS: Record<string, string> = {
   passed: '●',
   failed: 'x',
   pending: '○',
-  checked: '✓',
-  cross: 'x',
   arrow: '→',
   box_h: '─',
   box_double_h: '═',

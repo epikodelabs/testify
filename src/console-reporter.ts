@@ -784,7 +784,7 @@ export class ConsoleReporter {
 
       if (spec.failedExpectations?.length > 0) {
         spec.failedExpectations.forEach((expectation: any, exIndex: number) => {
-          const messageLines = wrapLine(`${SYMBOLS.cross_mark} ${normalize(expectation.message)}`, this.lineWidth, 1);
+          const messageLines = wrapLine(`${SYMBOLS.cross} ${normalize(expectation.message)}`, this.lineWidth, 1);
           // Continuation lines of same message
           messageLines.forEach(line => (this.print(this.colored('brightRed', line)), this.print('\n')));
 
@@ -847,7 +847,7 @@ export class ConsoleReporter {
 
         const messageLines =
           wrapLine(
-            `${SYMBOLS.cross_mark} ${message}`,
+            `${SYMBOLS.cross} ${message}`,
             this.lineWidth,
             1,
           );
@@ -960,7 +960,7 @@ export class ConsoleReporter {
     }
 
     if (!hasProblems) {
-      this.print('  ' + this.colored('brightGreen', SYMBOLS.check_mark) + ' ' + this.colored('dim', 'All suites completed successfully\n'));
+      this.print('  ' + this.colored('brightGreen', SYMBOLS.checked) + ' ' + this.colored('dim', 'All suites completed successfully\n'));
     }
   }
 
@@ -1112,17 +1112,17 @@ export class ConsoleReporter {
   private getSuiteSymbol(status: 'failed' | 'pending' | 'skipped' | 'incomplete' | 'passed' | 'running'): { symbol: string; color: string } {
     if (!this.showColors) {
       switch (status) {
-        case 'failed': return { symbol: SYMBOLS.cross_mark, color: 'brightRed' };
+        case 'failed': return { symbol: SYMBOLS.cross, color: 'brightRed' };
         case 'pending': return { symbol: SYMBOLS.pending, color: 'brightYellow' };
         case 'skipped': return { symbol: SYMBOLS.skip, color: 'gray' };
         case 'incomplete': return { symbol: SYMBOLS.incomplete, color: 'cyan' };
-        case 'passed': return { symbol: SYMBOLS.check_mark, color: 'brightGreen' };
+        case 'passed': return { symbol: SYMBOLS.checked, color: 'brightGreen' };
         default: return { symbol: '?', color: 'white' };
       }
     }
     switch (status) {
       case 'failed':
-        return { symbol: SYMBOLS.cross_mark, color: 'brightRed' };
+        return { symbol: SYMBOLS.cross, color: 'brightRed' };
       case 'pending':
         return { symbol: SYMBOLS.pending, color: 'brightYellow' };
       case 'skipped':
@@ -1130,7 +1130,7 @@ export class ConsoleReporter {
       case 'incomplete':
         return { symbol: SYMBOLS.incomplete, color: 'cyan' };
       case 'passed':
-        return { symbol: SYMBOLS.check_mark, color: 'brightGreen' };
+        return { symbol: SYMBOLS.checked, color: 'brightGreen' };
       default:
         return { symbol: '?', color: 'white' };
     }
@@ -1233,10 +1233,10 @@ export class ConsoleReporter {
     const parts: string[] = [];
 
     if (passed > 0)
-      parts.push(this.colored('brightGreen', `${SYMBOLS.check_mark} Passed: ${passed}`));
+      parts.push(this.colored('brightGreen', `${SYMBOLS.checked} Passed: ${passed}`));
 
     if (failed > 0)
-      parts.push(this.colored('brightRed', `${SYMBOLS.cross_mark} Failed: ${failed}`));
+      parts.push(this.colored('brightRed', `${SYMBOLS.cross} Failed: ${failed}`));
 
     if (pending > 0)
       parts.push(this.colored('brightYellow', `${SYMBOLS.pending} Pending: ${pending}`));
@@ -1408,21 +1408,21 @@ export class ConsoleReporter {
       parts.push(
         this.colored("magenta", "Fail Fast:") +
         " " +
-        this.colored("white", config.stopOnSpecFailure ? `${SYMBOLS.check_mark} enabled` : `${SYMBOLS.cross_mark} disabled`)
+        this.colored("white", config.stopOnSpecFailure ? `${SYMBOLS.checked} enabled` : `${SYMBOLS.cross} disabled`)
       );
 
     if (config.stopSpecOnExpectationFailure !== void 0)
       parts.push(
         this.colored("magenta", "Stop Spec:") +
         " " +
-        this.colored("white", config.stopSpecOnExpectationFailure ? `${SYMBOLS.check_mark} enabled` : `${SYMBOLS.cross_mark} disabled`)
+        this.colored("white", config.stopSpecOnExpectationFailure ? `${SYMBOLS.checked} enabled` : `${SYMBOLS.cross} disabled`)
       );
 
     if (config.failSpecWithNoExpectations !== void 0)
       parts.push(
         this.colored("magenta", "No Expect:") +
         " " +
-        this.colored("white", config.failSpecWithNoExpectations ? `${SYMBOLS.check_mark} fail` : `${SYMBOLS.cross_mark} pass`)
+        this.colored("white", config.failSpecWithNoExpectations ? `${SYMBOLS.checked} fail` : `${SYMBOLS.cross} pass`)
       );
 
     if (parts.length > 0) {
