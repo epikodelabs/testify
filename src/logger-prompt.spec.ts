@@ -14,7 +14,7 @@ describe('Logger prompt styling', () => {
     expect(source).toContain(
       "> ",
     );
-
+    throw new Error
     expect(source).toContain(
       "plainPrompt = '> '",
     );

@@ -31,13 +31,10 @@ export class Logger {
   private previousLines: LoggedLine[] = [];
   private showPrompt = true;
   private prompt: string;
-  private errorPrompt: string;
   private plainPrompt = '> ';
-  private plainErrorPrompt = '> ';
 
   constructor() {
     this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;
-    this.errorPrompt = `${colors.bold}${colors.brightRed}> ${colors.reset}`;
   }
 
   // ─── New API: structured log messages ────────────────────
@@ -140,14 +137,13 @@ export class Logger {
   error(msg: string) {
     if (areTestLogsSuppressed()) return true;
 
-    msg = replacePlaceholders(msg);
-    const prompt = supportsColor() ? this.errorPrompt : this.plainErrorPrompt;
-    const fullMessage = this.showPrompt ? prompt + msg : msg;
-    const lines = fullMessage.split('\n');
+    msg = this.stripErrorPrefix(replacePlaceholders(msg));
+    const lines = msg.split('\n');
     for (let i = 0; i < lines.length; i++) {
-      this.writeLine(lines[i], colors.brightRed);
+      const line = lines[i];
+      this.writeLine(line, colors.brightRed);
       if (i < lines.length - 1) process.stdout.write('\n');
-      this.addLine(lines[i]);
+      this.addLine(line);
     }
     process.stdout.write('\n');
     this.showPrompt = true;
@@ -196,6 +192,19 @@ export class Logger {
       this.previousLines.splice(0, 100);
     }
   }
+
+  private stripErrorPrefix(message: string): string {
+    return message
+      .split('\n')
+      .map((line) =>
+        line.replace(
+          /^(?:\[(?:ERROR|WARN|INFO|BROWSER|FILE|TREE|STOP|TIP|START|WAIT|READY|ADD|REM|DIR|BUILD|RETRY|CLEAN|LOCK|HMR|WS|CONN|OK|WATCH)\]|[^\p{L}\p{N}\s"'`([{<]+)\s+/u,
+          '',
+        ),
+      )
+      .join('\n');
+  }
+
 }
 
 // Export a singleton instance for project-wide use

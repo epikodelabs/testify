@@ -3,7 +3,6 @@ import { supportsEmoji, setAnsiMode as setAnsiModeConstant, isAnsiMode } from '.
 // ─── TTY symbols (emojis & fancy unicode) ──────────────────
 export const TTY_SYMBOLS: Record<string, string> = {
   check: '✅',
-  cross: '❌',
   warn: '🚨',
   info: '💡',
   globe: '🌐',
@@ -28,10 +27,10 @@ export const TTY_SYMBOLS: Record<string, string> = {
   plug: '🔌',
   // Console reporter specific
   passed: '●',
-  failed: '⨯',
+  failed: 'x',
   pending: '○',
-  check_mark: '✓',
-  cross_mark: '✕',
+  checked: '✓',
+  cross: 'x',
   arrow: '→',
   box_h: '─',
   box_double_h: '═',
@@ -48,7 +47,7 @@ export const TTY_SYMBOLS: Record<string, string> = {
 
 // ─── ANSI symbols (plain ASCII text) ───────────────────────
 export const ANSI_SYMBOLS: Record<string, string> = {
-  check: '[OK]',
+  checked: '[OK]',
   cross: '[ERROR]',
   warn: '[WARN]',
   info: '[INFO]',
@@ -76,8 +75,6 @@ export const ANSI_SYMBOLS: Record<string, string> = {
   passed: '+',
   failed: 'x',
   pending: '*',
-  check_mark: '[OK]',
-  cross_mark: 'x',
   arrow: '->',
   box_h: '-',
   box_double_h: '=',

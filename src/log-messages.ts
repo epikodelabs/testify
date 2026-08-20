@@ -3,8 +3,8 @@
 // They are intentionally kept as plain ASCII placeholders so the strings remain
 // portable and easy to localise / override.
 
-// %check%         → ✅  (success / done)
-// %cross%         → ❌  (error / failure)
+// %checked%         → ✅  (success / done)
+// %cross%         → x  (error / failure)
 // %warn%          → 🚨  (warning)
 // %info%          → 💡  (informational)
 // %globe%         → 🌐  (browser / network)
@@ -252,7 +252,7 @@ export const CoverageMessages = {
     `%cross% Failed to write coverage file: ${error}`,
 
   coverageReportsGenerated: () =>
-    `%check% Coverage reports generated successfully`,
+    `%checked% Coverage reports generated successfully`,
 };
 
 // ─── file-discovery-service.ts ───────────────────────────────────────────────
@@ -288,7 +288,7 @@ export const HttpServerMessages = {
     `%cross% Failed to kill process on port ${port}: ${message}\n${stderr}`,
 
   portReclaimed: (port: number) =>
-    `%check% Port ${port} reclaimed.`,
+    `%checked% Port ${port} reclaimed.`,
 
   portStillBusy: (port: number) =>
     `%cross% Port ${port} is still busy after reclaim attempt.`,
@@ -301,19 +301,19 @@ export const HttpServerMessages = {
 
 export const HmrMessages = {
   fileFilterUpdated: (filter: unknown) =>
-    `%check% File filter updated: ${filter}`,
+    `%checked% File filter updated: ${filter}`,
 
   rebuildModeSet: (mode: string) =>
-    `%check% Rebuild mode set to: ${mode}`,
+    `%checked% Rebuild mode set to: ${mode}`,
 
   sourceChangeStrategySet: (strategy: string) =>
-    `%check% Source change strategy set to: ${strategy}`,
+    `%checked% Source change strategy set to: ${strategy}`,
 
   cannotExtractDependencies: (filePath: string, message: string) =>
     `%warn%  Could not extract dependencies from ${filePath}: ${message}`,
 
   watchingFiles: (count: number, mode: string, strategy: string) =>
-    `%check% HMR watching ${count} files (mode: ${mode}, strategy: ${strategy})`,
+    `%checked% HMR watching ${count} files (mode: ${mode}, strategy: ${strategy})`,
 
   fileAdded: (type: string, output: string) =>
     `%plus% ${type} file added: ${output}`,
@@ -379,10 +379,10 @@ export const HmrMessages = {
     `%box% Vite rebuild completed in ${ms}ms`,
 
   rebuildComplete: (type: string, count: number, ms: number) =>
-    `%check% Rebuild complete (${type}): ${count} files in ${ms}ms`,
+    `%checked% Rebuild complete (${type}): ${count} files in ${ms}ms`,
 
   watcherStopped: () =>
-    `%check% HMR watcher stopped`,
+    `%checked% HMR watcher stopped`,
 };
 
 // ─── html-generator.ts ───────────────────────────────────────────────────────

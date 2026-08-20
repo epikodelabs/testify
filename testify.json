@@ -11,7 +11,7 @@
   ],
   "outDir": "./dist/.vite-jasmine-build",
   "browser": "node",
-  "headless": false,
+  "headless": true,
   "watch": false,
   "coverage": false,
   "suppressConsoleLogs": true,

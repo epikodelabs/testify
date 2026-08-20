@@ -21,7 +21,7 @@ export const LOG_MESSAGES = {
     },
     projectNotFound: {
         type: 'error',
-        icon: '❌',
+        icon: 'x',
         text: (projectName: string) => `[error] Project "${projectName}" not found in tsconfig.json or workspace definitions.`,
     },
     invalidExitCode: {
@@ -81,17 +81,17 @@ export const LOG_MESSAGES = {
     },
     testExecutionError: {
         type: 'error',
-        icon: '❌',
+        icon: 'x',
         text: (message: string) => `[error] Test execution error: ${message}`,
     },
     failedToRunTests: {
         type: 'error',
-        icon: '❌',
+        icon: 'x',
         text: (error: string) => `[error] Failed to run tests: ${error}`,
     },
     errorDuringExecution: {
         type: 'error',
-        icon: '❌',
+        icon: 'x',
         text: (error: string) => `[error] Error during test execution: ${error}`,
     },
 
@@ -116,12 +116,12 @@ export const LOG_MESSAGES = {
     },
     unhandledRejection: {
         type: 'error',
-        icon: '❌',
+        icon: 'x',
         text: (error: string) => `[error] Unhandled Rejection: ${error}`,
     },
     uncaughtException: {
         type: 'error',
-        icon: '❌',
+        icon: 'x',
         text: (error: string) => `[error] Uncaught Exception: ${error}`,
     },
     

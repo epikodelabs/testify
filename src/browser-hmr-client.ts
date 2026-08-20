@@ -185,7 +185,7 @@ window.HMRClient = (function() {
         );
       } catch (err) {
         console.error(
-          '❌ HMR update failed:',
+          'x  HMR update failed:',
           err,
         );
         location.reload();

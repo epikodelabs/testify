@@ -35,7 +35,7 @@ export function getBrowserBootstrapScript(
 
       if (!window.HMRClient) {
         console.error(
-          '❌ HMRClient not available after waiting',
+          'x  HMRClient not available after waiting',
         );
         return;
       }
