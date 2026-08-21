@@ -3,7 +3,7 @@
 // They are intentionally kept as plain ASCII placeholders so the strings remain
 // portable and easy to localise / override.
 
-// %checked%         → ✅  (success / done)
+// %checked%       → ✅  (success / done)
 // %cross%         → x  (error / failure)
 // %warn%          → 🚨  (warning)
 // %info%          → 💡  (informational)
@@ -41,7 +41,7 @@ export const BrowserMessages = {
     `%bulb% Tip: Reinstall dependencies, then install browsers explicitly:\n   npx playwright install`,
 
   browserExecutionFailed: (name: string, message: string) =>
-    `%cross% Browser execution failed for "${name}": ${message}`,
+    `Browser execution failed for "${name}": ${message}`,
 
   navigatingToTestPage: () =>
     `%globe% Navigating to test page...`,
@@ -50,25 +50,25 @@ export const BrowserMessages = {
     `%stop% Tests aborted by user (Ctrl+C)`,
 
   testExecutionFailed: (error: unknown) =>
-    `%cross% Test execution failed: ${error}`,
+    `Test execution failed: ${error}`,
 
   browserConsoleError: (text: string) =>
-    `%cross% ${text}`,
+    `${text}`,
 
   browserConsoleWarn: (text: string) =>
     `%warn% ${text}`,
 
   pageError: (message: string) =>
-    `%cross% Page error: ${message}`,
+    `Page error: ${message}`,
 
   requestFailed: (url: string, errorText: string | undefined) =>
-    `%cross% ${url}, ${errorText}`,
+    `${url}, ${errorText}`,
 
   unknownBrowserFallbackToChrome: (name: string) =>
     `%warn%  Unknown browser "${name}", using Chrome instead`,
 
   browserNotInstalled: (name: string) =>
-    `%cross% Browser "${name}" is not installed.`,
+    `Browser "${name}" is not installed.`,
 
   browserInstallTip: (name: string) =>
     `%bulb% Tip: Install it by running: npx playwright install ${name.toLowerCase()}`,
@@ -83,68 +83,68 @@ export const BrowserMessages = {
     `%bulb% Tip: Install browsers explicitly to enable automatic browser opening:\n   npx playwright install`,
 
   failedToOpenBrowser: (message: string) =>
-    `%cross% Failed to open browser: ${message}`,
+    `Failed to open browser: ${message}`,
 
   openBrowserManually: (url: string) =>
     `%bulb% Please open browser manually: ${url}`,
 
   failedToCloseBrowser: (error: unknown) =>
-    `%cross% Failed to close browser: ${error}`,
+    `Failed to close browser: ${error}`,
 };
 
 // ─── cli-handler.ts ───────────────────────────────────────────────────────────
 
 export const CLIMessages = {
   invalidSeed: () =>
-    `%cross% Invalid --seed value (expected a number).`,
+    `Invalid --seed value (expected a number).`,
 
   failedToInitializeProject: (error: unknown) =>
-    `%cross% Failed to initialize testify config: ${error}`,
+    `Failed to initialize testify config: ${error}`,
 
   browserArgMissing: () =>
-    `%cross% --browser requires a browser name (chrome|chromium|firefox|webkit|node).`,
+    `--browser requires a browser name (chrome|chromium|firefox|webkit|node).`,
 
   projectArgMissing: () =>
-    `%cross% --project requires a package name or path.`,
+    `--project requires a package name or path.`,
 
   portArgMissing: () =>
-    `%cross% --port requires a number between 1 and 65535.`,
+    `--port requires a number between 1 and 65535.`,
 
   invalidPort: () =>
-    `%cross% Invalid --port value (expected an integer between 1 and 65535).`,
+    `Invalid --port value (expected an integer between 1 and 65535).`,
 
   configArgMissing: () =>
-    `%cross% --config requires a path to a config file.`,
+    `--config requires a path to a config file.`,
 
   timeoutArgMissing: () =>
-    `%cross% --timeout requires a number of milliseconds.`,
+    `--timeout requires a number of milliseconds.`,
 
   invalidTimeout: () =>
-    `%cross% Invalid --timeout value (expected a positive integer, in milliseconds).`,
+    `Invalid --timeout value (expected a positive integer, in milliseconds).`,
 
   fileArgMissing: () =>
-    `%cross% --file / -f requires a spec filename.`,
+    `--file / -f requires a spec filename.`,
 
   suiteArgMissing: () =>
-    `%cross% --suite / -s requires a suite name.`,
+    `--suite / -s requires a suite name.`,
 
   unknownCommand: (command: string) =>
-    `%cross% Unknown command: ${command}`,
+    `Unknown command: ${command}`,
 
   invalidArguments: (error: unknown) =>
-    `%cross% Invalid command line arguments: ${error instanceof Error ? error.message : String(error)}`,
+    `Invalid command line arguments: ${error instanceof Error ? error.message : String(error)}`,
 
   watchIncompatibleFlags: (flags: string[]) =>
-    `%cross% The --watch flag cannot be used with: ${flags.join(', ')}`,
+    `The --watch flag cannot be used with: ${flags.join(', ')}`,
 
   couldNotResolveProject: (name: string) =>
-    `%cross% Could not resolve project "${name}". It is not a directory and not a known package name.`,
+    `Could not resolve project "${name}". It is not a directory and not a known package name.`,
 
   preserveOutputsEnabled: () =>
     `%info% Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
 
   failedToStartTestRunner: (error: unknown) =>
-    `%cross% Failed to start test runner: ${error}`,
+    `Failed to start test runner: ${error}`,
 
   // Help text — kept as a single block so the caller can println() each line
   helpLines: (): string[] => [
@@ -199,10 +199,10 @@ export const CLIMessages = {
 
 export const ConfigMessages = {
   failedToParseConfig: (error: unknown) =>
-    `%cross% Failed to parse existing testify.json: ${error}`,
+    `Failed to parse existing testify.json: ${error}`,
 
   failedToCreateConfig: (error: unknown) =>
-    `%cross% Failed to create default testify.json: ${error}`,
+    `Failed to create default testify.json: ${error}`,
 
   createdDefaultConfig: (path: string) =>
     `%info% Created default test runner config at ${path}`,
@@ -211,7 +211,7 @@ export const ConfigMessages = {
     `%info% Config already exists at ${path}`,
 
   failedToWriteConfig: (error: unknown) =>
-    `%cross% Failed to write testify.json: ${error}`,
+    `Failed to write testify.json: ${error}`,
 
   generatedDefaultConfig: (path: string) =>
     `%info% Generated default Vite Jasmine config at ${path}`,
@@ -249,7 +249,7 @@ export const CoverageMessages = {
     `%doc% Raw coverage saved to ${path}`,
 
   failedToWriteCoverage: (error: unknown) =>
-    `%cross% Failed to write coverage file: ${error}`,
+    `Failed to write coverage file: ${error}`,
 
   coverageReportsGenerated: () =>
     `%checked% Coverage reports generated successfully`,
@@ -259,14 +259,14 @@ export const CoverageMessages = {
 
 export const FileDiscoveryMessages = {
   errorDiscoveringFiles: (error: unknown) =>
-    `%cross% Error discovering files: ${error}`,
+    `Error discovering files: ${error}`,
 };
 
 // ─── host-adapter.ts ─────────────────────────────────────────────────────────
 
 export const HostAdapterMessages = {
   ipcEventError: (message: string) =>
-    `%cross% Error processing IPC event: ${message}`,
+    `Error processing IPC event: ${message}`,
 
   childProcessReady: () =>
     `%circle_green% Child test process ready`,
@@ -285,16 +285,16 @@ export const HttpServerMessages = {
     `%hourglass% Port ${port} is busy. Waiting 3s before reclaiming it...`,
 
   failedToKillProcess: (port: number, message: string, stderr: string) =>
-    `%cross% Failed to kill process on port ${port}: ${message}\n${stderr}`,
+    `Failed to kill process on port ${port}: ${message}\n${stderr}`,
 
   portReclaimed: (port: number) =>
     `%checked% Port ${port} reclaimed.`,
 
   portStillBusy: (port: number) =>
-    `%cross% Port ${port} is still busy after reclaim attempt.`,
+    `Port ${port} is still busy after reclaim attempt.`,
 
   serverError: (error: unknown) =>
-    `%cross% ${error}`,
+    `${error}`,
 };
 
 // ─── hmr-manager.ts ──────────────────────────────────────────────────────────
@@ -331,22 +331,22 @@ export const HmrMessages = {
     `%box% Found ${count} ${type} files in new directory`,
 
   errorInHandleFileAdd: (error: unknown) =>
-    `%cross% Error in handleFileAdd: ${error}`,
+    `Error in handleFileAdd: ${error}`,
 
   errorInHandleFileRemove: (error: unknown) =>
-    `%cross% Error in handleFileRemove: ${error}`,
+    `Error in handleFileRemove: ${error}`,
 
   errorInHandleDirectoryAdd: (error: unknown) =>
-    `%cross% Error in handleDirectoryAdd: ${error}`,
+    `Error in handleDirectoryAdd: ${error}`,
 
   errorInHandleDirectoryRemove: (error: unknown) =>
-    `%cross% Error in handleDirectoryRemove: ${error}`,
+    `Error in handleDirectoryRemove: ${error}`,
 
   skippingRebuildNonExistent: (filePath: string) =>
     `%warn%  Skipping rebuild for non-existent file: ${filePath}`,
 
   rebuildFailed: (error: unknown) =>
-    `%cross% Rebuild failed: ${error}`,
+    `Rebuild failed: ${error}`,
 
   skippingDeletedFileFromQueue: (file: string) =>
     `%warn%  Skipping deleted file from rebuild queue: ${file}`,
@@ -367,7 +367,7 @@ export const HmrMessages = {
     `%box% Changed: ${changed} files → Rebuilding: ${total} files (${source} source, ${test} test)`,
 
   viteBuildFailed: (error: unknown) =>
-    `%cross% Vite build failed: ${error}`,
+    `Vite build failed: ${error}`,
 
   retryingWithFilteredEntries: () =>
     `%refresh% Retrying build with filtered entry points...`,
@@ -416,25 +416,25 @@ export const NodeRunnerMessages = {
     `%rocket% Starting in-process test runner...`,
 
   testExecutionError: (message: string) =>
-    `%cross% Test execution error: ${message}`,
+    `Test execution error: ${message}`,
 
   testProcessAlreadyRunning: () =>
     `%warn%  Test process is already running`,
 
   unhandledRejection: (error: string) =>
-    `%cross% ${error}`,
+    `${error}`,
 
   uncaughtException: (error: string) =>
-    `%cross% ${error}`,
+    `${error}`,
 
   caughtSignal: (signal: string) =>
     `%stop% Caught signal: ${signal}`,
 
   errorDuringExecution: (message: string) =>
-    `%cross% Error during test execution: ${message}`,
+    `Error during test execution: ${message}`,
 
   failedToRunTests: (message: string) =>
-    `%cross% Failed to run tests: ${message}`,
+    `Failed to run tests: ${message}`,
 };
 
 // ─── process-lock.ts ─────────────────────────────────────────────────────────
@@ -457,19 +457,19 @@ export const ProcessLockMessages = {
 
 export const JasmineCLIMessages = {
   unknownCommand: (command: string) =>
-    `%cross% Unknown command: ${command}`,
+    `Unknown command: ${command}`,
 
   missingSpecArg: () =>
-    `%cross% Missing required --spec <path>`,
+    `Missing required --spec <path>`,
 
   specFileNotFound: (spec: string) =>
-    `%cross% Spec file not found: ${spec}`,
+    `Spec file not found: ${spec}`,
 
   invalidSeedValue: (value: string) =>
-    `%cross% Invalid --seed value: ${value}`,
+    `Invalid --seed value: ${value}`,
 
   notRunningInVsCode: () =>
-    `%cross% \`npx jasmine init\` is only supported when run from VS Code.`,
+    `\`npx jasmine init\` is only supported when run from VS Code.`,
 
   openVsCodeTerminalHint: () =>
     `%info% Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).`,
@@ -481,7 +481,7 @@ export const JasmineCLIMessages = {
     `Added configuration: ${name}`,
 
   failedToParseVsCodeConfig: (path: string) =>
-    `%cross% Failed to parse existing VS Code launch config: ${path}`,
+    `Failed to parse existing VS Code launch config: ${path}`,
 
   addConfigManually: () =>
     `%info% Add this configuration manually:`,
@@ -493,20 +493,20 @@ export const JasmineCLIMessages = {
     `%info% Updated VS Code launch config at ${path}`,
 
   unhandledRejection: (message: string) =>
-    `%cross% ${message}`,
+    `${message}`,
 
   uncaughtException: (message: string) =>
-    `%cross% ${message}`,
+    `${message}`,
 
   failedToRunJasmine: (stack: string) =>
-    `%cross% Failed to run jasmine: ${stack}`,
+    `Failed to run jasmine: ${stack}`,
 };
 
 // ─── vite-config-builder.ts ──────────────────────────────────────────────────
 
 export const ViteConfigMessages = {
   noFilesToBuild: () =>
-    `%cross% No files found to build`,
+    `No files found to build`,
 
   incrementalBuild: (count: number) =>
     `%box% Incremental build: ${count} files`,
@@ -528,16 +528,16 @@ export const RunnerMessages = {
     `%info% No matching spec files found in ${locations}. Nothing to run.`,
 
   buildFailed: (error: unknown) =>
-    `%cross% Build failed: ${error}`,
+    `Build failed: ${error}`,
 
   preprocessFailed: (error: unknown) =>
-    `%cross% Preprocessing failed: ${error}`,
+    `Preprocessing failed: ${error}`,
 
   invalidNodeHeadedMode: () =>
-    `%cross% Invalid configuration: Node.js runner cannot run in headed mode.`,
+    `Invalid configuration: Node.js runner cannot run in headed mode.`,
 
   watchOnlyHeaded: () =>
-    `%cross% --watch mode is only supported in headed browser environments.`,
+    `--watch mode is only supported in headed browser environments.`,
 
   startingWatchMode: () =>
     `%eyes% Starting Jasmine Test Runner in Watch Mode...`,
@@ -561,10 +561,10 @@ export const RunnerMessages = {
     `%warn%  Headless browser not available. Falling back to Node.js runner.`,
 
   browserTestExecutionFailed: () =>
-    `%cross% Browser test execution failed. Need to install browser binaries?`,
+    `Browser test execution failed. Need to install browser binaries?`,
 
   nodeTestExecutionFailed: (message: string) =>
-    `%cross% Node test execution failed: ${message}`,
+    `Node test execution failed: ${message}`,
 
   webSocketReadyWithReporting: () =>
     `%satellite% WebSocket server ready for real-time test reporting`,
@@ -573,7 +573,7 @@ export const RunnerMessages = {
     `%refresh% Browser window closed prematurely`,
 
   finishHeadedRunFailed: (error: unknown) =>
-    `%cross% Failed to finish headed browser run: ${error}`,
+    `Failed to finish headed browser run: ${error}`,
 
   preservingExistingHtml: () =>
     `%info% Preserving existing index.html (no regeneration).`,
@@ -598,26 +598,26 @@ export const WebSocketMessages = {
     `%plug% WebSocket client connected`,
 
   failedToParseMessage: (error: unknown) =>
-    `%cross% Failed to parse WebSocket message: ${error}`,
+    `Failed to parse WebSocket message: ${error}`,
 
   websocketError: (error: unknown) =>
-    `%cross% WebSocket error: ${error}`,
+    `WebSocket error: ${error}`,
 
   hmrClientReady: () =>
     `%fire% Client HMR runtime ready`,
 
   hmrClientError: (message: string) =>
-    `%cross% HMR error on client: ${message}`,
+    `HMR error on client: ${message}`,
 
   unknownMessageType: (type: string) =>
     `%warn%  Unknown WebSocket message type: ${type}`,
 
   errorHandlingMessage: (error: unknown) =>
-    `%cross% Error handling WebSocket message: ${error}`,
+    `Error handling WebSocket message: ${error}`,
 
   hmrEnabled: () =>
     `%fire% HMR enabled on WebSocket server`,
 
   errorClosingClient: (error: unknown) =>
-    `%cross% Error closing WebSocket client: ${error}`,
+    `Error closing WebSocket client: ${error}`,
 };

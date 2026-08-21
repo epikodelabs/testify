@@ -2,55 +2,55 @@
 
 export const CLIMessages = {
   invalidSeed: () =>
-    `%cross% Invalid --seed value (expected a number).`,
+    `Invalid --seed value (expected a number).`,
 
   failedToInitializeProject: (error: unknown) =>
-    `%cross% Failed to initialize testify config: ${error}`,
+    `Failed to initialize testify config: ${error}`,
 
   browserArgMissing: () =>
-    `%cross% --browser requires a browser name (chrome|chromium|firefox|webkit|node).`,
+    `--browser requires a browser name (chrome|chromium|firefox|webkit|node).`,
 
   projectArgMissing: () =>
-    `%cross% --project requires a package name or path.`,
+    `--project requires a package name or path.`,
 
   portArgMissing: () =>
-    `%cross% --port requires a number between 1 and 65535.`,
+    `--port requires a number between 1 and 65535.`,
 
   invalidPort: () =>
-    `%cross% Invalid --port value (expected an integer between 1 and 65535).`,
+    `Invalid --port value (expected an integer between 1 and 65535).`,
 
   configArgMissing: () =>
-    `%cross% --config requires a path to a config file.`,
+    `--config requires a path to a config file.`,
 
   timeoutArgMissing: () =>
-    `%cross% --timeout requires a number of milliseconds.`,
+    `--timeout requires a number of milliseconds.`,
 
   invalidTimeout: () =>
-    `%cross% Invalid --timeout value (expected a positive integer, in milliseconds).`,
+    `Invalid --timeout value (expected a positive integer, in milliseconds).`,
 
   fileArgMissing: () =>
-    `%cross% --file / -f requires a spec filename.`,
+    `--file / -f requires a spec filename.`,
 
   suiteArgMissing: () =>
-    `%cross% --suite / -s requires a suite name.`,
+    `--suite / -s requires a suite name.`,
 
   unknownCommand: (command: string) =>
-    `%cross% Unknown command: ${command}`,
+    `Unknown command: ${command}`,
 
   invalidArguments: (error: unknown) =>
-    `%cross% Invalid command line arguments: ${error instanceof Error ? error.message : String(error)}`,
+    `Invalid command line arguments: ${error instanceof Error ? error.message : String(error)}`,
 
   watchIncompatibleFlags: (flags: string[]) =>
-    `%cross% The --watch flag cannot be used with: ${flags.join(', ')}`,
+    `The --watch flag cannot be used with: ${flags.join(', ')}`,
 
   couldNotResolveProject: (name: string) =>
-    `%cross% Could not resolve project "${name}". It is not a directory and not a known package name.`,
+    `Could not resolve project "${name}". It is not a directory and not a known package name.`,
 
   preserveOutputsEnabled: () =>
     `%info% Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
 
   failedToStartTestRunner: (error: unknown) =>
-    `%cross% Failed to start test runner: ${error}`,
+    `Failed to start test runner: ${error}`,
 
   // Help text — kept as a single block so the caller can println() each line
   helpLines: (): string[] => [

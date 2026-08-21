@@ -32,6 +32,8 @@ export class Logger {
   private showPrompt = true;
   private prompt: string;
   private plainPrompt = '> ';
+  private errorPrompt = `${colors.bold}${colors.brightRed}x${colors.reset} `;
+  private plainErrorPrompt = 'x ';
 
   constructor() {
     this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;
@@ -141,9 +143,10 @@ export class Logger {
     const lines = msg.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      this.writeLine(line, colors.brightRed);
+      const formattedLine = this.formatErrorLine(line);
+      this.writeLine(formattedLine);
       if (i < lines.length - 1) process.stdout.write('\n');
-      this.addLine(line);
+      this.addLine(formattedLine);
     }
     process.stdout.write('\n');
     this.showPrompt = true;
@@ -203,6 +206,14 @@ export class Logger {
         ),
       )
       .join('\n');
+  }
+
+  private formatErrorLine(line: string): string {
+    const prefix = supportsColor()
+      ? this.errorPrompt
+      : this.plainErrorPrompt;
+
+    return `${prefix}${line}`;
   }
 
 }
