@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.41 - 2026-08-21
+
+### Fixed
+
+* Improved formatting for errors output.
+
+
 ## 1.0.40 - 2026-08-17
 
 ### Added

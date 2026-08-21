@@ -6,8 +6,10 @@ import { replacePlaceholders } from './symbols';
 const colors = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
+  black: '\x1b[30m',
   red: '\x1b[31m',
   brightRed: '\x1b[91m',
+  bgRed: '\x1b[41m',
   yellow: '\x1b[33m',
   cyan: '\x1b[36m',
   blue: '\x1b[34m',
@@ -32,8 +34,8 @@ export class Logger {
   private showPrompt = true;
   private prompt: string;
   private plainPrompt = '> ';
-  private errorPrompt = `${colors.bold}${colors.brightRed}x${colors.reset} `;
-  private plainErrorPrompt = 'x ';
+  private errorPrompt = `${colors.bold}${colors.black}${colors.bgRed} ERROR ${colors.reset} `;
+  private plainErrorPrompt = '[ERROR] ';
 
   constructor() {
     this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;

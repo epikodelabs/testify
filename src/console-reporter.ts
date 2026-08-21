@@ -780,18 +780,18 @@ export class ConsoleReporter {
     this.failedSpecs.forEach((spec, idx) => {
       // Print numbered spec header
       const header = wrapLine(`${idx + 1}) ${spec.fullName}`, this.lineWidth, 1);
-      header.forEach(line => (this.print(this.colored("white", line)), this.print('\n')));
+      header.forEach(line => (this.print(this.colored("white", `  ${line.trimStart()}`)), this.print('\n')));
 
       if (spec.failedExpectations?.length > 0) {
         spec.failedExpectations.forEach((expectation: any, exIndex: number) => {
-          const messageLines = wrapLine(`${SYMBOLS.cross} ${normalize(expectation.message)}`, this.lineWidth, 1);
+          const messageLines = wrapLine(`${SYMBOLS.cross} ${normalize(expectation.message)}`, this.lineWidth, 0);
           // Continuation lines of same message
-          messageLines.forEach(line => (this.print(this.colored('brightRed', line)), this.print('\n')));
+          messageLines.forEach(line => (this.print(this.colored('brightRed', `  ${line.trimStart()}`)), this.print('\n')));
 
           // Stack trace — lightly indented and gray
           if (expectation.stack) {
-            const stackLines = wrapLine(normalize(expectation.stack), this.lineWidth, 2);
-            stackLines.forEach(line => (this.print(this.colored('gray', line)), this.print('\n')));
+            const stackLines = wrapLine(normalize(expectation.stack), this.lineWidth, 0);
+            stackLines.forEach(line => (this.print(this.colored('gray', `  ${line.trimStart()}`)), this.print('\n')));
           }
 
           // Space between multiple expectations for same spec
@@ -831,14 +831,14 @@ export class ConsoleReporter {
         const header = wrapLine(
           `${idx + 1}) ${label}`,
           this.lineWidth,
-          1,
+          0,
         );
         header.forEach(
           (line) => (
             this.print(
               this.colored(
                 'white',
-                line,
+                `  ${line.trimStart()}`,
               ),
             ),
             this.print('\n')
@@ -849,14 +849,14 @@ export class ConsoleReporter {
           wrapLine(
             `${SYMBOLS.cross} ${message}`,
             this.lineWidth,
-            1,
+            0,
           );
         messageLines.forEach(
           (line) => (
             this.print(
               this.colored(
                 'brightRed',
-                line,
+                `  ${line.trimStart()}`,
               ),
             ),
             this.print('\n')
@@ -870,14 +870,14 @@ export class ConsoleReporter {
                 failure.stack,
               ),
               this.lineWidth,
-              2,
+              0,
             );
           stackLines.forEach(
             (line) => (
               this.print(
                 this.colored(
                   'gray',
-                  line,
+                  `  ${line.trimStart()}`,
                 ),
               ),
               this.print('\n')
