@@ -2,6 +2,7 @@
 // Replace these with actual emoji or terminal symbols at render time if desired.
 // They are intentionally kept as plain ASCII placeholders so the strings remain
 // portable and easy to localise / override.
+import { toConsoleSafe } from './ascii-sanitizer';
 
 // %checked%       → ✅  (success / done)
 // %cross%         → x  (error / failure)
@@ -144,7 +145,7 @@ export const CLIMessages = {
     `%info% Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
 
   failedToStartTestRunner: (error: unknown) =>
-    `Failed to start test runner: ${error}`,
+    `Failed to start test runner: ${toConsoleSafe(String(error))}`,
 
   // Help text — kept as a single block so the caller can println() each line
   helpLines: (): string[] => [
@@ -346,7 +347,7 @@ export const HmrMessages = {
     `%warn%  Skipping rebuild for non-existent file: ${filePath}`,
 
   rebuildFailed: (error: unknown) =>
-    `Rebuild failed: ${error}`,
+    `Rebuild failed: ${toConsoleSafe(String(error))}`,
 
   skippingDeletedFileFromQueue: (file: string) =>
     `%warn%  Skipping deleted file from rebuild queue: ${file}`,
@@ -367,7 +368,7 @@ export const HmrMessages = {
     `%box% Changed: ${changed} files → Rebuilding: ${total} files (${source} source, ${test} test)`,
 
   viteBuildFailed: (error: unknown) =>
-    `Vite build failed: ${error}`,
+    `Vite build failed: ${toConsoleSafe(String(error))}`,
 
   retryingWithFilteredEntries: () =>
     `%refresh% Retrying build with filtered entry points...`,
@@ -528,10 +529,10 @@ export const RunnerMessages = {
     `%info% No matching spec files found in ${locations}. Nothing to run.`,
 
   buildFailed: (error: unknown) =>
-    `Build failed: ${error}`,
+    `Build failed: ${toConsoleSafe(String(error))}`,
 
   preprocessFailed: (error: unknown) =>
-    `Preprocessing failed: ${error}`,
+    `Preprocessing failed: ${toConsoleSafe(String(error))}`,
 
   invalidNodeHeadedMode: () =>
     `Invalid configuration: Node.js runner cannot run in headed mode.`,
