@@ -223,9 +223,27 @@ export class CLIHandler {
   }
 
   private static printVersion(): void {
+    const packageFiles = [
+      new URL('../package.json', import.meta.url),
+      new URL('../../package.json', import.meta.url),
+    ];
+    const packageFile =
+      packageFiles.find((candidate) =>
+        fs.existsSync(candidate),
+      );
+
+    if (!packageFile) {
+      logger.printlnRaw('testify (version unknown)');
+      return;
+    }
+
     try {
-      const pkgUrl = new URL('../package.json', import.meta.url);
-      const pkg = JSON.parse(fs.readFileSync(pkgUrl, 'utf8'));
+      const pkg = JSON.parse(
+        fs.readFileSync(
+          packageFile,
+          'utf8',
+        ),
+      );
       logger.printlnRaw(`testify ${pkg.version}`);
     } catch (error) {
       logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);

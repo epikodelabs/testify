@@ -10,15 +10,32 @@ describe('ViteJasmineRunner headed browser startup', () => {
     'utf8',
   );
 
-  it('cleans up and returns an internal error when browser startup rejects', () => {
-    const startupFailureBranches =
-      source.match(
-        /catch \{\s*await this\.cleanup\(\);\s*return EXIT_CODES\.INTERNAL_ERROR;\s*\}/g,
-      ) ?? [];
+  it('logs, cleans up, and returns an internal error when browser startup rejects', () => {
+    const watchSection = source.slice(
+      source.indexOf('private async runWatchMode'),
+      source.indexOf('private async runHeadlessBrowserMode'),
+    );
+    const headedSection = source.slice(
+      source.indexOf('private async runHeadedBrowserMode'),
+    );
 
-    expect(
-      startupFailureBranches.length,
-    ).toBeGreaterThanOrEqual(2);
+    for (const section of [
+      watchSection,
+      headedSection,
+    ]) {
+      expect(section).toContain(
+        'await this.browserManager.openBrowser(',
+      );
+      expect(section).toContain(
+        'logger.error(',
+      );
+      expect(section).toContain(
+        'await this.cleanup();',
+      );
+      expect(section).toContain(
+        'return EXIT_CODES.INTERNAL_ERROR;',
+      );
+    }
   });
 
   it('does not wait on headed completion promises before startup succeeds', () => {

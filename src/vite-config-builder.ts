@@ -438,10 +438,6 @@ export class ViteConfigBuilder {
     const files = entryFiles && entryFiles.length > 0 ? entryFiles : this.discoverFilesSync();
     this.inputMap = this.buildInputMap(files);
 
-    if (!Object.keys(this.inputMap).length) {
-      logger.error(ViteConfigMessages.noFilesToBuild());
-    }
-
     return this.normalizeGeneratedOutput(
       this.normalizeAliasConfig(
         this.mergeUserConfig(

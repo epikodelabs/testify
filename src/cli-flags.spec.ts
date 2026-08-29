@@ -137,6 +137,7 @@ describe('Testify CLI flags', () => {
   });
 
   it('accepts -w -c -b -p -q short aliases', async () => {
+    spyOn(logger, 'error');
     process.argv = ['node', 'testify', '-w', '-b', 'node'];
     const { watch } = { watch: jasmine.createSpy('watch').and.resolveTo(0) };
     spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({

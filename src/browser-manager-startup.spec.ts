@@ -4,6 +4,7 @@ import {
 import type {
   ViteJasmineConfig,
 } from './vite-jasmine-config';
+import { logger } from './logger';
 
 describe('BrowserManager headed startup', () => {
   function createManager(): BrowserManager {
@@ -14,6 +15,7 @@ describe('BrowserManager headed startup', () => {
   }
 
   it('propagates browser launch failures', async () => {
+    spyOn(logger, 'error');
     const manager = createManager();
     const failure = new Error(
       'browser launch failed',
@@ -41,6 +43,7 @@ describe('BrowserManager headed startup', () => {
   });
 
   it('closes and clears a browser when navigation fails', async () => {
+    spyOn(logger, 'error');
     const manager = createManager();
     const failure = new Error(
       'navigation failed',
