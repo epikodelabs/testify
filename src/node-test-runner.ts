@@ -84,7 +84,7 @@ export class NodeTestRunner {
   async start():
     Promise<ExecutionResult> {
     if (this.isRunning) {
-      logger.println(
+      logger.error(
         NodeRunnerMessages
           .testProcessAlreadyRunning(),
       );
@@ -123,7 +123,7 @@ export class NodeTestRunner {
             error.message
           : String(error);
 
-      logger.println(
+      logger.error(
         NodeRunnerMessages
           .testExecutionError(
             details,

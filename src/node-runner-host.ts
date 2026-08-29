@@ -1,5 +1,8 @@
 import * as fs from 'fs';
 import { pathToFileURL } from 'url';
+import {
+  logger,
+} from './logger';
 import { norm } from './utils';
 import type { TestSelector } from './test-selection';
 import type {
@@ -42,9 +45,8 @@ export class NodeRunnerHost {
         : fileUrl;
 
     if (process.env.TESTIFY_DEBUG === '1') {
-      console.error(
-        '[Testify debug] importing generated runner:',
-        moduleUrl,
+      logger.error(
+        `[Testify debug] importing generated runner: ${moduleUrl}`,
       );
     }
 
@@ -55,11 +57,12 @@ export class NodeRunnerHost {
         ) as NodeRunnerModule;
 
       if (process.env.TESTIFY_DEBUG === '1') {
-        console.error(
-          '[Testify debug] generated runner exports:',
-          Object.keys(
-            runnerModule,
-          ).sort(),
+        logger.error(
+          `[Testify debug] generated runner exports: ${
+            Object.keys(
+              runnerModule,
+            ).sort().join(', ')
+          }`,
         );
       }
 
@@ -69,12 +72,13 @@ export class NodeRunnerHost {
       return runnerModule;
     } catch (error) {
       if (process.env.TESTIFY_DEBUG === '1') {
-        console.error(
-          '[Testify debug] generated runner import failed:',
-          error instanceof Error
-            ? error.stack ??
-              error.message
-            : error,
+        logger.error(
+          `[Testify debug] generated runner import failed: ${
+            error instanceof Error
+              ? error.stack ??
+                error.message
+              : String(error)
+          }`,
         );
       }
 

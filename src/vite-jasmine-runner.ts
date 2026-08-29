@@ -499,7 +499,7 @@ export class ViteJasmineRunner extends EventEmitter {
         setTimeout(() => reject(new Error('Timed out waiting for test completion message')), 5000);
       });
       await Promise.race([testsCompletedPromise, testsCompletedTimeout]).catch((error) => {
-        logger.println(RunnerMessages.testsCompletedTimeout(error.message));
+        logger.error(RunnerMessages.testsCompletedTimeout(error.message));
       });
       if (coveragePromise) await coveragePromise;
       await this.cleanup();
@@ -528,8 +528,7 @@ export class ViteJasmineRunner extends EventEmitter {
       return getExecutionExitCode(
         result,
       );
-    } catch (error: any) {
-      logger.error(RunnerMessages.nodeTestExecutionFailed(error.message ?? String(error)));
+    } catch (_error: any) {
       return EXIT_CODES.INTERNAL_ERROR;
     }
   }

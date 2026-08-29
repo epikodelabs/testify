@@ -145,7 +145,10 @@ export class Logger {
     const lines = msg.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      const formattedLine = this.formatErrorLine(line);
+      const formattedLine =
+        i === 0
+          ? this.formatErrorLine(line)
+          : line;
       this.writeLine(formattedLine);
       if (i < lines.length - 1) process.stdout.write('\n');
       this.addLine(formattedLine);

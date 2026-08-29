@@ -343,7 +343,7 @@ export class HmrManager extends EventEmitter {
         if (resolved) deps.add(norm(resolved));
       }
     } catch (error) {
-      logger.println(HmrMessages.cannotExtractDependencies(filePath, (error as Error).message));
+      logger.error(HmrMessages.cannotExtractDependencies(filePath, (error as Error).message));
     }
     return deps;
   }

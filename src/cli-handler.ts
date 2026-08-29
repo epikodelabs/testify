@@ -226,9 +226,9 @@ export class CLIHandler {
     try {
       const pkgUrl = new URL('../package.json', import.meta.url);
       const pkg = JSON.parse(fs.readFileSync(pkgUrl, 'utf8'));
-      logger.println(`testify ${pkg.version}`);
+      logger.printlnRaw(`testify ${pkg.version}`);
     } catch {
-      logger.println('testify (version unknown)');
+      logger.printlnRaw('testify (version unknown)');
     }
   }
 

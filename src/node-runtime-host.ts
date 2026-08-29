@@ -7,6 +7,9 @@ import type {
 import type {
   NodeRunnerHost,
 } from './node-runner-host';
+import {
+  logger,
+} from './logger';
 
 export class NodeRuntimeHost {
   async run(
@@ -15,9 +18,8 @@ export class NodeRuntimeHost {
     selector?: TestSelector,
   ): Promise<ExecutionResult> {
     if (process.env.TESTIFY_DEBUG === '1') {
-      console.error(
-        '[Testify debug] runner file:',
-        host.file,
+      logger.error(
+        `[Testify debug] runner file: ${host.file}`,
       );
     }
 
@@ -25,7 +27,7 @@ export class NodeRuntimeHost {
       await host.load();
     } catch (error) {
       if (process.env.TESTIFY_DEBUG === '1') {
-        console.error(
+        logger.error(
           '[Testify debug] failure occurred while loading test-runner.mjs',
         );
       }
@@ -33,7 +35,7 @@ export class NodeRuntimeHost {
     }
 
     if (process.env.TESTIFY_DEBUG === '1') {
-      console.error(
+      logger.error(
         '[Testify debug] generated runner loaded; starting run()',
       );
     }
@@ -45,12 +47,13 @@ export class NodeRuntimeHost {
       );
     } catch (error) {
       if (process.env.TESTIFY_DEBUG === '1') {
-        console.error(
-          '[Testify debug] failure occurred inside run():',
-          error instanceof Error
-            ? error.stack ??
-              error.message
-            : error,
+        logger.error(
+          `[Testify debug] failure occurred inside run(): ${
+            error instanceof Error
+              ? error.stack ??
+                error.message
+              : String(error)
+          }`,
         );
       }
       throw error;

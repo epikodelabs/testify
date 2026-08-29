@@ -51,15 +51,15 @@ describe('Testify CLI flags', () => {
   });
 
   it('prints a version string for --version and -v without starting a run', async () => {
-    spyOn(logger, 'println');
+    spyOn(logger, 'printlnRaw');
     for (const flag of ['--version', '-v']) {
       process.argv = ['node', 'testify', flag];
 
       const exitCode = await CLIHandler.run();
 
       expect(exitCode).toBe(EXIT_CODES.SUCCESS);
-      expect(logger.println).toHaveBeenCalledWith(jasmine.stringMatching(/^testify /));
-      (logger.println as jasmine.Spy).calls.reset();
+      expect(logger.printlnRaw).toHaveBeenCalledWith(jasmine.stringMatching(/^testify /));
+      (logger.printlnRaw as jasmine.Spy).calls.reset();
     }
   });
 

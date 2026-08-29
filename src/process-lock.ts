@@ -87,7 +87,7 @@ export class ProcessLock {
       // Verify final state and log
       const finalAlive = await this.isAlive(pid);
       if (finalAlive) {
-        logger.println(ProcessLockMessages.couldNotTerminate(pid));
+        logger.error(ProcessLockMessages.couldNotTerminate(pid));
       } else {
         logger.println(ProcessLockMessages.terminatedPrevious(pid));
       }

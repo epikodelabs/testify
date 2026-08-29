@@ -12,10 +12,19 @@ describe('Logger prompt styling', () => {
 
   it('uses a thicker prompt marker for interactive output', () => {
     expect(source).toContain(
-      "> ",
+      '> ',
     );
     expect(source).toContain(
       "plainPrompt = '> '",
+    );
+  });
+
+  it('prefixes only the first line of multi-line errors', () => {
+    expect(source).toContain(
+      '? this.formatErrorLine(line)',
+    );
+    expect(source).toContain(
+      ': line;',
     );
   });
 });
