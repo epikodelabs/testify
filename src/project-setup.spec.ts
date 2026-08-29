@@ -5,13 +5,24 @@ import { ProjectSetup } from './project-setup';
 
 describe('ProjectSetup', () => {
   let root: string;
+  let originalSuppressLogs: unknown;
 
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'testify-setup-'));
+    originalSuppressLogs =
+      (globalThis as any).__testifySuppressLogs;
+    (globalThis as any).__testifySuppressLogs = true;
   });
 
   afterEach(() => {
     fs.rmSync(root, { recursive: true, force: true });
+
+    if (originalSuppressLogs === undefined) {
+      delete (globalThis as any).__testifySuppressLogs;
+    } else {
+      (globalThis as any).__testifySuppressLogs =
+        originalSuppressLogs;
+    }
   });
 
   it('adds jasmine when compilerOptions.types is explicitly constrained', () => {

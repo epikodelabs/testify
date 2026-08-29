@@ -7,6 +7,7 @@
 * Replaced exception-driven file and module existence probes with non-throwing checks in relative resolution, browser asset discovery, file discovery, project setup, and Vite input classification.
 * Kept unexpected browser cleanup failures observable without using empty promise rejection handlers.
 * Removed false `ERROR` output for normal missing-path and missing-package probe results.
+* Kept `ProjectSetup` fixture diagnostics out of the parent self-test output by suppressing logger output only inside those tests.
 
 ## 1.0.50 - 2026-08-29
 
@@ -16,6 +17,9 @@
 * Added error logging to cleanup, fallback, file discovery, package resolution, configuration, browser, and process-management paths.
 * Replaced empty `catch` and promise rejection handlers with explicit error logging while preserving existing recovery behavior.
 * Added regression coverage to prevent silent error handling from being reintroduced.
+* Avoided exception-driven package/version probing when the local build layout has no `dist/package.json`.
+* Kept intentional negative-path tests quiet while preserving production error logging, and removed the config-builder false error for an intentionally empty input set.
+* Updated the headed-browser startup regression test to verify logging, cleanup, and the internal-error result without depending on a bare `catch` shape.
 
 ## 1.0.42 - 2026-08-29
 
