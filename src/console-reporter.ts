@@ -220,10 +220,16 @@ export class ConsoleReporter {
       });
     }
 
-    // Debug summary
-    const totalSuites = this.orderedSuites?.length; // real suites (root excluded)
-    const totalSpecs = this.orderedSpecs?.length;   // all specs
-    logger.println(ReporterMessages.suiteTreeBuilt(totalSuites, totalSpecs));
+    // Announce the catalog only when one was actually supplied.
+    // Direct reporter unit tests may call jasmineStarted() without catalog data.
+    if (this.orderedSuites && this.orderedSpecs) {
+      logger.println(
+        ReporterMessages.suiteTreeBuilt(
+          this.orderedSuites.length,
+          this.orderedSpecs.length,
+        ),
+      );
+    }
   }
 
   countSpecs(suite: TestSuite) {

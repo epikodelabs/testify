@@ -1,8 +1,27 @@
 import {
   ConsoleReporter,
 } from './console-reporter';
+import { logger } from './logger';
 
 describe('ConsoleReporter output sink', () => {
+  it('does not announce an undefined suite tree when no catalog was supplied', () => {
+    spyOn(logger, 'println');
+
+    const reporter =
+      new ConsoleReporter({
+        showColors: false,
+        print: () => {},
+      });
+
+    reporter.jasmineStarted({
+      totalTime: 0,
+    });
+
+    expect(logger.println).not.toHaveBeenCalledWith(
+      jasmine.stringMatching(/Suite tree built/),
+    );
+  });
+
   it('uses the injected print sink', () => {
     const messages: string[] = [];
 

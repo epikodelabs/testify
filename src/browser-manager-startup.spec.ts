@@ -15,6 +15,7 @@ describe('BrowserManager headed startup', () => {
   }
 
   it('propagates browser launch failures', async () => {
+    spyOn(logger, 'println');
     spyOn(logger, 'error');
     const manager = createManager();
     const failure = new Error(
@@ -43,6 +44,7 @@ describe('BrowserManager headed startup', () => {
   });
 
   it('closes and clears a browser when navigation fails', async () => {
+    spyOn(logger, 'println');
     spyOn(logger, 'error');
     const manager = createManager();
     const failure = new Error(

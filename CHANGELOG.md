@@ -4,10 +4,11 @@
 
 ### Fixed
 
+* Removed self-test progress noise from intentional BrowserManager failure fixtures and stopped reporting undefined suite-tree counts when reporter tests start without catalog data.
+
 * Replaced exception-driven file and module existence probes with non-throwing checks in relative resolution, browser asset discovery, file discovery, project setup, and Vite input classification.
 * Kept unexpected browser cleanup failures observable without using empty promise rejection handlers.
 * Removed false `ERROR` output for normal missing-path and missing-package probe results.
-* Kept `ProjectSetup` fixture diagnostics out of the parent self-test output by suppressing logger output only inside those tests.
 
 ## 1.0.50 - 2026-08-29
 
