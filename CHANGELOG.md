@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.44 - 2026-08-29
+
+### Fixed
+
+* Refined error output.
+
 ## 1.0.43 - 2026-08-29
 
 ### Fixed

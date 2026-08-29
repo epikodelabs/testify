@@ -155,4 +155,30 @@ describe('NodeExecutionEnvironmentHost', () => {
         originalLog;
     }
   });
+
+  it('does not suppress logger output when console logs are muted', async () => {
+    const originalFlag =
+      (globalThis as any)
+        .__testifySuppressLogs;
+
+    const host =
+      new NodeExecutionEnvironmentHost({
+        suppressConsoleLogs: true,
+      });
+
+    try {
+      await host.run(
+        async () => {
+          expect(
+            (globalThis as any)
+              .__testifySuppressLogs,
+          ).toBe(originalFlag);
+        },
+      );
+    } finally {
+      (globalThis as any)
+        .__testifySuppressLogs =
+        originalFlag;
+    }
+  });
 });

@@ -480,16 +480,19 @@ export class ViteJasmineRunner extends EventEmitter {
     const browserType = await this.browserManager.checkBrowser(this.config.browser!);
 
     if (!browserType) {
-      logger.println(RunnerMessages.headlessBrowserUnavailable());
+      logger.warn(RunnerMessages.headlessBrowserUnavailable());
       this.nodeTestRunner.generateTestRunner();
-      const result =
-        await this.nodeTestRunner.start();
 
-      await this.cleanup();
+      try {
+        const result =
+          await this.nodeTestRunner.start();
 
-      return getExecutionExitCode(
-        result,
-      );
+        return getExecutionExitCode(
+          result,
+        );
+      } finally {
+        await this.cleanup();
+      }
     }
 
     try {
@@ -529,8 +532,7 @@ export class ViteJasmineRunner extends EventEmitter {
       return getExecutionExitCode(
         result,
       );
-    } catch (error: any) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    } catch (_error: any) {
       return EXIT_CODES.INTERNAL_ERROR;
     }
   }

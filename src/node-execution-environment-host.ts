@@ -37,10 +37,6 @@ export class NodeExecutionEnvironmentHost {
     const consoleSnapshot =
       this.captureConsole();
 
-    const logSuppressionSnapshot =
-      (globalThis as any)
-        .__testifySuppressLogs;
-
     try {
       this.applyEnvironment();
 
@@ -49,8 +45,6 @@ export class NodeExecutionEnvironmentHost {
           .suppressConsoleLogs
       ) {
         this.suppressConsole();
-        (globalThis as any)
-          .__testifySuppressLogs = true;
       }
 
       return await work();
@@ -58,10 +52,6 @@ export class NodeExecutionEnvironmentHost {
       this.restoreConsole(
         consoleSnapshot,
       );
-
-      (globalThis as any)
-        .__testifySuppressLogs =
-        logSuppressionSnapshot;
 
       this.restoreEnvironment(
         envSnapshot,

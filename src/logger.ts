@@ -9,6 +9,7 @@ const colors = {
   black: '\x1b[30m',
   red: '\x1b[31m',
   brightRed: '\x1b[91m',
+  bgBlack: '\x1b[40m',
   bgRed: '\x1b[41m',
   bgYellow: '\x1b[43m',
   yellow: '\x1b[33m',
@@ -19,6 +20,12 @@ const colors = {
 };
 
 type LogMessageKey = keyof typeof LOG_MESSAGES;
+
+const LEGACY_LOG_TAG_PREFIX =
+  /^\[(?:ERROR|WARN|INFO|BROWSER|FILE|TREE|STOP|TIP|START|WAIT|READY|ADD|REM|DIR|BUILD|RETRY|CLEAN|LOCK|HMR|WS|CONN|OK|WATCH)\]\s*/;
+
+const LEADING_BADGE_PREFIX =
+  /^[^\p{L}\p{N}\s"'([{<]+\s+/u;
 
 function areTestLogsSuppressed(): boolean {
   return (globalThis as any).__testifySuppressLogs === true;
@@ -351,21 +358,39 @@ export class Logger {
 
     return message
       .split('\n')
-      .map((line) =>
-        line.replace(
-          new RegExp(
-            `^(?:${marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+|\\[(?:ERROR|WARN|INFO|BROWSER|FILE|TREE|STOP|TIP|START|WAIT|READY|ADD|REM|DIR|BUILD|RETRY|CLEAN|LOCK|HMR|WS|CONN|OK|WATCH)\\]|[^\\p{L}\\p{N}\\s"'\\\`([{<]+)\\s+`,
-            'u',
-          ),
+      .map((line) => {
+        if (
+          line.startsWith(
+            marker + ' ',
+          )
+        ) {
+          return line.slice(
+            marker.length + 1,
+          );
+        }
+
+        if (
+          LEGACY_LOG_TAG_PREFIX.test(
+            line,
+          )
+        ) {
+          return line.replace(
+            LEGACY_LOG_TAG_PREFIX,
+            '',
+          );
+        }
+
+        return line.replace(
+          LEADING_BADGE_PREFIX,
           '',
-        ),
-      )
+        );
+      })
       .join('\n');
   }
 
   private errorPrefix(): string {
     return supportsColor()
-      ? `${colors.bold}${colors.black}${colors.bgRed} ERROR ${colors.red}`
+      ? `${colors.bold}${colors.black}${colors.bgRed} ERROR ${colors.reset}${colors.red}${colors.bgBlack} `
       : '[ERROR] ';
   }
 
