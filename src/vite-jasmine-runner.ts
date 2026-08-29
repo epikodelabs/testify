@@ -445,7 +445,8 @@ export class ViteJasmineRunner extends EventEmitter {
         onBrowserClose,
         { exitOnClose: false },
       );
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       await this.cleanup();
       return EXIT_CODES.INTERNAL_ERROR;
     }
@@ -479,7 +480,7 @@ export class ViteJasmineRunner extends EventEmitter {
     const browserType = await this.browserManager.checkBrowser(this.config.browser!);
 
     if (!browserType) {
-      logger.warn(RunnerMessages.headlessBrowserUnavailable());
+      logger.println(RunnerMessages.headlessBrowserUnavailable());
       this.nodeTestRunner.generateTestRunner();
       const result =
         await this.nodeTestRunner.start();
@@ -509,12 +510,12 @@ export class ViteJasmineRunner extends EventEmitter {
       return testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS;
     } catch (error) {
       if (error instanceof ExitCodeError) {
-        if (coveragePromise) await coveragePromise.catch(() => {});
+        if (coveragePromise) await coveragePromise.catch((error) => { logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`); });
         await this.cleanup();
         return error.exitCode;
       }
       logger.error(RunnerMessages.browserTestExecutionFailed());
-      if (coveragePromise) await coveragePromise.catch(() => {});
+      if (coveragePromise) await coveragePromise.catch((error) => { logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`); });
       await this.cleanup();
       return EXIT_CODES.INTERNAL_ERROR;
     }
@@ -528,7 +529,8 @@ export class ViteJasmineRunner extends EventEmitter {
       return getExecutionExitCode(
         result,
       );
-    } catch (_error: any) {
+    } catch (error: any) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return EXIT_CODES.INTERNAL_ERROR;
     }
   }
@@ -590,7 +592,7 @@ export class ViteJasmineRunner extends EventEmitter {
       await promise;
       // Wait for finishHeadedRun to complete before cleanup and exit
       if (finishHeadedRunPromise) {
-        await finishHeadedRunPromise.catch(() => {});
+        await finishHeadedRunPromise.catch((error) => { logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`); });
       }
       await this.cleanup();
       if (!testsCompleted) {
@@ -609,7 +611,8 @@ export class ViteJasmineRunner extends EventEmitter {
         this.config.port!,
         onBrowserClose,
       );
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       await this.cleanup();
       return EXIT_CODES.INTERNAL_ERROR;
     }

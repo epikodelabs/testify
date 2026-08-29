@@ -102,7 +102,8 @@ export class ViteConfigBuilder {
           }
         }
       }
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       // Dependency externalization is an optimization/isolation boundary.
       // A malformed package.json should still be reported by the normal
       // project/tooling path instead of making Testify config construction fail.
@@ -296,7 +297,8 @@ export class ViteConfigBuilder {
     let content = '';
     try {
       content = fs.readFileSync(filePath, 'utf8');
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return false;
     }
 
@@ -666,7 +668,8 @@ export class ViteConfigBuilder {
       projectPackage = cleaner.parse<PackageManifest>(
         fs.readFileSync(projectPackageJsonPath, 'utf8')
       );
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return {};
     }
 
@@ -690,7 +693,8 @@ export class ViteConfigBuilder {
         builtPackageRoot,
         builtPackage
       );
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return {};
     }
   }
@@ -712,7 +716,8 @@ export class ViteConfigBuilder {
         if (manifest.name === packageName) {
           return norm(path.dirname(candidate));
         }
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         continue;
       }
     }
@@ -951,12 +956,14 @@ export class ViteConfigBuilder {
 
     try {
       return nodeRequire.resolve(extendsRef);
-    } catch {}
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);}
 
     for (const candidate of this.candidateTsconfigPaths(extendsRef)) {
       try {
         return nodeRequire.resolve(candidate);
-      } catch {}
+      } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);}
     }
 
     return null;

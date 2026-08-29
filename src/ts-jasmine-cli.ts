@@ -152,7 +152,8 @@ function safeStringify(value: unknown): string {
     if (str !== '[object Object]') {
       return str;
     }
-  } catch {
+  } catch (error) {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     // fall through to inspect/JSON fallback
   }
 
@@ -161,10 +162,12 @@ function safeStringify(value: unknown): string {
     try {
       const inspected = util.inspect(value, { depth: 5, showHidden: true });
       return constructor === 'Object' ? inspected : `${constructor} ${inspected}`;
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       try {
         return JSON.stringify(value, null, 2);
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         // fall through
       }
     }
@@ -172,7 +175,8 @@ function safeStringify(value: unknown): string {
 
   try {
     return JSON.stringify(value);
-  } catch {
+  } catch (error) {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     return '[object Object]';
   }
 }
@@ -224,7 +228,8 @@ function initVsCodeLaunchConfig(): void {
   let parsed: any;
   try {
     parsed = JSON.parse(raw);
-  } catch {
+  } catch (error) {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     try {
       parsed = new JSONCleaner().parse(raw);
     } catch (error) {

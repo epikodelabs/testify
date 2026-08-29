@@ -227,7 +227,8 @@ export class CLIHandler {
       const pkgUrl = new URL('../package.json', import.meta.url);
       const pkg = JSON.parse(fs.readFileSync(pkgUrl, 'utf8'));
       logger.printlnRaw(`testify ${pkg.version}`);
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       logger.printlnRaw('testify (version unknown)');
     }
   }
@@ -251,7 +252,8 @@ export class CLIHandler {
           this.cleanup(),
           new Promise<void>((_, reject) => setTimeout(() => reject(new Error('cleanup timeout')), 5000))
         ]);
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         // Cleanup timed out or failed; force exit anyway.
       }
       process.exit(exitCode);

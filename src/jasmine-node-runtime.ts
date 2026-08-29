@@ -75,7 +75,8 @@ export function orderJasmineItems(
   try {
     const order = new OrderCtor({ random, seed });
     return typeof order.sort === 'function' ? order.sort(items) : items;
-  } catch {
+  } catch (error) {
+    console.error('Testify runtime error:', error);
     return items;
   }
 }

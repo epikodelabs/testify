@@ -34,7 +34,8 @@ export class ProcessLock {
   releaseSync(): void {
     try {
       fs.unlinkSync(this.pidFile);
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       // ignore
     }
   }
@@ -54,6 +55,7 @@ export class ProcessLock {
       try {
         process.kill(pid, 0);
       } catch (err: any) {
+        logger.error(`${err instanceof Error ? err.stack ?? err.message : String(err)}`);
         if (err.code === 'EPERM') {
           // Process exists but we lack permission to query it (e.g. debugger attached).
           // Assume it's alive and proceed with the kill attempt.
@@ -68,7 +70,7 @@ export class ProcessLock {
       // Verify the process is actually a Node process before killing it
       const processName = await this.getProcessName(pid);
       if (!processName || !/node/i.test(processName)) {
-        logger.warn(ProcessLockMessages.nonNodeProcess(pid, processName || 'unknown'));
+        logger.println(ProcessLockMessages.nonNodeProcess(pid, processName || 'unknown'));
         fs.unlinkSync(this.pidFile);
         return;
       }
@@ -92,7 +94,8 @@ export class ProcessLock {
         logger.println(ProcessLockMessages.terminatedPrevious(pid));
       }
       fs.unlinkSync(this.pidFile);
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       // Ignore any errors during cleanup
     }
   }
@@ -112,7 +115,8 @@ export class ProcessLock {
       } else {
         process.kill(pid, force ? 'SIGKILL' : 'SIGTERM');
       }
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       // ignore — may already be gone
     }
 
@@ -123,7 +127,8 @@ export class ProcessLock {
         if (ProcessLock.BROWSER_NAMES.test(child.name)) {
           try {
             process.kill(child.pid);
-          } catch {
+          } catch (error) {
+            logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
             // ignore
           }
         }
@@ -135,7 +140,8 @@ export class ProcessLock {
         if (name && ProcessLock.BROWSER_NAMES.test(name)) {
           try {
             process.kill(childPid, force ? 'SIGKILL' : 'SIGTERM');
-          } catch {
+          } catch (error) {
+            logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
             // ignore
           }
         }
@@ -205,7 +211,8 @@ export class ProcessLock {
     try {
       process.kill(pid, 0);
       return true;
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return false;
     }
   }

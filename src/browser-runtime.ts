@@ -201,7 +201,8 @@ export function getBrowserRuntimeScript(
           });
 
         return order.sort?.(items) ?? items;
-      } catch {
+      } catch (error) {
+        console.error('Testify runtime error:', error);
         return items;
       }
     }
@@ -308,7 +309,8 @@ export function getBrowserRuntimeScript(
                   return JSON.stringify(
                     value,
                   );
-                } catch {
+                } catch (error) {
+                  console.error('Testify runtime error:', error);
                   return String(value);
                 }
               })();

@@ -312,7 +312,7 @@ function installTestifyPlaygroundFormatters() {
         let revision = '?';
         try {
           revision = value.revision();
-        } catch {}
+        } catch (error) { console.error('Testify runtime error:', error); }
 
         return summarySpan(
           'Testify Session',
@@ -409,7 +409,8 @@ function installTestifyPlaygroundFormatters() {
             (() => {
               try {
                 return value.revision();
-              } catch {
+              } catch (error) {
+                console.error('Testify runtime error:', error);
                 return '?';
               }
             })(),

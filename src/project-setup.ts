@@ -141,7 +141,8 @@ export class ProjectSetup {
           Array.isArray(types) && types.includes(JASMINE_TYPE_NAME),
         changed: false,
       };
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return {
         tsconfigPath,
         jasmineTypesAvailable,
@@ -171,7 +172,8 @@ export class ProjectSetup {
       );
       projectRequire.resolve('@types/jasmine/package.json');
       return true;
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return false;
     }
   }

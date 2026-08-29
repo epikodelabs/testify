@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { logger } from './logger';
 import { CLIHandler } from './cli-handler';
 
 export { BrowserManager } from './browser-manager';
@@ -27,5 +28,8 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  CLIHandler.run().then((code) => process.exit(code)).catch(() => process.exit(1));
+  CLIHandler.run().then((code) => process.exit(code)).catch((error) => {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    process.exit(1);
+  });
 }

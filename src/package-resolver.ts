@@ -3,6 +3,7 @@ import * as path from 'path';
 import { glob } from 'glob';
 import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
+import { logger } from './logger';
 
 export class PackageResolver {
   private cleaner = new JSONCleaner();
@@ -14,7 +15,8 @@ export class PackageResolver {
       if (stat.isDirectory()) {
         return norm(path.resolve(projectValue));
       }
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       // not a directory, continue to name resolution
     }
 
@@ -36,7 +38,8 @@ export class PackageResolver {
     let tsconfig: any;
     try {
       tsconfig = this.cleaner.parse(fs.readFileSync(configPath, 'utf8'));
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return undefined;
     }
 
@@ -57,7 +60,8 @@ export class PackageResolver {
         if (pkg.name === projectValue) {
           return packageDir;
         }
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         // skip unreadable package.json
       }
     }
@@ -87,12 +91,14 @@ export class PackageResolver {
               if (pkg.name === projectValue) {
                 return norm(path.dirname(pkgJsonPath));
               }
-            } catch {
+            } catch (error) {
+              logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
               // skip
             }
           }
         }
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         // skip unreadable root package.json
       }
     }
@@ -115,12 +121,14 @@ export class PackageResolver {
               if (pkg.name === projectValue) {
                 return norm(path.dirname(pkgJsonPath));
               }
-            } catch {
+            } catch (error) {
+              logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
               // skip
             }
           }
         }
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         // skip unreadable pnpm-workspace.yaml
       }
     }

@@ -63,7 +63,8 @@ function WebSocketEventForwarder() {
           : (() => {
               try {
                 return JSON.stringify(value);
-              } catch {
+              } catch (error) {
+                console.error('Testify runtime error:', error);
                 return String(value);
               }
             })();

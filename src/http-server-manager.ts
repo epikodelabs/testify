@@ -337,7 +337,8 @@ export class HttpServerManager {
           req.end();
         });
         return;
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         await new Promise(r => setTimeout(r, 100));
       }
     }

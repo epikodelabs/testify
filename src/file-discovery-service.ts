@@ -70,7 +70,8 @@ export class FileDiscoveryService {
         try {
           await fs.access(normalizedPath);
           return normalizedPath;
-        } catch {
+        } catch (error) {
+          logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
           return null;
         }
       })
@@ -232,7 +233,8 @@ export class FileDiscoveryService {
           filePath,
           'utf8',
         );
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return true;
     }
 
@@ -443,7 +445,8 @@ export class FileDiscoveryService {
       try {
         await fs.access(candidate);
         return norm(candidate);
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         // Keep probing the local import candidates.
       }
     }

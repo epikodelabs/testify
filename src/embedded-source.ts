@@ -10,7 +10,7 @@ export function getEmbeddedNameHelperSource():
         configurable: true,
       },
     );
-  } catch {}
+  } catch (error) { console.error('Testify runtime error:', error); }
 
   return target;
 }`;
