@@ -479,7 +479,7 @@ export class ViteJasmineRunner extends EventEmitter {
     const browserType = await this.browserManager.checkBrowser(this.config.browser!);
 
     if (!browserType) {
-      logger.println(RunnerMessages.headlessBrowserUnavailable());
+      logger.warn(RunnerMessages.headlessBrowserUnavailable());
       this.nodeTestRunner.generateTestRunner();
       const result =
         await this.nodeTestRunner.start();

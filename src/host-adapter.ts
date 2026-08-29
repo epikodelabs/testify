@@ -86,7 +86,7 @@ export class HostAdapter {
         break;
 
       default:
-        logger.println(HostAdapterMessages.unknownMessageType(type));
+        logger.warn(HostAdapterMessages.unknownMessageType(type));
     }
   }
 

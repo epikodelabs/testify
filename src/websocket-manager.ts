@@ -124,7 +124,7 @@ export class WebSocketManager extends EventEmitter {
           break;
           
         default:
-          logger.println(WebSocketMessages.unknownMessageType(message.type));
+          logger.warn(WebSocketMessages.unknownMessageType(message.type));
       }
     } catch (error) {
       logger.error(WebSocketMessages.errorHandlingMessage(error));

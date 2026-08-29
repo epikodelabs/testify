@@ -42,7 +42,7 @@ export class BrowserManager {
       const playwright = await this.getPlaywright();
       const resolved = this.resolveBrowserType(playwright, browserName);
       if (!resolved) {
-        logger.println(BrowserMessages.unknownBrowserFallback(browserName));
+        logger.warn(BrowserMessages.unknownBrowserFallback(browserName));
         return null;
       }
       return resolved.type;
@@ -97,7 +97,7 @@ export class BrowserManager {
         const type = msg.type();
         if (text.match(/error|failed/i)) {
           if (type === 'error') logger.error(BrowserMessages.browserConsoleError(text));
-          else if (type === 'warning') logger.println(BrowserMessages.browserConsoleWarn(text));
+          else if (type === 'warning') logger.warn(BrowserMessages.browserConsoleWarn(text));
         }
       });
 
@@ -159,7 +159,7 @@ export class BrowserManager {
       let resolved = this.resolveBrowserType(playwright, browserName);
 
       if (!resolved) {
-        logger.println(BrowserMessages.unknownBrowserFallbackToChrome(browserName));
+        logger.warn(BrowserMessages.unknownBrowserFallbackToChrome(browserName));
         resolved = { type: playwright.chromium, normalized: 'chrome' };
         browserName = 'chrome';
       }

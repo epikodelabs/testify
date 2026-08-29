@@ -6,7 +6,8 @@ import { toConsoleSafe } from './ascii-sanitizer';
 
 // %checked%       → ✅  (success / done)
 // %cross%         → x  (error / failure)
-// %warn%          → 🚨  (warning)
+// %error%         → ERROR prompt (logger-resolved)
+// %warn%          → WARN prompt (logger-resolved)
 // %info%          → 💡  (informational)
 // %globe%         → 🌐  (browser / network)
 // %doc%           → 📄  (file / document)
@@ -42,7 +43,7 @@ export const BrowserMessages = {
     `%bulb% Tip: Reinstall dependencies, then install browsers explicitly:\n   npx playwright install`,
 
   browserExecutionFailed: (name: string, message: string) =>
-    `Browser execution failed for "${name}": ${message}`,
+    `%error% Browser execution failed for "${name}": ${message}`,
 
   navigatingToTestPage: () =>
     `%globe% Navigating to test page...`,
@@ -51,25 +52,25 @@ export const BrowserMessages = {
     `%stop% Tests aborted by user (Ctrl+C)`,
 
   testExecutionFailed: (error: unknown) =>
-    `Test execution failed: ${error}`,
+    `%error% Test execution failed: ${error}`,
 
   browserConsoleError: (text: string) =>
-    `${text}`,
+    `%error% ${text}`,
 
   browserConsoleWarn: (text: string) =>
     `%warn% ${text}`,
 
   pageError: (message: string) =>
-    `Page error: ${message}`,
+    `%error% Page error: ${message}`,
 
   requestFailed: (url: string, errorText: string | undefined) =>
-    `${url}, ${errorText}`,
+    `%error% ${url}, ${errorText}`,
 
   unknownBrowserFallbackToChrome: (name: string) =>
     `%warn%  Unknown browser "${name}", using Chrome instead`,
 
   browserNotInstalled: (name: string) =>
-    `Browser "${name}" is not installed.`,
+    `%error% Browser "${name}" is not installed.`,
 
   browserInstallTip: (name: string) =>
     `%bulb% Tip: Install it by running: npx playwright install ${name.toLowerCase()}`,
@@ -84,68 +85,68 @@ export const BrowserMessages = {
     `%bulb% Tip: Install browsers explicitly to enable automatic browser opening:\n   npx playwright install`,
 
   failedToOpenBrowser: (message: string) =>
-    `Failed to open browser: ${message}`,
+    `%error% Failed to open browser: ${message}`,
 
   openBrowserManually: (url: string) =>
     `%bulb% Please open browser manually: ${url}`,
 
   failedToCloseBrowser: (error: unknown) =>
-    `Failed to close browser: ${error}`,
+    `%error% Failed to close browser: ${error}`,
 };
 
 // ─── cli-handler.ts ───────────────────────────────────────────────────────────
 
 export const CLIMessages = {
   invalidSeed: () =>
-    `Invalid --seed value (expected a number).`,
+    `%error% Invalid --seed value (expected a number).`,
 
   failedToInitializeProject: (error: unknown) =>
-    `Failed to initialize testify config: ${error}`,
+    `%error% Failed to initialize testify config: ${error}`,
 
   browserArgMissing: () =>
-    `--browser requires a browser name (chrome|chromium|firefox|webkit|node).`,
+    `%error% --browser requires a browser name (chrome|chromium|firefox|webkit|node).`,
 
   projectArgMissing: () =>
-    `--project requires a package name or path.`,
+    `%error% --project requires a package name or path.`,
 
   portArgMissing: () =>
-    `--port requires a number between 1 and 65535.`,
+    `%error% --port requires a number between 1 and 65535.`,
 
   invalidPort: () =>
-    `Invalid --port value (expected an integer between 1 and 65535).`,
+    `%error% Invalid --port value (expected an integer between 1 and 65535).`,
 
   configArgMissing: () =>
-    `--config requires a path to a config file.`,
+    `%error% --config requires a path to a config file.`,
 
   timeoutArgMissing: () =>
-    `--timeout requires a number of milliseconds.`,
+    `%error% --timeout requires a number of milliseconds.`,
 
   invalidTimeout: () =>
-    `Invalid --timeout value (expected a positive integer, in milliseconds).`,
+    `%error% Invalid --timeout value (expected a positive integer, in milliseconds).`,
 
   fileArgMissing: () =>
-    `--file / -f requires a spec filename.`,
+    `%error% --file / -f requires a spec filename.`,
 
   suiteArgMissing: () =>
-    `--suite / -s requires a suite name.`,
+    `%error% --suite / -s requires a suite name.`,
 
   unknownCommand: (command: string) =>
-    `Unknown command: ${command}`,
+    `%error% Unknown command: ${command}`,
 
   invalidArguments: (error: unknown) =>
-    `Invalid command line arguments: ${error instanceof Error ? error.message : String(error)}`,
+    `%error% Invalid command line arguments: ${error instanceof Error ? error.message : String(error)}`,
 
   watchIncompatibleFlags: (flags: string[]) =>
-    `The --watch flag cannot be used with: ${flags.join(', ')}`,
+    `%error% The --watch flag cannot be used with: ${flags.join(', ')}`,
 
   couldNotResolveProject: (name: string) =>
-    `Could not resolve project "${name}". It is not a directory and not a known package name.`,
+    `%error% Could not resolve project "${name}". It is not a directory and not a known package name.`,
 
   preserveOutputsEnabled: () =>
     `%info% Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
 
   failedToStartTestRunner: (error: unknown) =>
-    `Failed to start test runner: ${toConsoleSafe(String(error))}`,
+    `%error% Failed to start test runner: ${toConsoleSafe(String(error))}`,
 
   // Help text — kept as a single block so the caller can println() each line
   helpLines: (): string[] => [
@@ -200,10 +201,10 @@ export const CLIMessages = {
 
 export const ConfigMessages = {
   failedToParseConfig: (error: unknown) =>
-    `Failed to parse existing testify.json: ${error}`,
+    `%error% Failed to parse existing testify.json: ${error}`,
 
   failedToCreateConfig: (error: unknown) =>
-    `Failed to create default testify.json: ${error}`,
+    `%error% Failed to create default testify.json: ${error}`,
 
   createdDefaultConfig: (path: string) =>
     `%info% Created default test runner config at ${path}`,
@@ -212,7 +213,7 @@ export const ConfigMessages = {
     `%info% Config already exists at ${path}`,
 
   failedToWriteConfig: (error: unknown) =>
-    `Failed to write testify.json: ${error}`,
+    `%error% Failed to write testify.json: ${error}`,
 
   generatedDefaultConfig: (path: string) =>
     `%info% Generated default Vite Jasmine config at ${path}`,
@@ -250,7 +251,7 @@ export const CoverageMessages = {
     `%doc% Raw coverage saved to ${path}`,
 
   failedToWriteCoverage: (error: unknown) =>
-    `Failed to write coverage file: ${error}`,
+    `%error% Failed to write coverage file: ${error}`,
 
   coverageReportsGenerated: () =>
     `%checked% Coverage reports generated successfully`,
@@ -260,14 +261,14 @@ export const CoverageMessages = {
 
 export const FileDiscoveryMessages = {
   errorDiscoveringFiles: (error: unknown) =>
-    `Error discovering files: ${error}`,
+    `%error% Error discovering files: ${error}`,
 };
 
 // ─── host-adapter.ts ─────────────────────────────────────────────────────────
 
 export const HostAdapterMessages = {
   ipcEventError: (message: string) =>
-    `Error processing IPC event: ${message}`,
+    `%error% Error processing IPC event: ${message}`,
 
   childProcessReady: () =>
     `%circle_green% Child test process ready`,
@@ -286,16 +287,16 @@ export const HttpServerMessages = {
     `%hourglass% Port ${port} is busy. Waiting 3s before reclaiming it...`,
 
   failedToKillProcess: (port: number, message: string, stderr: string) =>
-    `Failed to kill process on port ${port}: ${message}\n${stderr}`,
+    `%error% Failed to kill process on port ${port}: ${message}\n${stderr}`,
 
   portReclaimed: (port: number) =>
     `%checked% Port ${port} reclaimed.`,
 
   portStillBusy: (port: number) =>
-    `Port ${port} is still busy after reclaim attempt.`,
+    `%error% Port ${port} is still busy after reclaim attempt.`,
 
   serverError: (error: unknown) =>
-    `${error}`,
+    `%error% ${error}`,
 };
 
 // ─── hmr-manager.ts ──────────────────────────────────────────────────────────
@@ -311,7 +312,7 @@ export const HmrMessages = {
     `%checked% Source change strategy set to: ${strategy}`,
 
   cannotExtractDependencies: (filePath: string, message: string) =>
-    `%warn%  Could not extract dependencies from ${filePath}: ${message}`,
+    `%error% Could not extract dependencies from ${filePath}: ${message}`,
 
   watchingFiles: (count: number, mode: string, strategy: string) =>
     `%checked% HMR watching ${count} files (mode: ${mode}, strategy: ${strategy})`,
@@ -332,22 +333,22 @@ export const HmrMessages = {
     `%box% Found ${count} ${type} files in new directory`,
 
   errorInHandleFileAdd: (error: unknown) =>
-    `Error in handleFileAdd: ${error}`,
+    `%error% Error in handleFileAdd: ${error}`,
 
   errorInHandleFileRemove: (error: unknown) =>
-    `Error in handleFileRemove: ${error}`,
+    `%error% Error in handleFileRemove: ${error}`,
 
   errorInHandleDirectoryAdd: (error: unknown) =>
-    `Error in handleDirectoryAdd: ${error}`,
+    `%error% Error in handleDirectoryAdd: ${error}`,
 
   errorInHandleDirectoryRemove: (error: unknown) =>
-    `Error in handleDirectoryRemove: ${error}`,
+    `%error% Error in handleDirectoryRemove: ${error}`,
 
   skippingRebuildNonExistent: (filePath: string) =>
     `%warn%  Skipping rebuild for non-existent file: ${filePath}`,
 
   rebuildFailed: (error: unknown) =>
-    `Rebuild failed: ${toConsoleSafe(String(error))}`,
+    `%error% Rebuild failed: ${toConsoleSafe(String(error))}`,
 
   skippingDeletedFileFromQueue: (file: string) =>
     `%warn%  Skipping deleted file from rebuild queue: ${file}`,
@@ -368,7 +369,7 @@ export const HmrMessages = {
     `%box% Changed: ${changed} files → Rebuilding: ${total} files (${source} source, ${test} test)`,
 
   viteBuildFailed: (error: unknown) =>
-    `Vite build failed: ${toConsoleSafe(String(error))}`,
+    `%error% Vite build failed: ${toConsoleSafe(String(error))}`,
 
   retryingWithFilteredEntries: () =>
     `%refresh% Retrying build with filtered entry points...`,
@@ -417,25 +418,25 @@ export const NodeRunnerMessages = {
     `%rocket% Starting in-process test runner...`,
 
   testExecutionError: (message: string) =>
-    `Test execution error: ${message}`,
+    `%error% Test execution error: ${message}`,
 
   testProcessAlreadyRunning: () =>
-    `%warn%  Test process is already running`,
+    `%error% Test process is already running`,
 
   unhandledRejection: (error: string) =>
-    `${error}`,
+    `%error% ${error}`,
 
   uncaughtException: (error: string) =>
-    `${error}`,
+    `%error% ${error}`,
 
   caughtSignal: (signal: string) =>
     `%stop% Caught signal: ${signal}`,
 
   errorDuringExecution: (message: string) =>
-    `Error during test execution: ${message}`,
+    `%error% Error during test execution: ${message}`,
 
   failedToRunTests: (message: string) =>
-    `Failed to run tests: ${message}`,
+    `%error% Failed to run tests: ${message}`,
 };
 
 // ─── process-lock.ts ─────────────────────────────────────────────────────────
@@ -448,7 +449,7 @@ export const ProcessLockMessages = {
     `%warn%  PID ${pid} does not appear to be a Node process (${name}). Skipping kill.`,
 
   couldNotTerminate: (pid: number) =>
-    `%warn%  Could not terminate previous testify instance (PID ${pid}).`,
+    `%error% Could not terminate previous testify instance (PID ${pid}).`,
 
   terminatedPrevious: (pid: number) =>
     `%lock% Terminated previous testify instance (PID ${pid}).`,
@@ -458,19 +459,19 @@ export const ProcessLockMessages = {
 
 export const JasmineCLIMessages = {
   unknownCommand: (command: string) =>
-    `Unknown command: ${command}`,
+    `%error% Unknown command: ${command}`,
 
   missingSpecArg: () =>
-    `Missing required --spec <path>`,
+    `%error% Missing required --spec <path>`,
 
   specFileNotFound: (spec: string) =>
-    `Spec file not found: ${spec}`,
+    `%error% Spec file not found: ${spec}`,
 
   invalidSeedValue: (value: string) =>
-    `Invalid --seed value: ${value}`,
+    `%error% Invalid --seed value: ${value}`,
 
   notRunningInVsCode: () =>
-    `\`npx jasmine init\` is only supported when run from VS Code.`,
+    `%error% \`npx jasmine init\` is only supported when run from VS Code.`,
 
   openVsCodeTerminalHint: () =>
     `%info% Open VS Code, then run this from the integrated terminal (Terminal -> New Terminal).`,
@@ -482,7 +483,7 @@ export const JasmineCLIMessages = {
     `Added configuration: ${name}`,
 
   failedToParseVsCodeConfig: (path: string) =>
-    `Failed to parse existing VS Code launch config: ${path}`,
+    `%error% Failed to parse existing VS Code launch config: ${path}`,
 
   addConfigManually: () =>
     `%info% Add this configuration manually:`,
@@ -494,26 +495,26 @@ export const JasmineCLIMessages = {
     `%info% Updated VS Code launch config at ${path}`,
 
   unhandledRejection: (message: string) =>
-    `${message}`,
+    `%error% ${message}`,
 
   uncaughtException: (message: string) =>
-    `${message}`,
+    `%error% ${message}`,
 
   failedToRunJasmine: (stack: string) =>
-    `Failed to run jasmine: ${stack}`,
+    `%error% Failed to run jasmine: ${stack}`,
 };
 
 // ─── vite-config-builder.ts ──────────────────────────────────────────────────
 
 export const ViteConfigMessages = {
   noFilesToBuild: () =>
-    `No files found to build`,
+    `%error% No files found to build`,
 
   incrementalBuild: (count: number) =>
     `%box% Incremental build: ${count} files`,
 
   tsconfigParseFailed: (error: unknown) =>
-    `%warn% tsconfig parse failed: ${error}`,
+    `%error% tsconfig parse failed: ${error}`,
 };
 
 // ─── vite-jasmine-runner.ts ──────────────────────────────────────────────────
@@ -529,16 +530,16 @@ export const RunnerMessages = {
     `%info% No matching spec files found in ${locations}. Nothing to run.`,
 
   buildFailed: (error: unknown) =>
-    `Build failed: ${toConsoleSafe(String(error))}`,
+    `%error% Build failed: ${toConsoleSafe(String(error))}`,
 
   preprocessFailed: (error: unknown) =>
-    `Preprocessing failed: ${toConsoleSafe(String(error))}`,
+    `%error% Preprocessing failed: ${toConsoleSafe(String(error))}`,
 
   invalidNodeHeadedMode: () =>
-    `Invalid configuration: Node.js runner cannot run in headed mode.`,
+    `%error% Invalid configuration: Node.js runner cannot run in headed mode.`,
 
   watchOnlyHeaded: () =>
-    `--watch mode is only supported in headed browser environments.`,
+    `%error% --watch mode is only supported in headed browser environments.`,
 
   startingWatchMode: () =>
     `%eyes% Starting Jasmine Test Runner in Watch Mode...`,
@@ -562,10 +563,10 @@ export const RunnerMessages = {
     `%warn%  Headless browser not available. Falling back to Node.js runner.`,
 
   browserTestExecutionFailed: () =>
-    `Browser test execution failed. Need to install browser binaries?`,
+    `%error% Browser test execution failed. Need to install browser binaries?`,
 
   nodeTestExecutionFailed: (message: string) =>
-    `Node test execution failed: ${message}`,
+    `%error% Node test execution failed: ${message}`,
 
   webSocketReadyWithReporting: () =>
     `%satellite% WebSocket server ready for real-time test reporting`,
@@ -574,7 +575,7 @@ export const RunnerMessages = {
     `%refresh% Browser window closed prematurely`,
 
   finishHeadedRunFailed: (error: unknown) =>
-    `Failed to finish headed browser run: ${error}`,
+    `%error% Failed to finish headed browser run: ${error}`,
 
   preservingExistingHtml: () =>
     `%info% Preserving existing index.html (no regeneration).`,
@@ -589,7 +590,7 @@ export const RunnerMessages = {
     `%broom% Cleaning output directory...`,
 
   testsCompletedTimeout: (message: string) =>
-    `%warn% ${message}`,
+    `%error% ${message}`,
 };
 
 // ─── websocket-manager.ts ────────────────────────────────────────────────────
@@ -599,26 +600,26 @@ export const WebSocketMessages = {
     `%plug% WebSocket client connected`,
 
   failedToParseMessage: (error: unknown) =>
-    `Failed to parse WebSocket message: ${error}`,
+    `%error% Failed to parse WebSocket message: ${error}`,
 
   websocketError: (error: unknown) =>
-    `WebSocket error: ${error}`,
+    `%error% WebSocket error: ${error}`,
 
   hmrClientReady: () =>
     `%fire% Client HMR runtime ready`,
 
   hmrClientError: (message: string) =>
-    `HMR error on client: ${message}`,
+    `%error% HMR error on client: ${message}`,
 
   unknownMessageType: (type: string) =>
     `%warn%  Unknown WebSocket message type: ${type}`,
 
   errorHandlingMessage: (error: unknown) =>
-    `Error handling WebSocket message: ${error}`,
+    `%error% Error handling WebSocket message: ${error}`,
 
   hmrEnabled: () =>
     `%fire% HMR enabled on WebSocket server`,
 
   errorClosingClient: (error: unknown) =>
-    `Error closing WebSocket client: ${error}`,
+    `%error% Error closing WebSocket client: ${error}`,
 };

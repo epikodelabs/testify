@@ -19,12 +19,36 @@ describe('Logger prompt styling', () => {
     );
   });
 
-  it('prefixes only the first line of multi-line errors', () => {
+  it('uses the %error% prefix to drive error formatting', () => {
     expect(source).toContain(
-      '? this.formatErrorLine(line)',
+      "const errorToken =",
     );
     expect(source).toContain(
-      ': line;',
+      "'%error% ';",
+    );
+    expect(source).toContain(
+      'this.errorPrefix() +',
+    );
+  });
+
+  it('uses the %warn% prefix to drive warning badge formatting', () => {
+    expect(source).toContain(
+      "const warnToken =",
+    );
+    expect(source).toContain(
+      "'%warn% ';",
+    );
+    expect(source).toContain(
+      'this.warnPrefix() +',
+    );
+  });
+
+  it('exposes a dedicated warn logger method', () => {
+    expect(source).toContain(
+      'warn(msg: string)',
+    );
+    expect(source).toContain(
+      'forceWarnPrefix',
     );
   });
 });

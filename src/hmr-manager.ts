@@ -700,7 +700,7 @@ export class HmrManager extends EventEmitter {
     
     // ✅ FIX: Skip if file doesn't exist (for unlink cases)
     if (changeType !== 'unlink' && !fs.existsSync(normalized)) {
-      logger.println(HmrMessages.skippingRebuildNonExistent(normalized));
+      logger.warn(HmrMessages.skippingRebuildNonExistent(normalized));
       return;
     }
     
@@ -731,7 +731,7 @@ export class HmrManager extends EventEmitter {
         // ✅ FIX: Filter out deleted files from ALL queues before processing
         const changedFiles = Array.from(this.rebuildQueue).filter(file => {
           if (!fs.existsSync(file)) {
-            logger.println(HmrMessages.skippingDeletedFileFromQueue(file));
+            logger.warn(HmrMessages.skippingDeletedFileFromQueue(file));
             return false;
           }
           return true;
@@ -741,7 +741,7 @@ export class HmrManager extends EventEmitter {
 
         const directChangedFiles = Array.from(this.directChanges).filter(file => {
           if (!fs.existsSync(file)) {
-            logger.println(HmrMessages.skippingDeletedFileFromDirectChanges(file));
+            logger.warn(HmrMessages.skippingDeletedFileFromDirectChanges(file));
             return false;
           }
           return true;
@@ -749,7 +749,7 @@ export class HmrManager extends EventEmitter {
         this.directChanges.clear();
 
         if (changedFiles.length === 0) {
-          logger.println(HmrMessages.allQueuedFilesDeleted());
+          logger.warn(HmrMessages.allQueuedFilesDeleted());
           continue;
         }
 
@@ -768,7 +768,7 @@ export class HmrManager extends EventEmitter {
         const rebuiltFiles = Array.from(filesToRebuild);
 
         if (rebuiltFiles.length === 0) {
-          logger.println(HmrMessages.noValidFilesToRebuild());
+          logger.warn(HmrMessages.noValidFilesToRebuild());
           continue;
         }
 
@@ -801,7 +801,7 @@ export class HmrManager extends EventEmitter {
         // build. The source will be pulled transitively the next time a spec
         // that imports it is rebuilt.
         if (validTestFiles.length === 0) {
-          logger.println(
+          logger.warn(
             HmrMessages.noValidSourceOrTestFiles(),
           );
           continue;
@@ -838,7 +838,7 @@ export class HmrManager extends EventEmitter {
             if (
               finalTestFiles.length === 0
             ) {
-              logger.println(
+              logger.warn(
                 HmrMessages
                   .allEntryPointsDeleted(),
               );

@@ -53,7 +53,7 @@ export class NodeArtifactHost {
     if (
       artifacts.specFiles.length === 0
     ) {
-      logger.println(
+      logger.warn(
         NodeRunnerMessages
           .noJsFilesForRunner(),
       );

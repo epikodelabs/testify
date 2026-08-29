@@ -68,7 +68,7 @@ export class ProcessLock {
       // Verify the process is actually a Node process before killing it
       const processName = await this.getProcessName(pid);
       if (!processName || !/node/i.test(processName)) {
-        logger.println(ProcessLockMessages.nonNodeProcess(pid, processName || 'unknown'));
+        logger.warn(ProcessLockMessages.nonNodeProcess(pid, processName || 'unknown'));
         fs.unlinkSync(this.pidFile);
         return;
       }

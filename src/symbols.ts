@@ -4,7 +4,7 @@ import { supportsEmoji, setAnsiMode as setAnsiModeConstant, isAnsiMode } from '.
 export const TTY_SYMBOLS: Record<string, string> = {
   checked: '✓',
   cross: '✕',
-  warn: '🚨',
+  warn: 'WARN',
   info: '💡',
   globe: '🌐',
   doc: '📄',
@@ -48,7 +48,7 @@ export const TTY_SYMBOLS: Record<string, string> = {
 export const ANSI_SYMBOLS: Record<string, string> = {
   checked: '[OK]',
   cross: '[ERROR]',
-  warn: '[WARN]',
+  warn: 'WARN',
   info: '[INFO]',
   globe: '[BROWSER]',
   doc: '[FILE]',

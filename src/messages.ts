@@ -22,7 +22,7 @@ export const LOG_MESSAGES = {
     projectNotFound: {
         type: 'error',
         icon: 'x',
-        text: (projectName: string) => `[error] Project "${projectName}" not found in tsconfig.json or workspace definitions.`,
+        text: (projectName: string) => `%error% Project "${projectName}" not found in tsconfig.json or workspace definitions.`,
     },
     invalidExitCode: {
         type: 'warning',
@@ -47,7 +47,7 @@ export const LOG_MESSAGES = {
     browserCleanupFailed: {
         type: 'warning',
         icon: '🚨',
-        text: (pid: number, error: string) => `[warning] BrowserManager: Failed to terminate process ${pid}. Reason: ${error}`,
+        text: (pid: number, error: string) => `%error% BrowserManager: Failed to terminate process ${pid}. Reason: ${error}`,
     },
     headlessModeImplied: {
         type: 'info',
@@ -77,22 +77,22 @@ export const LOG_MESSAGES = {
     testProcessAlreadyRunning: {
         type: 'warning',
         icon: '🚨',
-        text: () => '[warning] Test process already running.',
+        text: () => '%error% Test process already running.',
     },
     testExecutionError: {
         type: 'error',
         icon: 'x',
-        text: (message: string) => `[error] Test execution error: ${message}`,
+        text: (message: string) => `%error% Test execution error: ${message}`,
     },
     failedToRunTests: {
         type: 'error',
         icon: 'x',
-        text: (error: string) => `[error] Failed to run tests: ${error}`,
+        text: (error: string) => `%error% Failed to run tests: ${error}`,
     },
     errorDuringExecution: {
         type: 'error',
         icon: 'x',
-        text: (error: string) => `[error] Error during test execution: ${error}`,
+        text: (error: string) => `%error% Error during test execution: ${error}`,
     },
 
     // =================================================================
@@ -117,12 +117,12 @@ export const LOG_MESSAGES = {
     unhandledRejection: {
         type: 'error',
         icon: 'x',
-        text: (error: string) => `[error] Unhandled Rejection: ${error}`,
+        text: (error: string) => `%error% Unhandled Rejection: ${error}`,
     },
     uncaughtException: {
         type: 'error',
         icon: 'x',
-        text: (error: string) => `[error] Uncaught Exception: ${error}`,
+        text: (error: string) => `%error% Uncaught Exception: ${error}`,
     },
     
     // =================================================================

@@ -10,6 +10,7 @@ const colors = {
   red: '\x1b[31m',
   brightRed: '\x1b[91m',
   bgRed: '\x1b[41m',
+  bgYellow: '\x1b[43m',
   yellow: '\x1b[33m',
   cyan: '\x1b[36m',
   blue: '\x1b[34m',
@@ -34,8 +35,6 @@ export class Logger {
   private showPrompt = true;
   private prompt: string;
   private plainPrompt = '> ';
-  private errorPrompt = `${colors.bold}${colors.black}${colors.bgRed} ERROR ${colors.reset} `;
-  private plainErrorPrompt = '[ERROR] ';
 
   constructor() {
     this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;
@@ -98,14 +97,27 @@ export class Logger {
   print(msg: string) {
     if (areTestLogsSuppressed()) return true;
 
-    msg = replacePlaceholders(msg);
-    const prompt = supportsColor() ? this.prompt : this.plainPrompt;
-    const fullMessage = this.showPrompt ? prompt + msg : msg;
-    const lines = fullMessage.split('\n');
+    const prompt =
+      supportsColor()
+        ? this.prompt
+        : this.plainPrompt;
+    const lines = msg.split('\n');
     for (let i = 0; i < lines.length; i++) {
-      this.writeLine(lines[i]);
+      const formatted =
+        this.formatLine(lines[i]);
+      const renderedLine =
+        i === 0 &&
+        this.showPrompt &&
+        !formatted.hasOwnPrompt
+          ? prompt + formatted.text
+          : formatted.text;
+
+      this.writeLine(
+        renderedLine,
+        formatted.color,
+      );
       if (i < lines.length - 1) process.stdout.write('\n');
-      this.addLine(lines[i]);
+      this.addLine(renderedLine);
     }
     this.showPrompt = false;
     return true;
@@ -141,17 +153,65 @@ export class Logger {
   error(msg: string) {
     if (areTestLogsSuppressed()) return true;
 
-    msg = this.stripErrorPrefix(replacePlaceholders(msg));
+    msg = this.stripLegacyPrefix(
+      msg,
+      'error',
+    );
     const lines = msg.split('\n');
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const formattedLine =
-        i === 0
-          ? this.formatErrorLine(line)
-          : line;
-      this.writeLine(formattedLine);
+      const formatted =
+        this.formatLine(
+          lines[i],
+          {
+            forceErrorPrefix:
+              i === 0,
+            forceColor:
+              supportsColor()
+                ? colors.red
+                : '',
+          },
+        );
+
+      this.writeLine(
+        formatted.text,
+        formatted.color,
+      );
       if (i < lines.length - 1) process.stdout.write('\n');
-      this.addLine(formattedLine);
+      this.addLine(
+        formatted.text,
+      );
+    }
+    process.stdout.write('\n');
+    this.showPrompt = true;
+    return true;
+  }
+
+  warn(msg: string) {
+    if (areTestLogsSuppressed()) return true;
+
+    msg = this.stripLegacyPrefix(
+      msg,
+      'warn',
+    );
+    const lines = msg.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const formatted =
+        this.formatLine(
+          lines[i],
+          {
+            forceWarnPrefix:
+              i === 0,
+          },
+        );
+
+      this.writeLine(
+        formatted.text,
+        formatted.color,
+      );
+      if (i < lines.length - 1) process.stdout.write('\n');
+      this.addLine(
+        formatted.text,
+      );
     }
     process.stdout.write('\n');
     this.showPrompt = true;
@@ -201,24 +261,118 @@ export class Logger {
     }
   }
 
-  private stripErrorPrefix(message: string): string {
+  private formatLine(
+    line: string,
+    options: {
+      forceErrorPrefix?: boolean;
+      forceWarnPrefix?: boolean;
+      forceColor?: string;
+    } = {},
+  ): {
+    text: string;
+    color: string;
+    hasOwnPrompt: boolean;
+  } {
+    const errorToken =
+      '%error% ';
+    const warnToken =
+      '%warn% ';
+    const shouldPrefixError =
+      options.forceErrorPrefix &&
+      !line.startsWith(errorToken);
+    const shouldPrefixWarn =
+      options.forceWarnPrefix &&
+      !line.startsWith(warnToken);
+    const sourceLine =
+      shouldPrefixError
+        ? errorToken + line
+        : shouldPrefixWarn
+          ? warnToken + line
+          : line;
+
+    if (
+      sourceLine.startsWith(
+        errorToken,
+      )
+    ) {
+      return {
+        text:
+          this.errorPrefix() +
+          replacePlaceholders(
+            sourceLine.slice(
+              errorToken.length,
+            ),
+          ),
+        color:
+          options.forceColor ??
+          (supportsColor()
+            ? colors.red
+            : ''),
+        hasOwnPrompt: true,
+      };
+    }
+
+    if (
+      sourceLine.startsWith(
+        warnToken,
+      )
+    ) {
+      return {
+        text:
+          this.warnPrefix() +
+          replacePlaceholders(
+            sourceLine.slice(
+              warnToken.length,
+            ),
+          ),
+        color: '',
+        hasOwnPrompt: true,
+      };
+    }
+
+    return {
+      text: replacePlaceholders(
+        sourceLine,
+      ),
+      color:
+        options.forceColor ?? '',
+      hasOwnPrompt: false,
+    };
+  }
+
+  private stripLegacyPrefix(
+    message: string,
+    type: 'error' | 'warn',
+  ): string {
+    const marker =
+      type === 'error'
+        ? '%error%'
+        : '%warn%';
+
     return message
       .split('\n')
       .map((line) =>
         line.replace(
-          /^(?:\[(?:ERROR|WARN|INFO|BROWSER|FILE|TREE|STOP|TIP|START|WAIT|READY|ADD|REM|DIR|BUILD|RETRY|CLEAN|LOCK|HMR|WS|CONN|OK|WATCH)\]|[^\p{L}\p{N}\s"'`([{<]+)\s+/u,
+          new RegExp(
+            `^(?:${marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+|\\[(?:ERROR|WARN|INFO|BROWSER|FILE|TREE|STOP|TIP|START|WAIT|READY|ADD|REM|DIR|BUILD|RETRY|CLEAN|LOCK|HMR|WS|CONN|OK|WATCH)\\]|[^\\p{L}\\p{N}\\s"'\\\`([{<]+)\\s+`,
+            'u',
+          ),
           '',
         ),
       )
       .join('\n');
   }
 
-  private formatErrorLine(line: string): string {
-    const prefix = supportsColor()
-      ? this.errorPrompt
-      : this.plainErrorPrompt;
+  private errorPrefix(): string {
+    return supportsColor()
+      ? `${colors.bold}${colors.black}${colors.bgRed} ERROR ${colors.red}`
+      : '[ERROR] ';
+  }
 
-    return `${prefix}${line}`;
+  private warnPrefix(): string {
+    return supportsColor()
+      ? `${colors.bold}${colors.black}${colors.bgYellow} WARN ${colors.reset}`
+      : 'WARN ';
   }
 
 }

@@ -38,7 +38,7 @@ export class HtmlGenerator {
       );
 
     if (artifacts.files.length === 0) {
-      logger.println(
+      logger.warn(
         HtmlMessages.noJsFilesForHtml(),
       );
       return;

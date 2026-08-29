@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.42 - 2026-08-29
+
+### Fixed
+
+* Routed warning output through `logger.warn()` and error output through `logger.error()` consistently across browser, HMR, HTTP/WebSocket, process-lock, host-adapter, and runner paths.
+* Added regression coverage to enforce logger severity routing for `%warn%` and `%error%` messages.
+
+
 ## 1.0.41 - 2026-08-21
 
 ### Fixed
