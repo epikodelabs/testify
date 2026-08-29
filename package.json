@@ -1,6 +1,6 @@
 {
   "name": "@epikodelabs/testify",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "description": "A programmable test engine for Node and real browsers, with Jasmine as its first hosted test language.",
   "bin": {
     "jasmine": "bin/jasmine",

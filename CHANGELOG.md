@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.43 - 2026-08-29
+
+### Fixed
+
+* Ensured caught errors are always logged instead of being silently swallowed.
+* Added error logging to cleanup, fallback, file discovery, package resolution, configuration, browser, and process-management paths.
+* Replaced empty `catch` and promise rejection handlers with explicit error logging while preserving existing recovery behavior.
+* Added regression coverage to prevent silent error handling from being reintroduced.
+
+## 1.0.42 - 2026-08-29
+
+### Fixed
+
+* Routed warning output through `logger.warn()` and error output through `logger.error()` consistently across browser, HMR, HTTP/WebSocket, process-lock, host-adapter, and runner paths.
+* Added regression coverage to enforce logger severity routing for `%warn%` and `%error%` messages.
+
+
 ## 1.0.41 - 2026-08-21
 
 ### Fixed
@@ -65,13 +82,6 @@ or
 npx jasmine init
 ```
 
-
-## [1.0.43] - 2026-08-29
-
-### Fixed
-
-- **Error observability**: Recoverable cleanup, probing, fallback, browser/runtime, and promise-rejection paths no longer silently swallow caught errors; failures are emitted through `logger.error`, or through `console.error` inside generated browser runtime code so the host can forward them.
-- **Regression coverage**: Added a source-level convention spec preventing bare `catch {}` blocks and empty promise rejection handlers from being reintroduced in Node-side source files.
 
 ## [1.0.36] - 2026-07-31
 
