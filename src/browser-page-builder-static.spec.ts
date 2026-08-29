@@ -1,12 +1,18 @@
 import {
   BrowserPageBuilder,
 } from './browser-page-builder';
+import {
+  getJasmineBrowserAssets,
+} from './jasmine-browser-assets';
 import type {
   ViteJasmineConfig,
 } from './vite-jasmine-config';
 
 describe('BrowserPageBuilder static reporter bridge', () => {
   it('includes the WebSocket reporter and static spec imports', () => {
+    const jasmineAssets =
+      getJasmineBrowserAssets();
+
     const builder =
       new BrowserPageBuilder({
         outDir:
@@ -35,11 +41,24 @@ describe('BrowserPageBuilder static reporter bridge', () => {
     );
 
     expect(html).toContain(
-      'boot0.js',
+      jasmineAssets.jasmineScriptUrl,
     );
 
     expect(html).toContain(
-      'boot1.js',
+      jasmineAssets.jasmineHtmlScriptUrl,
+    );
+
+    for (
+      const bootScriptUrl of
+      jasmineAssets.bootScriptUrls
+    ) {
+      expect(html).toContain(
+        bootScriptUrl,
+      );
+    }
+
+    expect(html).toContain(
+      jasmineAssets.cssUrl,
     );
 
     expect(html).toContain(

@@ -33,7 +33,7 @@ export class ProcessLock {
 
   releaseSync(): void {
     try {
-      fs.unlinkSync(this.pidFile);
+      this.unlinkPidFileSync();
     } catch (error) {
       logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       // ignore
@@ -47,7 +47,7 @@ export class ProcessLock {
       const raw = fs.readFileSync(this.pidFile, 'utf-8').trim();
       const pid = parseInt(raw, 10);
       if (!Number.isFinite(pid)) {
-        fs.unlinkSync(this.pidFile);
+        this.unlinkPidFileSync();
         return;
       }
 
@@ -62,7 +62,7 @@ export class ProcessLock {
         } else {
           // Stale PID file
           logger.println(ProcessLockMessages.staleLockFile(pid));
-          fs.unlinkSync(this.pidFile);
+          this.unlinkPidFileSync();
           return;
         }
       }
@@ -71,7 +71,7 @@ export class ProcessLock {
       const processName = await this.getProcessName(pid);
       if (!processName || !/node/i.test(processName)) {
         logger.println(ProcessLockMessages.nonNodeProcess(pid, processName || 'unknown'));
-        fs.unlinkSync(this.pidFile);
+        this.unlinkPidFileSync();
         return;
       }
 
@@ -93,10 +93,21 @@ export class ProcessLock {
       } else {
         logger.println(ProcessLockMessages.terminatedPrevious(pid));
       }
-      fs.unlinkSync(this.pidFile);
+      this.unlinkPidFileSync();
     } catch (error) {
       logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       // Ignore any errors during cleanup
+    }
+  }
+
+  private unlinkPidFileSync(): void {
+    try {
+      fs.unlinkSync(this.pidFile);
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') {
+        return;
+      }
+      throw error;
     }
   }
 

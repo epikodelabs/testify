@@ -10,6 +10,7 @@ import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import { logger } from './logger';
 import { HttpServerMessages } from './log-messages';
+import { resolveJasmineBrowserAssetDir } from './jasmine-browser-assets';
 
 interface ResolvedRequestPath {
   rootDir: string;
@@ -21,12 +22,41 @@ interface StaticPathRoots {
   workspaceNodeModulesDir: string;
   vendorDir: string;
   assetDirs: string[];
+  jasmineAssetDir: string | null;
 }
 
 export function resolveStaticRequestPath(
   filePath: string,
   roots: StaticPathRoots,
 ): ResolvedRequestPath {
+  if (
+    filePath.startsWith(
+      '/__testify/jasmine/',
+    )
+  ) {
+    const relativePath =
+      filePath.replace(
+        /^\/__testify\/jasmine\//,
+        '',
+      );
+    const jasmineAssetDir =
+      roots.jasmineAssetDir ??
+      path.resolve(
+        roots.vendorDir,
+        'jasmine-core/lib/jasmine-core',
+      );
+
+    return {
+      rootDir: jasmineAssetDir,
+      resolvedPath: path.normalize(
+        path.resolve(
+          jasmineAssetDir,
+          relativePath,
+        ),
+      ),
+    };
+  }
+
   if (filePath.startsWith('/node_modules/')) {
     const relativePath =
       filePath.replace(
@@ -188,6 +218,8 @@ export class HttpServerManager {
     const vendorDir = path.resolve(path.join(__dirname, '../node_modules'));
     const workspaceNodeModulesDir = path.resolve(path.join(process.cwd(), 'node_modules'));
     const packageRoot = path.resolve(path.join(__dirname, '..'));
+    const jasmineAssetDir =
+      resolveJasmineBrowserAssetDir();
     const assetDirs = [
       path.resolve(outDir, 'assets'),
       path.resolve(process.cwd(), 'assets'),
@@ -222,6 +254,7 @@ export class HttpServerManager {
           workspaceNodeModulesDir,
           vendorDir,
           assetDirs,
+          jasmineAssetDir,
         },
       );
 

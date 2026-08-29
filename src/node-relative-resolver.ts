@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire, registerHooks } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { logger } from './logger';
 
 const RELATIVE_SPECIFIER_RE = /^\.{1,2}(?:[\\/]|$)/;
 const runtimeRequire = createRequire(import.meta.url);
@@ -22,21 +21,11 @@ export const RELATIVE_IMPORT_EXTENSIONS = [
 ] as const;
 
 function isFile(filePath: string): boolean {
-  try {
-    return fs.statSync(filePath).isFile();
-  } catch (error) {
-    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-    return false;
-  }
+  return fs.statSync(filePath, { throwIfNoEntry: false })?.isFile() ?? false;
 }
 
 function isDirectory(filePath: string): boolean {
-  try {
-    return fs.statSync(filePath).isDirectory();
-  } catch (error) {
-    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-    return false;
-  }
+  return fs.statSync(filePath, { throwIfNoEntry: false })?.isDirectory() ?? false;
 }
 
 function hasUrlSuffix(specifier: string): boolean {

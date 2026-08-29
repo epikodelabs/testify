@@ -9,6 +9,7 @@ import { getBrowserJasmineRegistrationPatchScript } from './browser-jasmine-runt
 import { getBrowserWebSocketReporterScript } from './browser-websocket-runtime';
 import { getBrowserHmrClientScript } from './browser-hmr-client';
 import { getBrowserBootstrapScript } from './browser-bootstrap-runtime';
+import { getJasmineBrowserAssets } from './jasmine-browser-assets';
 
 function resolveEmbeddedFaviconHref():
   string | null {
@@ -49,6 +50,8 @@ function resolveEmbeddedFaviconHref():
 export class BrowserPageBuilder {
   private readonly faviconHref =
     resolveEmbeddedFaviconHref();
+  private readonly jasmineAssets =
+    getJasmineBrowserAssets();
 
   constructor(
     private readonly config: ViteJasmineConfig,
@@ -83,9 +86,16 @@ export class BrowserPageBuilder {
         'Jasmine Test Runner',
       faviconTag:
         this.getFaviconTag(),
+      headStyles: [
+        `<link rel="stylesheet" href="${this.jasmineAssets.cssUrl}">`,
+      ],
       headScripts: [
-        '<script src="/node_modules/jasmine-core/lib/jasmine-core/boot0.js"></script>',
-        '<script src="/node_modules/jasmine-core/lib/jasmine-core/boot1.js"></script>',
+        `<script src="${this.jasmineAssets.jasmineScriptUrl}"></script>`,
+        `<script src="${this.jasmineAssets.jasmineHtmlScriptUrl}"></script>`,
+        ...this.jasmineAssets.bootScriptUrls.map(
+          (url) =>
+            `<script src="${url}"></script>`,
+        ),
         `<script type="module">
 ${websocketReporter}
 
@@ -114,6 +124,13 @@ ${this.getStaticSuiteFilterScript()}
         this.config.htmlOptions?.title ||
         'Jasmine Test Runner (HMR)',
       faviconTag: this.getFaviconTag(),
+      headStyles: [
+        `<link rel="stylesheet" href="${this.jasmineAssets.cssUrl}">`,
+      ],
+      headScripts: [
+        `<script src="${this.jasmineAssets.jasmineScriptUrl}"></script>`,
+        `<script src="${this.jasmineAssets.jasmineHtmlScriptUrl}"></script>`,
+      ],
       inlineScripts: [
         getBrowserJasmineRegistrationPatchScript(),
         getBrowserWebSocketReporterScript({
@@ -128,6 +145,9 @@ ${this.getStaticSuiteFilterScript()}
         getBrowserBootstrapScript({
           preludeModules:
             this.getPreludeModules(),
+          jasmineBootScriptUrl:
+            this.jasmineAssets
+              .primaryBootScriptUrl,
         }),
         this.getRuntimeScript(),
       ],

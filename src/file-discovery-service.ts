@@ -2,6 +2,7 @@ import { glob } from "glob";
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { norm } from "./utils";
 import * as fs from "fs/promises";
+import { existsSync, statSync } from "fs";
 import * as path from "path";
 import { builtinModules } from "module";
 import { createHash } from 'crypto';
@@ -67,13 +68,7 @@ export class FileDiscoveryService {
     const results = await Promise.all(
       paths.map(async (filePath) => {
         const normalizedPath = norm(filePath);
-        try {
-          await fs.access(normalizedPath);
-          return normalizedPath;
-        } catch (error) {
-          logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-          return null;
-        }
+        return existsSync(normalizedPath) ? normalizedPath : null;
       })
     );
     return results.filter((p): p is string => p !== null);
@@ -442,12 +437,9 @@ export class FileDiscoveryService {
     ];
 
     for (const candidate of candidates) {
-      try {
-        await fs.access(candidate);
+      const stats = statSync(candidate, { throwIfNoEntry: false });
+      if (stats?.isFile()) {
         return norm(candidate);
-      } catch (error) {
-        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-        // Keep probing the local import candidates.
       }
     }
 

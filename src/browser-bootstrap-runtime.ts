@@ -1,11 +1,15 @@
 export interface BrowserBootstrapScriptOptions {
   preludeModules: string[];
+  jasmineBootScriptUrl: string;
 }
 
 export function getBrowserBootstrapScript(
   options: BrowserBootstrapScriptOptions,
 ): string {
-  const { preludeModules } = options;
+  const {
+    preludeModules,
+    jasmineBootScriptUrl,
+  } = options;
 
   return `
 // Initialize everything after Jasmine is loaded
@@ -15,7 +19,7 @@ export function getBrowserBootstrapScript(
   }
 
   const script = document.createElement('script');
-  script.src = '/node_modules/jasmine-core/lib/jasmine-core/boot0.js';
+  script.src = ${JSON.stringify(jasmineBootScriptUrl)};
 
   script.onload = () => {
     const forwarder = new WebSocketEventForwarder();

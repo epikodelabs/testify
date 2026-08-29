@@ -4,6 +4,7 @@ import path from 'path';
 import {
   FileDiscoveryService,
 } from './file-discovery-service';
+import { logger } from './logger';
 
 describe('FileDiscoveryService', () => {
   function createConfig(
@@ -164,6 +165,166 @@ describe('FileDiscoveryService', () => {
         'browser.spec.ts',
         'node-only.spec.ts',
       ]);
+    } finally {
+      fs.rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  });
+
+  it('does not log errors for extensionless local imports that resolve to TypeScript files', async () => {
+    const root =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          'testify-discovery-',
+        ),
+      );
+
+    const errorSpy =
+      spyOn(
+        logger,
+        'error',
+      );
+
+    try {
+      fs.mkdirSync(
+        path.join(root, 'src'),
+        { recursive: true },
+      );
+      fs.mkdirSync(
+        path.join(root, 'tests'),
+        { recursive: true },
+      );
+
+      fs.writeFileSync(
+        path.join(root, 'src', 'dep.ts'),
+        'export const value = 1;\n',
+      );
+      fs.writeFileSync(
+        path.join(root, 'src', 'entry.ts'),
+        "export * from './dep';\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'tests', 'entry.spec.ts'),
+        "import { value } from '../src/entry';\nvoid value;\n",
+      );
+
+      const service =
+        new FileDiscoveryService(
+          createConfig(
+            root,
+            'chrome',
+          ),
+        );
+
+      const result =
+        await service.discoverSources();
+
+      expect(
+        result.srcFiles.map(
+          (file) =>
+            path.basename(file),
+        ).sort(),
+      ).toEqual([
+        'dep.ts',
+        'entry.ts',
+      ]);
+
+      expect(
+        result.specFiles.map(
+          (file) =>
+            path.basename(file),
+        ),
+      ).toEqual([
+        'entry.spec.ts',
+      ]);
+
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  });
+
+  it('does not try to read a directory when a local import resolves through index.ts', async () => {
+    const root =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          'testify-discovery-',
+        ),
+      );
+
+    const errorSpy =
+      spyOn(
+        logger,
+        'error',
+      );
+
+    try {
+      fs.mkdirSync(
+        path.join(root, 'src', 'nested'),
+        { recursive: true },
+      );
+      fs.mkdirSync(
+        path.join(root, 'tests'),
+        { recursive: true },
+      );
+
+      fs.writeFileSync(
+        path.join(root, 'src', 'nested', 'index.ts'),
+        'export const value = 1;\n',
+      );
+      fs.writeFileSync(
+        path.join(root, 'src', 'entry.ts'),
+        "export * from './nested';\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'tests', 'entry.spec.ts'),
+        "import { value } from '../src/entry';\nvoid value;\n",
+      );
+
+      const service =
+        new FileDiscoveryService(
+          createConfig(
+            root,
+            'chrome',
+          ),
+        );
+
+      const result =
+        await service.discoverSources();
+
+      expect(
+        result.srcFiles.map(
+          (file) =>
+            path.basename(file),
+        ).sort(),
+      ).toEqual([
+        'entry.ts',
+        'index.ts',
+      ]);
+
+      expect(
+        result.specFiles.map(
+          (file) =>
+            path.basename(file),
+        ),
+      ).toEqual([
+        'entry.spec.ts',
+      ]);
+
+      expect(errorSpy).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(
         root,

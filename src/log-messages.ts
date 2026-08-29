@@ -51,6 +51,10 @@ export const BrowserMessages = {
   testsAbortedByUser: () =>
     `%stop% Tests aborted by user (Ctrl+C)`,
 
+  browserCloseFailed: (error: unknown) =>
+    `Failed to close browser: ${error instanceof Error ? error.message : String(error)}`,
+  browserCloseCallbackFailed: (error: unknown) =>
+    `Browser close callback failed: ${error instanceof Error ? error.message : String(error)}`,
   testExecutionFailed: (error: unknown) =>
     `%error% Test execution failed: ${error}`,
 

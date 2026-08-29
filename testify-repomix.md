@@ -105,6 +105,7 @@ src/
   coverage-report-generator.ts
   embedded-source.spec.ts
   embedded-source.ts
+  error-logging-convention.spec.ts
   execution-plan-shard.spec.ts
   execution-plan.spec.ts
   execution-plan.ts
@@ -124,6 +125,7 @@ src/
   index.ts
   internals.ts
   istanbul-instrumenter.ts
+  jasmine-browser-assets.ts
   jasmine-console-reporter.ts
   jasmine-node-runtime.spec.ts
   jasmine-node-runtime.ts
@@ -131,6 +133,7 @@ src/
   lib.ts
   log-messages.cli-block.ts
   log-messages.ts
+  log-severity-routing.spec.ts
   logger-prompt.spec.ts
   logger.ts
   messages.ts
@@ -332,102 +335,6 @@ export class CompoundReporter {
 }
 ````
 
-## File: src/coverage-report-generator.ts
-````typescript
-import fs from 'fs';
-import path from 'path';
-import libCoverage from 'istanbul-lib-coverage';
-import libReport from 'istanbul-lib-report';
-import libSourceMaps from 'istanbul-lib-source-maps';
-import reports from 'istanbul-reports';
-import { getMaxWidth } from './ansi-constants';
-import { logger } from './logger';
-import { norm } from './utils';
-import { CoverageMessages } from './log-messages';
-
-export class CoverageReportGenerator {
-  private reportDir: string;
-
-  constructor(reportDir: string = norm(path.join(process.cwd(), 'coverage'))) {
-    this.reportDir = reportDir;
-  }
-
-  saveCoverageToFile(coverage: any): void {
-    try {
-      const outDir = path.resolve(process.cwd(), ".nyc_output");
-      const outFile = path.join(outDir, "out.json");
-
-      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-
-      fs.writeFileSync(outFile, JSON.stringify(coverage, null, 2), "utf8");
-
-      logger.println(CoverageMessages.rawCoverageSaved(outFile));
-    } catch (err) {
-      logger.error(CoverageMessages.failedToWriteCoverage(err));
-    }
-  }
-
-  async generate(coverage: Record<string, any>): Promise<void> {
-    // 1️⃣ Coverage map from raw data
-    const coverageMap = libCoverage.createCoverageMap(coverage);
-
-    // 2️⃣ Remap coverage using source maps (assumes map files are alongside JS files)
-    const remapper = libSourceMaps.createSourceMapStore();
-    for (const filePath of coverageMap.files()) {
-      const mapPath = filePath + '.map';
-      if (fs.existsSync(mapPath)) {
-        try {
-          const sourceMap = JSON.parse(fs.readFileSync(mapPath, 'utf-8'));
-          remapper.registerMap(filePath, sourceMap);
-        } catch {
-          // Skip unreadable or malformed source maps
-        }
-      }
-    }
-    const remappedCoverage = await remapper.transformCoverage(coverageMap);
-
-    // 3️⃣ Filter out test/spec files from coverage (e.g., env.spec.ts, test helpers)
-    const filteredCoverage = libCoverage.createCoverageMap();
-    const filePaths = remappedCoverage.files();
-    for (const filePath of filePaths) {
-      // Skip files matching spec patterns (*.spec.ts, *.spec.js, etc.)
-      if (!/\.spec\.(ts|tsx|js|jsx|mts|cts|mjs)$/i.test(filePath)) {
-        try {
-          const fileCoverage = remappedCoverage.fileCoverageFor(filePath);
-          filteredCoverage.addFileCoverage(fileCoverage);
-        } catch {
-          // Skip files that don't have coverage data after remapping
-        }
-      }
-    }
-
-    // 4️⃣ Create report context
-    const context = libReport.createContext({
-      dir: this.reportDir,
-      coverageMap: filteredCoverage
-    });
-
-    // 5️⃣ Generate reports using modern istanbul-reports API
-    reports.create('html').execute(context);
-    reports.create('lcov').execute(context);
-
-    // Text report: write to file fitted to terminal width, then print through logger
-    reports.create('text', { file: 'coverage.txt', maxCols: getMaxWidth() }).execute(context);
-    const textPath = path.join(this.reportDir, 'coverage.txt');
-    if (fs.existsSync(textPath)) {
-      const text = fs.readFileSync(textPath, 'utf-8');
-      for (const line of text.split('\n')) {
-        if (line.trim().length > 0) {
-          logger.printlnRaw(line);
-        }
-      }
-    }
-
-    logger.println(CoverageMessages.coverageReportsGenerated());
-  }
-}
-````
-
 ## File: src/exit-codes.ts
 ````typescript
 export const EXIT_CODES = {
@@ -470,107 +377,125 @@ export function getSignalExitCode(signal?: NodeJS.Signals | null): number {
 }
 ````
 
-## File: src/host-adapter.ts
+## File: src/jasmine-browser-assets.ts
 ````typescript
-// host-adapter.ts
-import { ChildProcess } from 'node:child_process';
-import { logger } from './logger';
-import { HostAdapterMessages } from './log-messages';
+import * as fs from 'fs';
+import * as path from 'path';
+import { createRequire } from 'module';
+import { norm } from './utils';
 
-export class HostAdapter {
-  private queue: Array<() => Promise<void>> = [];
-  private isProcessing = false;
+const packageRequire =
+  createRequire(import.meta.url);
 
-  constructor(private child: ChildProcess, private reporter: jasmine.CustomReporter) {
-    this.bindListeners();
-  }
+const JASMINE_ASSET_ROUTE_PREFIX =
+  '/__testify/jasmine';
 
-  private bindListeners() {
-    this.child.on('message', (msg: any) => {
-      if (!msg || typeof msg !== 'object') return;
+export interface JasmineBrowserAssets {
+  assetDir: string | null;
+  cssUrl: string;
+  jasmineScriptUrl: string;
+  jasmineHtmlScriptUrl: string;
+  bootScriptUrls: string[];
+  primaryBootScriptUrl: string;
+}
 
-      const { type, data } = msg;
+export function resolveJasmineBrowserAssetDir():
+  string | null {
+  try {
+    const jasmineEntry =
+      packageRequire.resolve(
+        'jasmine-core',
+      );
 
-      // Push all work into queue
-      this.queue.push(() => this.handleMessage(type, data));
+    const assetDir = path.resolve(
+      path.dirname(jasmineEntry),
+      'jasmine-core',
+    );
 
-      // Start queue processor if idle
-      if (!this.isProcessing) {
-        this.processQueue();
-      }
-    });
-  }
-
-  private async processQueue() {
-    this.isProcessing = true;
-
-    while (this.queue.length > 0) {
-      const task = this.queue.shift();
-      if (!task) continue;
-
-      try {
-        await task();
-      } catch (err) {
-        logger.error(HostAdapterMessages.ipcEventError((err as Error).message));
-      }
+    if (
+      fs.existsSync(assetDir) &&
+      fs.statSync(assetDir).isDirectory()
+    ) {
+      return norm(assetDir);
     }
-
-    this.isProcessing = false;
+  } catch {
+    // Fall back to static route names below.
   }
 
-  private async handleMessage(type: string, data: any) {
-    switch (type) {
-      case 'userAgent':
-        await this.callReporter('userAgent', data);
-        break;
+  return null;
+}
 
-      case 'ready':
-        logger.println(HostAdapterMessages.childProcessReady());
-        this.child.send({ type: 'hostReady', timestamp: Date.now() });
-        break;
+function routeForAsset(
+  fileName: string,
+): string {
+  return `${JASMINE_ASSET_ROUTE_PREFIX}/${fileName}`;
+}
 
-      case 'jasmineStarted':
-        await this.callReporter('jasmineStarted', data);
-        break;
-
-      case 'suiteStarted':
-        await this.callReporter('suiteStarted', data);
-        break;
-
-      case 'specStarted':
-        await this.callReporter('specStarted', data);
-        break;
-
-      case 'specDone':
-        await this.callReporter('specDone', data);
-        break;
-
-      case 'suiteDone':
-        await this.callReporter('suiteDone', data);
-        break;
-
-      case 'jasmineDone':
-        // merge coverage
-        (globalThis as any).__coverage__ = data.coverage;
-        await this.callReporter('jasmineDone', data.result);
-        break;
-
-      case 'testsAborted':
-        await this.callReporter('testsAborted', data?.message);
-        break;
-
-      default:
-        logger.println(HostAdapterMessages.unknownMessageType(type));
-    }
+function detectBootScriptNames(
+  assetDir: string | null,
+): string[] {
+  if (!assetDir) {
+    return ['boot.js'];
   }
 
-  private async callReporter(method: any, ...args: any) {
-    const fn = (this.reporter as any)[method];
-    if (!fn) return;
+  const boot0Path =
+    path.join(
+      assetDir,
+      'boot0.js',
+    );
+  const boot1Path =
+    path.join(
+      assetDir,
+      'boot1.js',
+    );
 
-    // jasmine callbacks can be sync or async → normalize to Promise
-    return Promise.resolve(fn.call(this.reporter, ...args));
+  if (
+    fs.existsSync(boot0Path) &&
+    fs.existsSync(boot1Path)
+  ) {
+    return [
+      'boot0.js',
+      'boot1.js',
+    ];
   }
+
+  if (
+    fs.existsSync(
+      path.join(assetDir, 'boot.js'),
+    )
+  ) {
+    return ['boot.js'];
+  }
+
+  return ['boot.js'];
+}
+
+export function getJasmineBrowserAssets():
+  JasmineBrowserAssets {
+  const assetDir =
+    resolveJasmineBrowserAssetDir();
+  const bootScriptNames =
+    detectBootScriptNames(assetDir);
+
+  return {
+    assetDir,
+    cssUrl: routeForAsset('jasmine.css'),
+    jasmineScriptUrl:
+      routeForAsset('jasmine.js'),
+    jasmineHtmlScriptUrl:
+      routeForAsset(
+        'jasmine-html.js',
+      ),
+    bootScriptUrls:
+      bootScriptNames.map(
+        routeForAsset,
+      ),
+    primaryBootScriptUrl:
+      routeForAsset(
+        bootScriptNames[0] ??
+          'boot.js',
+      ),
+  };
 }
 ````
 
@@ -969,165 +894,6 @@ function parseArgs(args: string[]): { files: string[]; options: CLIOptions } {
 
 // Export for use as module
 export default JSONCleaner;
-````
-
-## File: src/package-resolver.ts
-````typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import { glob } from 'glob';
-import { norm } from './utils';
-import JSONCleaner from './json-cleaner';
-
-export class PackageResolver {
-  private cleaner = new JSONCleaner();
-
-  async resolve(projectValue: string, tsconfigPath?: string): Promise<string | undefined> {
-    // If it is a directory on disk, validate and use it directly
-    try {
-      const stat = await fs.promises.stat(projectValue);
-      if (stat.isDirectory()) {
-        return norm(path.resolve(projectValue));
-      }
-    } catch {
-      // not a directory, continue to name resolution
-    }
-
-    // Try tsconfig references
-    const fromTsconfig = await this.resolveFromTsconfig(projectValue, tsconfigPath);
-    if (fromTsconfig) return fromTsconfig;
-
-    // Try npm / pnpm workspaces
-    const fromWorkspaces = await this.resolveFromWorkspaces(projectValue);
-    if (fromWorkspaces) return fromWorkspaces;
-
-    return undefined;
-  }
-
-  private async resolveFromTsconfig(projectValue: string, tsconfigPath?: string): Promise<string | undefined> {
-    const configPath = norm(tsconfigPath ?? 'tsconfig.json');
-    if (!fs.existsSync(configPath)) return undefined;
-
-    let tsconfig: any;
-    try {
-      tsconfig = this.cleaner.parse(fs.readFileSync(configPath, 'utf8'));
-    } catch {
-      return undefined;
-    }
-
-    const references = tsconfig.references ?? [];
-    const rootDir = path.dirname(path.resolve(configPath));
-
-    for (const ref of references) {
-      const refPath = typeof ref === 'string' ? ref : ref?.path;
-      if (!refPath) continue;
-
-      const packageDir = norm(path.resolve(rootDir, refPath));
-      const pkgJsonPath = norm(path.join(packageDir, 'package.json'));
-
-      if (!fs.existsSync(pkgJsonPath)) continue;
-
-      try {
-        const pkg = this.cleaner.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
-        if (pkg.name === projectValue) {
-          return packageDir;
-        }
-      } catch {
-        // skip unreadable package.json
-      }
-    }
-
-    return undefined;
-  }
-
-  private async resolveFromWorkspaces(projectValue: string): Promise<string | undefined> {
-    // npm workspaces
-    const rootPkgPath = norm(path.resolve('package.json'));
-    if (fs.existsSync(rootPkgPath)) {
-      try {
-        const rootPkg = this.cleaner.parse(fs.readFileSync(rootPkgPath, 'utf8'));
-        const workspaces = rootPkg.workspaces;
-        const patterns: string[] = Array.isArray(workspaces)
-          ? workspaces
-          : workspaces?.packages ?? [];
-
-        for (const pattern of patterns) {
-          const candidates = await glob(
-            norm(pattern).replace(/\\/g, '/') + '/package.json',
-            { absolute: true }
-          );
-          for (const pkgJsonPath of candidates) {
-            try {
-              const pkg = this.cleaner.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
-              if (pkg.name === projectValue) {
-                return norm(path.dirname(pkgJsonPath));
-              }
-            } catch {
-              // skip
-            }
-          }
-        }
-      } catch {
-        // skip unreadable root package.json
-      }
-    }
-
-    // pnpm workspaces
-    const pnpmWorkspacePath = norm(path.resolve('pnpm-workspace.yaml'));
-    if (fs.existsSync(pnpmWorkspacePath)) {
-      try {
-        const content = fs.readFileSync(pnpmWorkspacePath, 'utf8');
-        const patterns = this.parsePnpmWorkspaceYaml(content);
-
-        for (const pattern of patterns) {
-          const candidates = await glob(
-            pattern.replace(/\\/g, '/') + '/package.json',
-            { absolute: true }
-          );
-          for (const pkgJsonPath of candidates) {
-            try {
-              const pkg = this.cleaner.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
-              if (pkg.name === projectValue) {
-                return norm(path.dirname(pkgJsonPath));
-              }
-            } catch {
-              // skip
-            }
-          }
-        }
-      } catch {
-        // skip unreadable pnpm-workspace.yaml
-      }
-    }
-
-    return undefined;
-  }
-
-  private parsePnpmWorkspaceYaml(content: string): string[] {
-    const patterns: string[] = [];
-    const lines = content.split(/\r?\n/);
-    let inPackages = false;
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed === 'packages:') {
-        inPackages = true;
-        continue;
-      }
-      if (inPackages) {
-        if (trimmed.startsWith('- ')) {
-          const pattern = trimmed.slice(2).trim().replace(/['"]/g, '');
-          if (pattern) patterns.push(pattern);
-        } else if (trimmed.length > 0 && !trimmed.startsWith('#')) {
-          // End of packages block
-          inPackages = false;
-        }
-      }
-    }
-
-    return patterns;
-  }
-}
 ````
 
 ## File: types/istanbul-api.d.ts
@@ -2311,6 +2077,126 @@ export class CoverageHost {
 }
 ````
 
+## File: src/coverage-report-generator.ts
+````typescript
+import fs from 'fs';
+import path from 'path';
+import libCoverage from 'istanbul-lib-coverage';
+import libReport from 'istanbul-lib-report';
+import libSourceMaps from 'istanbul-lib-source-maps';
+import reports from 'istanbul-reports';
+import { getMaxWidth } from './ansi-constants';
+import { logger } from './logger';
+import { norm } from './utils';
+import { CoverageMessages } from './log-messages';
+
+export class CoverageReportGenerator {
+  private reportDir: string;
+
+  constructor(reportDir: string = norm(path.join(process.cwd(), 'coverage'))) {
+    this.reportDir = reportDir;
+  }
+
+  saveCoverageToFile(coverage: any): void {
+    try {
+      const outDir = path.resolve(process.cwd(), ".nyc_output");
+      const outFile = path.join(outDir, "out.json");
+
+      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+      fs.writeFileSync(outFile, JSON.stringify(coverage, null, 2), "utf8");
+
+      logger.println(CoverageMessages.rawCoverageSaved(outFile));
+    } catch (err) {
+      logger.error(CoverageMessages.failedToWriteCoverage(err));
+    }
+  }
+
+  async generate(coverage: Record<string, any>): Promise<void> {
+    // 1️⃣ Coverage map from raw data
+    const coverageMap = libCoverage.createCoverageMap(coverage);
+
+    // 2️⃣ Remap coverage using source maps (assumes map files are alongside JS files)
+    const remapper = libSourceMaps.createSourceMapStore();
+    for (const filePath of coverageMap.files()) {
+      const mapPath = filePath + '.map';
+      if (fs.existsSync(mapPath)) {
+        try {
+          const sourceMap = JSON.parse(fs.readFileSync(mapPath, 'utf-8'));
+          remapper.registerMap(filePath, sourceMap);
+        } catch (error) {
+          logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+          // Skip unreadable or malformed source maps
+        }
+      }
+    }
+    const remappedCoverage = await remapper.transformCoverage(coverageMap);
+
+    // 3️⃣ Filter out test/spec files from coverage (e.g., env.spec.ts, test helpers)
+    const filteredCoverage = libCoverage.createCoverageMap();
+    const filePaths = remappedCoverage.files();
+    for (const filePath of filePaths) {
+      // Skip files matching spec patterns (*.spec.ts, *.spec.js, etc.)
+      if (!/\.spec\.(ts|tsx|js|jsx|mts|cts|mjs)$/i.test(filePath)) {
+        try {
+          const fileCoverage = remappedCoverage.fileCoverageFor(filePath);
+          filteredCoverage.addFileCoverage(fileCoverage);
+        } catch (error) {
+          logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+          // Skip files that don't have coverage data after remapping
+        }
+      }
+    }
+
+    // 4️⃣ Create report context
+    const context = libReport.createContext({
+      dir: this.reportDir,
+      coverageMap: filteredCoverage
+    });
+
+    // 5️⃣ Generate reports using modern istanbul-reports API
+    reports.create('html').execute(context);
+    reports.create('lcov').execute(context);
+
+    // Text report: write to file fitted to terminal width, then print through logger
+    reports.create('text', { file: 'coverage.txt', maxCols: getMaxWidth() }).execute(context);
+    const textPath = path.join(this.reportDir, 'coverage.txt');
+    if (fs.existsSync(textPath)) {
+      const text = fs.readFileSync(textPath, 'utf-8');
+      for (const line of text.split('\n')) {
+        if (line.trim().length > 0) {
+          logger.printlnRaw(line);
+        }
+      }
+    }
+
+    logger.println(CoverageMessages.coverageReportsGenerated());
+  }
+}
+````
+
+## File: src/error-logging-convention.spec.ts
+````typescript
+import fs from 'fs';
+import path from 'path';
+
+describe('error logging convention', () => {
+  it('does not silently swallow caught errors in Node-side source files', () => {
+    const srcDir = path.resolve(process.cwd(), 'src');
+    const files = fs.readdirSync(srcDir).filter((name) => name.endsWith('.ts') && !name.endsWith('.spec.ts'));
+    const violations: string[] = [];
+
+    for (const name of files) {
+      const source = fs.readFileSync(path.join(srcDir, name), 'utf8');
+      if (/catch\s*\{/.test(source)) violations.push(`${name}: bare catch`);
+      if (/\.catch\(\s*\(\)\s*=>\s*\{\s*\}\s*\)/s.test(source)) violations.push(`${name}: empty promise catch`);
+    }
+
+    expect(violations).withContext(violations.join('\n')).toEqual([]);
+  });
+});
+````
+
 ## File: src/execution-plan-shard.spec.ts
 ````typescript
 import {
@@ -2410,6 +2296,110 @@ describe('HMR removed spec contract', () => {
     );
   });
 });
+````
+
+## File: src/host-adapter.ts
+````typescript
+// host-adapter.ts
+import { ChildProcess } from 'node:child_process';
+import { logger } from './logger';
+import { HostAdapterMessages } from './log-messages';
+
+export class HostAdapter {
+  private queue: Array<() => Promise<void>> = [];
+  private isProcessing = false;
+
+  constructor(private child: ChildProcess, private reporter: jasmine.CustomReporter) {
+    this.bindListeners();
+  }
+
+  private bindListeners() {
+    this.child.on('message', (msg: any) => {
+      if (!msg || typeof msg !== 'object') return;
+
+      const { type, data } = msg;
+
+      // Push all work into queue
+      this.queue.push(() => this.handleMessage(type, data));
+
+      // Start queue processor if idle
+      if (!this.isProcessing) {
+        this.processQueue();
+      }
+    });
+  }
+
+  private async processQueue() {
+    this.isProcessing = true;
+
+    while (this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (!task) continue;
+
+      try {
+        await task();
+      } catch (err) {
+        logger.error(HostAdapterMessages.ipcEventError((err as Error).message));
+      }
+    }
+
+    this.isProcessing = false;
+  }
+
+  private async handleMessage(type: string, data: any) {
+    switch (type) {
+      case 'userAgent':
+        await this.callReporter('userAgent', data);
+        break;
+
+      case 'ready':
+        logger.println(HostAdapterMessages.childProcessReady());
+        this.child.send({ type: 'hostReady', timestamp: Date.now() });
+        break;
+
+      case 'jasmineStarted':
+        await this.callReporter('jasmineStarted', data);
+        break;
+
+      case 'suiteStarted':
+        await this.callReporter('suiteStarted', data);
+        break;
+
+      case 'specStarted':
+        await this.callReporter('specStarted', data);
+        break;
+
+      case 'specDone':
+        await this.callReporter('specDone', data);
+        break;
+
+      case 'suiteDone':
+        await this.callReporter('suiteDone', data);
+        break;
+
+      case 'jasmineDone':
+        // merge coverage
+        (globalThis as any).__coverage__ = data.coverage;
+        await this.callReporter('jasmineDone', data.result);
+        break;
+
+      case 'testsAborted':
+        await this.callReporter('testsAborted', data?.message);
+        break;
+
+      default:
+        logger.warn(HostAdapterMessages.unknownMessageType(type));
+    }
+  }
+
+  private async callReporter(method: any, ...args: any) {
+    const fn = (this.reporter as any)[method];
+    if (!fn) return;
+
+    // jasmine callbacks can be sync or async → normalize to Promise
+    return Promise.resolve(fn.call(this.reporter, ...args));
+  }
+}
 ````
 
 ## File: src/istanbul-instrumenter.ts
@@ -2841,6 +2831,105 @@ describe('Node Jasmine runtime', () => {
 });
 ````
 
+## File: src/log-severity-routing.spec.ts
+````typescript
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+interface SeverityMessage {
+  group: string;
+  key: string;
+}
+
+function collectSeverityMessages(
+  source: string,
+  marker: '%warn%' | '%error%',
+): SeverityMessage[] {
+  const messages: SeverityMessage[] = [];
+  const groupPattern = /export const (\w+)\s*=\s*\{(.*?)^\};/gms;
+
+  for (const groupMatch of source.matchAll(groupPattern)) {
+    const group = groupMatch[1];
+    const body = groupMatch[2];
+    if (!group || !body) continue;
+
+    const messagePattern = /^\s{2}(\w+):.*?(?=^\s{2}\w+:|\s*$)/gms;
+    for (const messageMatch of body.matchAll(messagePattern)) {
+      const key = messageMatch[1];
+      const definition = messageMatch[0];
+      if (key && definition.includes(marker)) {
+        messages.push({ group, key });
+      }
+    }
+  }
+
+  return messages;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+describe('log severity routing', () => {
+  const srcDir = path.dirname(fileURLToPath(import.meta.url));
+  const messageSource = fs.readFileSync(
+    path.join(srcDir, 'log-messages.ts'),
+    'utf8',
+  );
+  const sourceFiles = fs
+    .readdirSync(srcDir)
+    .filter(
+      (file) =>
+        file.endsWith('.ts') &&
+        !file.endsWith('.spec.ts'),
+    );
+
+  function expectSeverityToUse(
+    marker: '%warn%' | '%error%',
+    expectedMethod: 'warn' | 'error',
+  ): void {
+    const messages = collectSeverityMessages(
+      messageSource,
+      marker,
+    );
+    const violations: string[] = [];
+
+    for (const file of sourceFiles) {
+      const source = fs.readFileSync(
+        path.join(srcDir, file),
+        'utf8',
+      );
+
+      for (const { group, key } of messages) {
+        const callPattern = new RegExp(
+          `logger\\.(println|print|printlnRaw|printRaw|warn|error)\\s*\\(\\s*${escapeRegExp(group)}(?:\\s*\\.\\s*)?${escapeRegExp(key)}\\s*\\(`,
+          's',
+        );
+        const match = source.match(callPattern);
+        if (match && match[1] !== expectedMethod) {
+          violations.push(
+            `${file}: ${group}.${key} uses logger.${match[1]} instead of logger.${expectedMethod}`,
+          );
+        }
+      }
+    }
+
+    expect(violations).withContext(
+      violations.join('\n'),
+    ).toEqual([]);
+  }
+
+  it('routes %warn% messages through logger.warn', () => {
+    expectSeverityToUse('%warn%', 'warn');
+  });
+
+  it('routes %error% messages through logger.error', () => {
+    expectSeverityToUse('%error%', 'error');
+  });
+});
+````
+
 ## File: src/node-artifact-host-mjs.spec.ts
 ````typescript
 import fs from 'fs';
@@ -2904,165 +2993,6 @@ describe('Node mjs build artifacts', () => {
     }
   });
 });
-````
-
-## File: src/node-artifact-host.ts
-````typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import {
-  createRequire,
-} from 'module';
-import {
-  pathToFileURL,
-} from 'url';
-import type {
-  ViteJasmineConfig,
-} from './vite-jasmine-config';
-import {
-  resolveNodePreludeModules,
-} from './prelude-modules';
-import {
-  createNodeRunnerModuleSource,
-} from './node-runner-module-source';
-import {
-  discoverNodeBuildArtifacts,
-} from './node-build-artifacts';
-import {
-  NodeRunnerHost,
-} from './node-runner-host';
-import {
-  NodeRunnerMessages,
-} from './log-messages';
-import { logger } from './logger';
-import { norm } from './utils';
-
-export class NodeArtifactHost {
-  private runnerHost:
-    NodeRunnerHost | null = null;
-
-  constructor(
-    private readonly config:
-      ViteJasmineConfig,
-  ) {}
-
-  generate(): NodeRunnerHost | null {
-    const outDir =
-      this.config.outDir;
-
-    fs.mkdirSync(
-      outDir,
-      { recursive: true },
-    );
-
-    const artifacts =
-      discoverNodeBuildArtifacts(
-        outDir,
-      );
-
-    if (
-      artifacts.specFiles.length === 0
-    ) {
-      logger.println(
-        NodeRunnerMessages
-          .noJsFilesForRunner(),
-      );
-
-      return null;
-    }
-
-    const imports = [
-      ...resolveNodePreludeModules(
-        this.config,
-        outDir,
-      ).map(
-        (specifier) =>
-          `    await import(${JSON.stringify(specifier)});`,
-      ),
-      ...artifacts.specFiles.map(
-        (file) =>
-          `    await import('./${file}');`,
-      ),
-    ].join('\n');
-
-    const source =
-      createNodeRunnerModuleSource({
-        jasmineCoreUrl:
-          this.resolveJasmineCoreUrl(),
-        imports,
-        config: this.config,
-      });
-
-    const host =
-      new NodeRunnerHost(
-        artifacts.runnerFile,
-      );
-
-    host.write(source);
-
-    this.runnerHost = host;
-
-    logger.println(
-      NodeRunnerMessages
-        .generatedInProcessRunner(
-          norm(
-            path.relative(
-              outDir,
-              host.file,
-            ),
-          ),
-        ),
-    );
-
-    return host;
-  }
-
-  resolveRunner(
-    cwd?: string,
-    file?: string,
-  ): NodeRunnerHost {
-    const runnerFile =
-      path.resolve(
-        cwd ?? process.cwd(),
-        file ??
-          discoverNodeBuildArtifacts(
-            this.config.outDir,
-          ).runnerFile,
-      );
-
-    if (
-      this.runnerHost?.file ===
-      norm(runnerFile)
-    ) {
-      return this.runnerHost;
-    }
-
-    this.runnerHost =
-      new NodeRunnerHost(
-        runnerFile,
-      );
-
-    return this.runnerHost;
-  }
-
-  clear(): void {
-    this.runnerHost?.clear();
-  }
-
-  private resolveJasmineCoreUrl():
-    string {
-    const require =
-      createRequire(
-        import.meta.url,
-      );
-
-    return pathToFileURL(
-      require.resolve(
-        'jasmine-core/lib/jasmine-core/jasmine.js',
-      ),
-    ).href;
-  }
-}
 ````
 
 ## File: src/node-cli-runner.spec.ts
@@ -3385,6 +3315,173 @@ describe('NodeTestRunner facade', () => {
 });
 ````
 
+## File: src/package-resolver.ts
+````typescript
+import * as fs from 'fs';
+import * as path from 'path';
+import { glob } from 'glob';
+import { norm } from './utils';
+import JSONCleaner from './json-cleaner';
+import { logger } from './logger';
+
+export class PackageResolver {
+  private cleaner = new JSONCleaner();
+
+  async resolve(projectValue: string, tsconfigPath?: string): Promise<string | undefined> {
+    // If it is a directory on disk, validate and use it directly
+    try {
+      const stat = await fs.promises.stat(projectValue);
+      if (stat.isDirectory()) {
+        return norm(path.resolve(projectValue));
+      }
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      // not a directory, continue to name resolution
+    }
+
+    // Try tsconfig references
+    const fromTsconfig = await this.resolveFromTsconfig(projectValue, tsconfigPath);
+    if (fromTsconfig) return fromTsconfig;
+
+    // Try npm / pnpm workspaces
+    const fromWorkspaces = await this.resolveFromWorkspaces(projectValue);
+    if (fromWorkspaces) return fromWorkspaces;
+
+    return undefined;
+  }
+
+  private async resolveFromTsconfig(projectValue: string, tsconfigPath?: string): Promise<string | undefined> {
+    const configPath = norm(tsconfigPath ?? 'tsconfig.json');
+    if (!fs.existsSync(configPath)) return undefined;
+
+    let tsconfig: any;
+    try {
+      tsconfig = this.cleaner.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      return undefined;
+    }
+
+    const references = tsconfig.references ?? [];
+    const rootDir = path.dirname(path.resolve(configPath));
+
+    for (const ref of references) {
+      const refPath = typeof ref === 'string' ? ref : ref?.path;
+      if (!refPath) continue;
+
+      const packageDir = norm(path.resolve(rootDir, refPath));
+      const pkgJsonPath = norm(path.join(packageDir, 'package.json'));
+
+      if (!fs.existsSync(pkgJsonPath)) continue;
+
+      try {
+        const pkg = this.cleaner.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+        if (pkg.name === projectValue) {
+          return packageDir;
+        }
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        // skip unreadable package.json
+      }
+    }
+
+    return undefined;
+  }
+
+  private async resolveFromWorkspaces(projectValue: string): Promise<string | undefined> {
+    // npm workspaces
+    const rootPkgPath = norm(path.resolve('package.json'));
+    if (fs.existsSync(rootPkgPath)) {
+      try {
+        const rootPkg = this.cleaner.parse(fs.readFileSync(rootPkgPath, 'utf8'));
+        const workspaces = rootPkg.workspaces;
+        const patterns: string[] = Array.isArray(workspaces)
+          ? workspaces
+          : workspaces?.packages ?? [];
+
+        for (const pattern of patterns) {
+          const candidates = await glob(
+            norm(pattern).replace(/\\/g, '/') + '/package.json',
+            { absolute: true }
+          );
+          for (const pkgJsonPath of candidates) {
+            try {
+              const pkg = this.cleaner.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+              if (pkg.name === projectValue) {
+                return norm(path.dirname(pkgJsonPath));
+              }
+            } catch (error) {
+              logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+              // skip
+            }
+          }
+        }
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        // skip unreadable root package.json
+      }
+    }
+
+    // pnpm workspaces
+    const pnpmWorkspacePath = norm(path.resolve('pnpm-workspace.yaml'));
+    if (fs.existsSync(pnpmWorkspacePath)) {
+      try {
+        const content = fs.readFileSync(pnpmWorkspacePath, 'utf8');
+        const patterns = this.parsePnpmWorkspaceYaml(content);
+
+        for (const pattern of patterns) {
+          const candidates = await glob(
+            pattern.replace(/\\/g, '/') + '/package.json',
+            { absolute: true }
+          );
+          for (const pkgJsonPath of candidates) {
+            try {
+              const pkg = this.cleaner.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+              if (pkg.name === projectValue) {
+                return norm(path.dirname(pkgJsonPath));
+              }
+            } catch (error) {
+              logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+              // skip
+            }
+          }
+        }
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        // skip unreadable pnpm-workspace.yaml
+      }
+    }
+
+    return undefined;
+  }
+
+  private parsePnpmWorkspaceYaml(content: string): string[] {
+    const patterns: string[] = [];
+    const lines = content.split(/\r?\n/);
+    let inPackages = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === 'packages:') {
+        inPackages = true;
+        continue;
+      }
+      if (inPackages) {
+        if (trimmed.startsWith('- ')) {
+          const pattern = trimmed.slice(2).trim().replace(/['"]/g, '');
+          if (pattern) patterns.push(pattern);
+        } else if (trimmed.length > 0 && !trimmed.startsWith('#')) {
+          // End of packages block
+          inPackages = false;
+        }
+      }
+    }
+
+    return patterns;
+  }
+}
+````
+
 ## File: src/prelude-modules.ts
 ````typescript
 import * as path from 'path';
@@ -3501,6 +3598,15 @@ describe('ProcessLock', () => {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it('ignores missing pid files during sync release', () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'testify-lock-'));
+    const lock = new ProcessLock(undefined, 4321, tempRoot);
+
+    expect(() => lock.releaseSync()).not.toThrow();
+
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  });
 });
 ````
 
@@ -3575,188 +3681,6 @@ describe('ProjectSetup', () => {
     expect(config.compilerOptions.types).toEqual(['node', 'jasmine']);
   });
 });
-````
-
-## File: src/project-setup.ts
-````typescript
-import fs from 'fs';
-import path from 'path';
-import { createRequire } from 'module';
-import JSONCleaner from './json-cleaner';
-import { logger } from './logger';
-import { norm } from './utils';
-
-const JASMINE_TYPE_NAME = 'jasmine';
-const TSCONFIG_CANDIDATES = [
-  'tsconfig.spec.json',
-  'tsconfig.test.json',
-  'tsconfig.jasmine.json',
-  'tsconfig.json',
-] as const;
-
-export interface ProjectSetupResult {
-  tsconfigPath?: string;
-  jasmineTypesAvailable: boolean;
-  jasmineTypesRegistered: boolean;
-  changed: boolean;
-}
-
-export class ProjectSetup {
-  static configure(projectRoot = process.cwd()): ProjectSetupResult {
-    const root = norm(path.resolve(projectRoot));
-    const jasmineTypesAvailable = this.hasJasmineTypes(root);
-    const tsconfigPath = this.findTsconfig(root);
-
-    if (!jasmineTypesAvailable) {
-      logger.println(
-        'Jasmine type declarations were not found. Install them with: npm install -D @types/jasmine',
-      );
-    }
-
-    if (!tsconfigPath) {
-      logger.println('No tsconfig file found; skipped Jasmine type registration.');
-      return {
-        jasmineTypesAvailable,
-        jasmineTypesRegistered: false,
-        changed: false,
-      };
-    }
-
-    const raw = fs.readFileSync(tsconfigPath, 'utf8');
-    const cleaner = new JSONCleaner();
-    const config = cleaner.parse<Record<string, any>>(raw);
-    const compilerOptions = config.compilerOptions ?? {};
-    const types = compilerOptions.types;
-
-    if (types === undefined) {
-      config.compilerOptions = {
-        ...compilerOptions,
-        types: [JASMINE_TYPE_NAME],
-      };
-
-      const eol = raw.includes('\r\n') ? '\r\n' : '\n';
-      const serialized = `${JSON.stringify(config, null, 2).replace(/\n/g, eol)}${eol}`;
-      fs.writeFileSync(tsconfigPath, serialized, 'utf8');
-
-      logger.println(
-        `Added compilerOptions.types with "${JASMINE_TYPE_NAME}" to ${path.basename(tsconfigPath)}.`,
-      );
-
-      return {
-        tsconfigPath,
-        jasmineTypesAvailable,
-        jasmineTypesRegistered: true,
-        changed: true,
-      };
-    }
-
-    if (!Array.isArray(types)) {
-      logger.println(
-        `${path.basename(tsconfigPath)} has a non-array compilerOptions.types; skipped automatic modification.`,
-      );
-      return {
-        tsconfigPath,
-        jasmineTypesAvailable,
-        jasmineTypesRegistered: false,
-        changed: false,
-      };
-    }
-
-    if (types.includes(JASMINE_TYPE_NAME)) {
-      logger.println(
-        `${path.basename(tsconfigPath)} already includes "${JASMINE_TYPE_NAME}" in compilerOptions.types.`,
-      );
-      return {
-        tsconfigPath,
-        jasmineTypesAvailable,
-        jasmineTypesRegistered: true,
-        changed: false,
-      };
-    }
-
-    config.compilerOptions = {
-      ...compilerOptions,
-      types: [...types, JASMINE_TYPE_NAME],
-    };
-
-    const eol = raw.includes('\r\n') ? '\r\n' : '\n';
-    const serialized = `${JSON.stringify(config, null, 2).replace(/\n/g, eol)}${eol}`;
-    fs.writeFileSync(tsconfigPath, serialized, 'utf8');
-
-    logger.println(
-      `Updated ${path.basename(tsconfigPath)} compilerOptions.types with "${JASMINE_TYPE_NAME}".`,
-    );
-
-    return {
-      tsconfigPath,
-      jasmineTypesAvailable,
-      jasmineTypesRegistered: true,
-      changed: true,
-    };
-  }
-
-  static inspect(projectRoot = process.cwd()): ProjectSetupResult {
-    const root = norm(path.resolve(projectRoot));
-    const jasmineTypesAvailable = this.hasJasmineTypes(root);
-    const tsconfigPath = this.findTsconfig(root);
-
-    if (!tsconfigPath) {
-      return {
-        jasmineTypesAvailable,
-        jasmineTypesRegistered: false,
-        changed: false,
-      };
-    }
-
-    try {
-      const cleaner = new JSONCleaner();
-      const config = cleaner.parse<Record<string, any>>(
-        fs.readFileSync(tsconfigPath, 'utf8'),
-      );
-      const types = config.compilerOptions?.types;
-
-      return {
-        tsconfigPath,
-        jasmineTypesAvailable,
-        jasmineTypesRegistered:
-          Array.isArray(types) && types.includes(JASMINE_TYPE_NAME),
-        changed: false,
-      };
-    } catch {
-      return {
-        tsconfigPath,
-        jasmineTypesAvailable,
-        jasmineTypesRegistered: false,
-        changed: false,
-      };
-    }
-  }
-
-  static findTsconfig(projectRoot = process.cwd()): string | undefined {
-    const root = norm(path.resolve(projectRoot));
-
-    for (const candidate of TSCONFIG_CANDIDATES) {
-      const candidatePath = norm(path.join(root, candidate));
-      if (fs.existsSync(candidatePath)) {
-        return candidatePath;
-      }
-    }
-
-    return undefined;
-  }
-
-  private static hasJasmineTypes(projectRoot: string): boolean {
-    try {
-      const projectRequire = createRequire(
-        path.join(projectRoot, '__testify_setup__.cjs'),
-      );
-      projectRequire.resolve('@types/jasmine/package.json');
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
 ````
 
 ## File: src/test-metadata-path.spec.ts
@@ -4470,6 +4394,60 @@ session.files()
 This remains a UX invariant. The vocabulary audit does not add console-only powers; it makes engine values coherent and observable.
 ````
 
+## File: src/ansi-constants.ts
+````typescript
+// ─── Terminal width ─────────────────────────────────────────
+export const getMaxWidth = (): number =>
+  typeof process !== 'undefined' && process.stdout?.columns
+    ? Math.max(40, process.stdout.columns)
+    : 80;
+
+/** @deprecated Use getMaxWidth() for accurate terminal width */
+export const MAX_WIDTH = getMaxWidth();
+
+// ─── ANSI regex ────────────────────────────────────────────
+export const ANSI_FULL_REGEX =
+  /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
+
+// ─── Emoji support ─────────────────────────────────────────
+let ansiMode = false;
+
+function getRuntimeProcess(): NodeJS.Process | undefined {
+  return typeof process === 'undefined' ? undefined : process;
+}
+
+export function setAnsiMode(value = true): void {
+  ansiMode = value;
+  const runtimeProcess = getRuntimeProcess();
+  if (value && runtimeProcess) {
+    runtimeProcess.env.NO_EMOJI = '1';
+    runtimeProcess.env.NO_COLOR = '1';
+  }
+}
+
+export function isAnsiMode(): boolean {
+  return ansiMode;
+}
+
+export function supportsEmoji(): boolean {
+  if (ansiMode) return false;
+  const runtimeProcess = getRuntimeProcess();
+  if (!runtimeProcess) return false;
+  if (runtimeProcess.env.NO_EMOJI) return false;
+  if (runtimeProcess.env.FORCE_EMOJI) return true;
+  return runtimeProcess.stdout.isTTY ?? false;
+}
+
+export function supportsColor(): boolean {
+  if (ansiMode) return false;
+  const runtimeProcess = getRuntimeProcess();
+  if (!runtimeProcess) return false;
+  if (runtimeProcess.env.NO_COLOR) return false;
+  if (runtimeProcess.env.FORCE_COLOR === '1' || runtimeProcess.env.FORCE_COLOR === 'true' || runtimeProcess.env.FORCE_COLOR) return true;
+  return runtimeProcess.stdout.isTTY ?? false;
+}
+````
+
 ## File: src/browser-build-artifacts.spec.ts
 ````typescript
 import fs from 'fs';
@@ -4549,12 +4527,18 @@ describe('BrowserBuildArtifacts', () => {
 import {
   BrowserPageBuilder,
 } from './browser-page-builder';
+import {
+  getJasmineBrowserAssets,
+} from './jasmine-browser-assets';
 import type {
   ViteJasmineConfig,
 } from './vite-jasmine-config';
 
 describe('BrowserPageBuilder static reporter bridge', () => {
   it('includes the WebSocket reporter and static spec imports', () => {
+    const jasmineAssets =
+      getJasmineBrowserAssets();
+
     const builder =
       new BrowserPageBuilder({
         outDir:
@@ -4583,11 +4567,24 @@ describe('BrowserPageBuilder static reporter bridge', () => {
     );
 
     expect(html).toContain(
-      'boot0.js',
+      jasmineAssets.jasmineScriptUrl,
     );
 
     expect(html).toContain(
-      'boot1.js',
+      jasmineAssets.jasmineHtmlScriptUrl,
+    );
+
+    for (
+      const bootScriptUrl of
+      jasmineAssets.bootScriptUrls
+    ) {
+      expect(html).toContain(
+        bootScriptUrl,
+      );
+    }
+
+    expect(html).toContain(
+      jasmineAssets.cssUrl,
     );
 
     expect(html).toContain(
@@ -4602,6 +4599,7 @@ describe('BrowserPageBuilder static reporter bridge', () => {
 export interface BrowserPage {
   title: string;
   faviconTag: string;
+  headStyles?: string[];
   headScripts?: string[];
   bodyHtml?: string;
   inlineScripts?: string[];
@@ -4610,6 +4608,10 @@ export interface BrowserPage {
 export function createBrowserPage(
   page: BrowserPage,
 ): string {
+  const headStyles = (page.headStyles ?? [])
+    .filter(Boolean)
+    .join('\n');
+
   const headScripts = (page.headScripts ?? [])
     .filter(Boolean)
     .join('\n');
@@ -4625,9 +4627,7 @@ export function createBrowserPage(
   <meta charset="UTF-8">
   ${page.faviconTag}
   <title>${page.title}</title>
-  <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css">
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
+  ${headStyles}
   ${headScripts}
 </head>
 <body>
@@ -5348,40 +5348,6 @@ describe('embedded class source', () => {
 });
 ````
 
-## File: src/embedded-source.ts
-````typescript
-export function getEmbeddedNameHelperSource():
-  string {
-  return `function __name(target, value) {
-  try {
-    Object.defineProperty(
-      target,
-      'name',
-      {
-        value,
-        configurable: true,
-      },
-    );
-  } catch {}
-
-  return target;
-}`;
-}
-
-export function embedFunctionSource(
-  value: Function,
-): string {
-  return value.toString();
-}
-
-export function embedClassSource(
-  name: string,
-  value: Function,
-): string {
-  return `const ${name} = ${value.toString()};`;
-}
-````
-
 ## File: src/execution-result.spec.ts
 ````typescript
 import {
@@ -5516,6 +5482,165 @@ export function summarizeExecutionResults(
     duration: options.duration,
     exitCode: options.exitCode,
   };
+}
+````
+
+## File: src/node-artifact-host.ts
+````typescript
+import * as fs from 'fs';
+import * as path from 'path';
+import {
+  createRequire,
+} from 'module';
+import {
+  pathToFileURL,
+} from 'url';
+import type {
+  ViteJasmineConfig,
+} from './vite-jasmine-config';
+import {
+  resolveNodePreludeModules,
+} from './prelude-modules';
+import {
+  createNodeRunnerModuleSource,
+} from './node-runner-module-source';
+import {
+  discoverNodeBuildArtifacts,
+} from './node-build-artifacts';
+import {
+  NodeRunnerHost,
+} from './node-runner-host';
+import {
+  NodeRunnerMessages,
+} from './log-messages';
+import { logger } from './logger';
+import { norm } from './utils';
+
+export class NodeArtifactHost {
+  private runnerHost:
+    NodeRunnerHost | null = null;
+
+  constructor(
+    private readonly config:
+      ViteJasmineConfig,
+  ) {}
+
+  generate(): NodeRunnerHost | null {
+    const outDir =
+      this.config.outDir;
+
+    fs.mkdirSync(
+      outDir,
+      { recursive: true },
+    );
+
+    const artifacts =
+      discoverNodeBuildArtifacts(
+        outDir,
+      );
+
+    if (
+      artifacts.specFiles.length === 0
+    ) {
+      logger.warn(
+        NodeRunnerMessages
+          .noJsFilesForRunner(),
+      );
+
+      return null;
+    }
+
+    const imports = [
+      ...resolveNodePreludeModules(
+        this.config,
+        outDir,
+      ).map(
+        (specifier) =>
+          `    await import(${JSON.stringify(specifier)});`,
+      ),
+      ...artifacts.specFiles.map(
+        (file) =>
+          `    await import('./${file}');`,
+      ),
+    ].join('\n');
+
+    const source =
+      createNodeRunnerModuleSource({
+        jasmineCoreUrl:
+          this.resolveJasmineCoreUrl(),
+        imports,
+        config: this.config,
+      });
+
+    const host =
+      new NodeRunnerHost(
+        artifacts.runnerFile,
+      );
+
+    host.write(source);
+
+    this.runnerHost = host;
+
+    logger.println(
+      NodeRunnerMessages
+        .generatedInProcessRunner(
+          norm(
+            path.relative(
+              outDir,
+              host.file,
+            ),
+          ),
+        ),
+    );
+
+    return host;
+  }
+
+  resolveRunner(
+    cwd?: string,
+    file?: string,
+  ): NodeRunnerHost {
+    const runnerFile =
+      path.resolve(
+        cwd ?? process.cwd(),
+        file ??
+          discoverNodeBuildArtifacts(
+            this.config.outDir,
+          ).runnerFile,
+      );
+
+    if (
+      this.runnerHost?.file ===
+      norm(runnerFile)
+    ) {
+      return this.runnerHost;
+    }
+
+    this.runnerHost =
+      new NodeRunnerHost(
+        runnerFile,
+      );
+
+    return this.runnerHost;
+  }
+
+  clear(): void {
+    this.runnerHost?.clear();
+  }
+
+  private resolveJasmineCoreUrl():
+    string {
+    const require =
+      createRequire(
+        import.meta.url,
+      );
+
+    return pathToFileURL(
+      require.resolve(
+        'jasmine-core/lib/jasmine-core/jasmine.js',
+      ),
+    ).href;
+  }
 }
 ````
 
@@ -5870,178 +5995,6 @@ describe('Node execution results', () => {
 });
 ````
 
-## File: src/node-relative-resolver.ts
-````typescript
-import fs from 'fs';
-import path from 'path';
-import { createRequire, registerHooks } from 'node:module';
-import { fileURLToPath, pathToFileURL } from 'url';
-
-const RELATIVE_SPECIFIER_RE = /^\.{1,2}(?:[\\/]|$)/;
-const runtimeRequire = createRequire(import.meta.url);
-const nodeModule = runtimeRequire('node:module') as any;
-const ModuleCtor = nodeModule.Module ?? nodeModule;
-
-export const RELATIVE_IMPORT_EXTENSIONS = [
-  '.ts',
-  '.tsx',
-  '.mts',
-  '.cts',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
-  '.json',
-] as const;
-
-function isFile(filePath: string): boolean {
-  try {
-    return fs.statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function isDirectory(filePath: string): boolean {
-  try {
-    return fs.statSync(filePath).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function hasUrlSuffix(specifier: string): boolean {
-  return specifier.includes('?') || specifier.includes('#');
-}
-
-/**
- * Resolve a local relative specifier using the same conveniences developers
- * typically get from TypeScript/Vite-style bundler resolution.
- *
- * Examples:
- *   ../lib           -> ../lib/index.ts
- *   ../lib/bind-form -> ../lib/bind-form.ts
- *   ./helper         -> ./helper.ts
- *
- * Returns an absolute filesystem path or null.
- */
-export function resolveRelativePath(
-  specifier: string,
-  parentFile: string | undefined,
-): string | null {
-  if (!RELATIVE_SPECIFIER_RE.test(specifier)) return null;
-  if (!parentFile) return null;
-  if (hasUrlSuffix(specifier)) return null;
-
-  const candidate = path.resolve(path.dirname(parentFile), specifier);
-
-  if (isFile(candidate)) {
-    return candidate;
-  }
-
-  if (path.extname(candidate) === '') {
-    for (const extension of RELATIVE_IMPORT_EXTENSIONS) {
-      const filePath = `${candidate}${extension}`;
-      if (isFile(filePath)) {
-        return filePath;
-      }
-    }
-  }
-
-  if (isDirectory(candidate)) {
-    for (const extension of RELATIVE_IMPORT_EXTENSIONS) {
-      const indexPath = path.join(candidate, `index${extension}`);
-      if (isFile(indexPath)) {
-        return indexPath;
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * ESM-facing helper retained as a public/testing seam.
- */
-export function resolveRelativeImport(
-  specifier: string,
-  parentURL?: string,
-): string | null {
-  if (!parentURL?.startsWith('file:')) return null;
-
-  const resolved = resolveRelativePath(
-    specifier,
-    fileURLToPath(parentURL),
-  );
-
-  return resolved ? pathToFileURL(resolved).href : null;
-}
-
-/**
- * Install Testify's compatibility resolution in front of both Node module
- * systems used by tsx:
- *
- *  - ESM: node:module registerHooks()
- *  - CJS: Module._resolveFilename()
- *
- * IMPORTANT: register this AFTER tsx. tsx installs its own CJS resolver shim;
- * Testify must wrap that resolver rather than be overwritten by it.
- */
-export function registerTestifyRelativeResolver(): () => void {
-  const esmRegistration = registerHooks({
-    resolve(specifier, context, nextResolve) {
-      const resolved = resolveRelativeImport(specifier, context.parentURL);
-
-      if (resolved) {
-        // Feed a concrete URL back through the remaining chain so tsx can still
-        // transpile TypeScript and apply any other loader behavior it owns.
-        return nextResolve(resolved, context);
-      }
-
-      return nextResolve(specifier, context);
-    },
-  }) as { deregister?: () => void } | undefined;
-
-  const previousResolveFilename = ModuleCtor._resolveFilename;
-
-  const testifyResolveFilename = function (
-    this: unknown,
-    request: string,
-    parent: { filename?: string } | undefined,
-    isMain: boolean,
-    options: unknown,
-  ) {
-    if (typeof request === 'string' && RELATIVE_SPECIFIER_RE.test(request)) {
-      const resolved = resolveRelativePath(request, parent?.filename);
-
-      if (resolved) {
-        // Returning the concrete absolute path lets the tsx CJS extension hooks
-        // load/transpile .ts/.tsx while avoiding Node's extensionless lookup.
-        return resolved;
-      }
-    }
-
-    return previousResolveFilename.call(
-      this,
-      request,
-      parent,
-      isMain,
-      options,
-    );
-  };
-
-  ModuleCtor._resolveFilename = testifyResolveFilename;
-
-  return () => {
-    if (ModuleCtor._resolveFilename === testifyResolveFilename) {
-      ModuleCtor._resolveFilename = previousResolveFilename;
-    }
-
-    esmRegistration?.deregister?.();
-  };
-}
-````
-
 ## File: src/node-test-runner-environment.spec.ts
 ````typescript
 import fs from 'fs';
@@ -6155,268 +6108,186 @@ describe('NodeTestRunner execution-plan integration', () => {
 });
 ````
 
-## File: src/process-lock.ts
+## File: src/project-setup.ts
 ````typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import { exec } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { createRequire } from 'module';
+import JSONCleaner from './json-cleaner';
 import { logger } from './logger';
-import { ProcessLockMessages } from './log-messages';
 import { norm } from './utils';
 
-export class ProcessLock {
-  private pidFile: string;
+const JASMINE_TYPE_NAME = 'jasmine';
+const TSCONFIG_CANDIDATES = [
+  'tsconfig.spec.json',
+  'tsconfig.test.json',
+  'tsconfig.jasmine.json',
+  'tsconfig.json',
+] as const;
 
-  constructor(projectPath?: string, port?: number, lockDir?: string) {
-    const cwd = norm(path.resolve(lockDir ?? process.cwd()));
-    const parts: string[] = ['testify'];
-    if (projectPath) {
-      const sanitized = norm(path.resolve(projectPath))
-        .replace(/^\//, '')
-        .replace(/\//g, '_');
-      parts.push(sanitized);
+export interface ProjectSetupResult {
+  tsconfigPath?: string;
+  jasmineTypesAvailable: boolean;
+  jasmineTypesRegistered: boolean;
+  changed: boolean;
+}
+
+export class ProjectSetup {
+  static configure(projectRoot = process.cwd()): ProjectSetupResult {
+    const root = norm(path.resolve(projectRoot));
+    const jasmineTypesAvailable = this.hasJasmineTypes(root);
+    const tsconfigPath = this.findTsconfig(root);
+
+    if (!jasmineTypesAvailable) {
+      logger.println(
+        'Jasmine type declarations were not found. Install them with: npm install -D @types/jasmine',
+      );
     }
-    if (port !== undefined) {
-      parts.push(String(port));
+
+    if (!tsconfigPath) {
+      logger.println('No tsconfig file found; skipped Jasmine type registration.');
+      return {
+        jasmineTypesAvailable,
+        jasmineTypesRegistered: false,
+        changed: false,
+      };
     }
-    this.pidFile = path.join(cwd, `.${parts.join('-')}.pid`);
+
+    const raw = fs.readFileSync(tsconfigPath, 'utf8');
+    const cleaner = new JSONCleaner();
+    const config = cleaner.parse<Record<string, any>>(raw);
+    const compilerOptions = config.compilerOptions ?? {};
+    const types = compilerOptions.types;
+
+    if (types === undefined) {
+      config.compilerOptions = {
+        ...compilerOptions,
+        types: [JASMINE_TYPE_NAME],
+      };
+
+      const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+      const serialized = `${JSON.stringify(config, null, 2).replace(/\n/g, eol)}${eol}`;
+      fs.writeFileSync(tsconfigPath, serialized, 'utf8');
+
+      logger.println(
+        `Added compilerOptions.types with "${JASMINE_TYPE_NAME}" to ${path.basename(tsconfigPath)}.`,
+      );
+
+      return {
+        tsconfigPath,
+        jasmineTypesAvailable,
+        jasmineTypesRegistered: true,
+        changed: true,
+      };
+    }
+
+    if (!Array.isArray(types)) {
+      logger.println(
+        `${path.basename(tsconfigPath)} has a non-array compilerOptions.types; skipped automatic modification.`,
+      );
+      return {
+        tsconfigPath,
+        jasmineTypesAvailable,
+        jasmineTypesRegistered: false,
+        changed: false,
+      };
+    }
+
+    if (types.includes(JASMINE_TYPE_NAME)) {
+      logger.println(
+        `${path.basename(tsconfigPath)} already includes "${JASMINE_TYPE_NAME}" in compilerOptions.types.`,
+      );
+      return {
+        tsconfigPath,
+        jasmineTypesAvailable,
+        jasmineTypesRegistered: true,
+        changed: false,
+      };
+    }
+
+    config.compilerOptions = {
+      ...compilerOptions,
+      types: [...types, JASMINE_TYPE_NAME],
+    };
+
+    const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+    const serialized = `${JSON.stringify(config, null, 2).replace(/\n/g, eol)}${eol}`;
+    fs.writeFileSync(tsconfigPath, serialized, 'utf8');
+
+    logger.println(
+      `Updated ${path.basename(tsconfigPath)} compilerOptions.types with "${JASMINE_TYPE_NAME}".`,
+    );
+
+    return {
+      tsconfigPath,
+      jasmineTypesAvailable,
+      jasmineTypesRegistered: true,
+      changed: true,
+    };
   }
 
-  async acquire(killPrevious: boolean = true): Promise<void> {
-    if (killPrevious) {
-      await this.releasePrevious();
-    }
-    fs.mkdirSync(path.dirname(this.pidFile), { recursive: true });
-    fs.writeFileSync(this.pidFile, String(process.pid), 'utf-8');
-  }
+  static inspect(projectRoot = process.cwd()): ProjectSetupResult {
+    const root = norm(path.resolve(projectRoot));
+    const jasmineTypesAvailable = this.hasJasmineTypes(root);
+    const tsconfigPath = this.findTsconfig(root);
 
-  releaseSync(): void {
+    if (!tsconfigPath) {
+      return {
+        jasmineTypesAvailable,
+        jasmineTypesRegistered: false,
+        changed: false,
+      };
+    }
+
     try {
-      fs.unlinkSync(this.pidFile);
-    } catch {
-      // ignore
+      const cleaner = new JSONCleaner();
+      const config = cleaner.parse<Record<string, any>>(
+        fs.readFileSync(tsconfigPath, 'utf8'),
+      );
+      const types = config.compilerOptions?.types;
+
+      return {
+        tsconfigPath,
+        jasmineTypesAvailable,
+        jasmineTypesRegistered:
+          Array.isArray(types) && types.includes(JASMINE_TYPE_NAME),
+        changed: false,
+      };
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      return {
+        tsconfigPath,
+        jasmineTypesAvailable,
+        jasmineTypesRegistered: false,
+        changed: false,
+      };
     }
   }
 
-  private async releasePrevious(): Promise<void> {
+  static findTsconfig(projectRoot = process.cwd()): string | undefined {
+    const root = norm(path.resolve(projectRoot));
+
+    for (const candidate of TSCONFIG_CANDIDATES) {
+      const candidatePath = norm(path.join(root, candidate));
+      if (fs.existsSync(candidatePath)) {
+        return candidatePath;
+      }
+    }
+
+    return undefined;
+  }
+
+  private static hasJasmineTypes(projectRoot: string): boolean {
     try {
-      if (!fs.existsSync(this.pidFile)) return;
-
-      const raw = fs.readFileSync(this.pidFile, 'utf-8').trim();
-      const pid = parseInt(raw, 10);
-      if (!Number.isFinite(pid)) {
-        fs.unlinkSync(this.pidFile);
-        return;
-      }
-
-      // Check if process is still alive
-      try {
-        process.kill(pid, 0);
-      } catch (err: any) {
-        if (err.code === 'EPERM') {
-          // Process exists but we lack permission to query it (e.g. debugger attached).
-          // Assume it's alive and proceed with the kill attempt.
-        } else {
-          // Stale PID file
-          logger.println(ProcessLockMessages.staleLockFile(pid));
-          fs.unlinkSync(this.pidFile);
-          return;
-        }
-      }
-
-      // Verify the process is actually a Node process before killing it
-      const processName = await this.getProcessName(pid);
-      if (!processName || !/node/i.test(processName)) {
-        logger.println(ProcessLockMessages.nonNodeProcess(pid, processName || 'unknown'));
-        fs.unlinkSync(this.pidFile);
-        return;
-      }
-
-      // Try graceful tree termination
-      await this.killProcessTree(pid, false);
-      await this.waitForExit(pid, 2000);
-
-      // Force-kill the entire tree if still alive
-      const stillAlive = await this.isAlive(pid);
-      if (stillAlive) {
-        await this.killProcessTree(pid, true);
-        await this.waitForExit(pid, 2000);
-      }
-
-      // Verify final state and log
-      const finalAlive = await this.isAlive(pid);
-      if (finalAlive) {
-        logger.error(ProcessLockMessages.couldNotTerminate(pid));
-      } else {
-        logger.println(ProcessLockMessages.terminatedPrevious(pid));
-      }
-      fs.unlinkSync(this.pidFile);
-    } catch {
-      // Ignore any errors during cleanup
-    }
-  }
-
-  private static readonly BROWSER_NAMES = /chrome|chromium|firefox|webkit|safari|edge/i;
-
-  /**
-   * Kill the target process and any browser children it may have spawned.
-   * On Windows we enumerate children by ParentPID and only kill browsers.
-   * On Unix we recursively find descendants and only kill browsers.
-   */
-  private async killProcessTree(pid: number, force: boolean): Promise<void> {
-    // 1. Kill the main testify process (proven method on both platforms)
-    try {
-      if (process.platform === 'win32') {
-        process.kill(pid);
-      } else {
-        process.kill(pid, force ? 'SIGKILL' : 'SIGTERM');
-      }
-    } catch {
-      // ignore — may already be gone
-    }
-
-    // 2. Find and kill only browser children — never touch unrelated descendants
-    if (process.platform === 'win32') {
-      const children = await this.getWindowsChildren(pid);
-      for (const child of children) {
-        if (ProcessLock.BROWSER_NAMES.test(child.name)) {
-          try {
-            process.kill(child.pid);
-          } catch {
-            // ignore
-          }
-        }
-      }
-    } else {
-      const descendants = await this.getDescendantPids(pid);
-      for (const childPid of descendants) {
-        const name = await this.getProcessName(childPid);
-        if (name && ProcessLock.BROWSER_NAMES.test(name)) {
-          try {
-            process.kill(childPid, force ? 'SIGKILL' : 'SIGTERM');
-          } catch {
-            // ignore
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Enumerate direct children of a PID on Windows.
-   * Returns [{ pid, name }] for each child process.
-   */
-  private async getWindowsChildren(pid: number): Promise<Array<{ pid: number; name: string }>> {
-    return new Promise((resolve) => {
-      exec(`tasklist /FI "ParentPID eq ${pid}" /FO CSV /NH`, { encoding: 'utf-8' }, (error, stdout) => {
-        if (error) {
-          resolve([]);
-          return;
-        }
-        const lines = stdout.trim().split(/\r?\n/).filter((l) => l.trim());
-        const children: Array<{ pid: number; name: string }> = [];
-        for (const line of lines) {
-          // CSV format: "Image Name","PID","Session Name","Session#","Mem Usage"
-          const match = line.match(/^"([^"]+)","(\d+)"/);
-          if (match) {
-            children.push({ name: match[1], pid: parseInt(match[2], 10) });
-          }
-        }
-        resolve(children);
-      });
-    });
-  }
-
-  /**
-   * Recursively collect all descendant PIDs of the given PID on Unix.
-   * Returns an empty array on Windows.
-   */
-  private async getDescendantPids(pid: number): Promise<number[]> {
-    if (process.platform === 'win32') {
-      return [];
-    }
-
-    const directChildren = await new Promise<number[]>((resolve) => {
-      exec(`ps -o pid= --ppid ${pid}`, { encoding: 'utf-8' }, (error, stdout) => {
-        if (error) {
-          resolve([]);
-          return;
-        }
-        const pids = stdout
-          .trim()
-          .split(/\s+/)
-          .map((p) => parseInt(p.trim(), 10))
-          .filter(Number.isFinite);
-        resolve(pids);
-      });
-    });
-
-    const allDescendants: number[] = [...directChildren];
-    for (const childPid of directChildren) {
-      const grandchildren = await this.getDescendantPids(childPid);
-      allDescendants.push(...grandchildren);
-    }
-
-    return [...new Set(allDescendants)];
-  }
-
-  private async isAlive(pid: number): Promise<boolean> {
-    try {
-      process.kill(pid, 0);
+      const projectRequire = createRequire(
+        path.join(projectRoot, '__testify_setup__.cjs'),
+      );
+      projectRequire.resolve('@types/jasmine/package.json');
       return true;
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return false;
     }
-  }
-
-  private async waitForExit(pid: number, timeoutMs: number): Promise<void> {
-    const start = Date.now();
-
-    while (Date.now() - start < timeoutMs) {
-      const mainAlive = await this.isAlive(pid);
-
-      if (!mainAlive) {
-        if (process.platform === 'win32') {
-          // On Windows the main process is the only thing holding the port;
-          // browser children don't keep sockets open.
-          return;
-        }
-        // On Unix make sure no descendants are still running
-        const descendants = await this.getDescendantPids(pid);
-        const anyAlive = descendants.length > 0;
-        if (!anyAlive) {
-          return;
-        }
-      }
-
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-
-  private async getProcessName(pid: number): Promise<string | null> {
-    return new Promise((resolve) => {
-      const cmd = process.platform === 'win32'
-        ? `tasklist /FI "PID eq ${pid}" /FO CSV /NH`
-        : `ps -p ${pid} -o comm=`;
-
-      exec(cmd, { encoding: 'utf-8' }, (error, stdout) => {
-        if (error) {
-          resolve(null);
-          return;
-        }
-        const output = stdout.trim();
-        if (process.platform === 'win32') {
-          const match = output.match(/^"([^"]+)"/);
-          resolve(match ? match[1] : null);
-        } else {
-          resolve(output || null);
-        }
-      });
-    });
-  }
-
-  getPidFilePath(): string {
-    return this.pidFile;
   }
 }
 ````
@@ -8028,6 +7899,40 @@ describe('Testify CLI flags', () => {
 });
 ````
 
+## File: src/embedded-source.ts
+````typescript
+export function getEmbeddedNameHelperSource():
+  string {
+  return `function __name(target, value) {
+  try {
+    Object.defineProperty(
+      target,
+      'name',
+      {
+        value,
+        configurable: true,
+      },
+    );
+  } catch (error) { console.error('Testify runtime error:', error); }
+
+  return target;
+}`;
+}
+
+export function embedFunctionSource(
+  value: Function,
+): string {
+  return value.toString();
+}
+
+export function embedClassSource(
+  name: string,
+  value: Function,
+): string {
+  return `const ${name} = ${value.toString()};`;
+}
+````
+
 ## File: src/file-discovery-service.spec.ts
 ````typescript
 import fs from 'fs';
@@ -8036,6 +7941,7 @@ import path from 'path';
 import {
   FileDiscoveryService,
 } from './file-discovery-service';
+import { logger } from './logger';
 
 describe('FileDiscoveryService', () => {
   function createConfig(
@@ -8196,6 +8102,166 @@ describe('FileDiscoveryService', () => {
         'browser.spec.ts',
         'node-only.spec.ts',
       ]);
+    } finally {
+      fs.rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  });
+
+  it('does not log errors for extensionless local imports that resolve to TypeScript files', async () => {
+    const root =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          'testify-discovery-',
+        ),
+      );
+
+    const errorSpy =
+      spyOn(
+        logger,
+        'error',
+      );
+
+    try {
+      fs.mkdirSync(
+        path.join(root, 'src'),
+        { recursive: true },
+      );
+      fs.mkdirSync(
+        path.join(root, 'tests'),
+        { recursive: true },
+      );
+
+      fs.writeFileSync(
+        path.join(root, 'src', 'dep.ts'),
+        'export const value = 1;\n',
+      );
+      fs.writeFileSync(
+        path.join(root, 'src', 'entry.ts'),
+        "export * from './dep';\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'tests', 'entry.spec.ts'),
+        "import { value } from '../src/entry';\nvoid value;\n",
+      );
+
+      const service =
+        new FileDiscoveryService(
+          createConfig(
+            root,
+            'chrome',
+          ),
+        );
+
+      const result =
+        await service.discoverSources();
+
+      expect(
+        result.srcFiles.map(
+          (file) =>
+            path.basename(file),
+        ).sort(),
+      ).toEqual([
+        'dep.ts',
+        'entry.ts',
+      ]);
+
+      expect(
+        result.specFiles.map(
+          (file) =>
+            path.basename(file),
+        ),
+      ).toEqual([
+        'entry.spec.ts',
+      ]);
+
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  });
+
+  it('does not try to read a directory when a local import resolves through index.ts', async () => {
+    const root =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          'testify-discovery-',
+        ),
+      );
+
+    const errorSpy =
+      spyOn(
+        logger,
+        'error',
+      );
+
+    try {
+      fs.mkdirSync(
+        path.join(root, 'src', 'nested'),
+        { recursive: true },
+      );
+      fs.mkdirSync(
+        path.join(root, 'tests'),
+        { recursive: true },
+      );
+
+      fs.writeFileSync(
+        path.join(root, 'src', 'nested', 'index.ts'),
+        'export const value = 1;\n',
+      );
+      fs.writeFileSync(
+        path.join(root, 'src', 'entry.ts'),
+        "export * from './nested';\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'tests', 'entry.spec.ts'),
+        "import { value } from '../src/entry';\nvoid value;\n",
+      );
+
+      const service =
+        new FileDiscoveryService(
+          createConfig(
+            root,
+            'chrome',
+          ),
+        );
+
+      const result =
+        await service.discoverSources();
+
+      expect(
+        result.srcFiles.map(
+          (file) =>
+            path.basename(file),
+        ).sort(),
+      ).toEqual([
+        'entry.ts',
+        'index.ts',
+      ]);
+
+      expect(
+        result.specFiles.map(
+          (file) =>
+            path.basename(file),
+        ),
+      ).toEqual([
+        'entry.spec.ts',
+      ]);
+
+      expect(errorSpy).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(
         root,
@@ -8410,6 +8476,7 @@ describe('HMR new spec contract', () => {
 ````typescript
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { logger } from './logger';
 import { CLIHandler } from './cli-handler';
 
 export { BrowserManager } from './browser-manager';
@@ -8437,7 +8504,10 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  CLIHandler.run().then((code) => process.exit(code)).catch(() => process.exit(1));
+  CLIHandler.run().then((code) => process.exit(code)).catch((error) => {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    process.exit(1);
+  });
 }
 ````
 
@@ -8703,6 +8773,181 @@ describe('NodeBuildArtifacts', () => {
     }
   });
 });
+````
+
+## File: src/node-relative-resolver.ts
+````typescript
+import fs from 'fs';
+import path from 'path';
+import { createRequire, registerHooks } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { logger } from './logger';
+
+const RELATIVE_SPECIFIER_RE = /^\.{1,2}(?:[\\/]|$)/;
+const runtimeRequire = createRequire(import.meta.url);
+const nodeModule = runtimeRequire('node:module') as any;
+const ModuleCtor = nodeModule.Module ?? nodeModule;
+
+export const RELATIVE_IMPORT_EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.json',
+] as const;
+
+function isFile(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch (error) {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    return false;
+  }
+}
+
+function isDirectory(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isDirectory();
+  } catch (error) {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    return false;
+  }
+}
+
+function hasUrlSuffix(specifier: string): boolean {
+  return specifier.includes('?') || specifier.includes('#');
+}
+
+/**
+ * Resolve a local relative specifier using the same conveniences developers
+ * typically get from TypeScript/Vite-style bundler resolution.
+ *
+ * Examples:
+ *   ../lib           -> ../lib/index.ts
+ *   ../lib/bind-form -> ../lib/bind-form.ts
+ *   ./helper         -> ./helper.ts
+ *
+ * Returns an absolute filesystem path or null.
+ */
+export function resolveRelativePath(
+  specifier: string,
+  parentFile: string | undefined,
+): string | null {
+  if (!RELATIVE_SPECIFIER_RE.test(specifier)) return null;
+  if (!parentFile) return null;
+  if (hasUrlSuffix(specifier)) return null;
+
+  const candidate = path.resolve(path.dirname(parentFile), specifier);
+
+  if (isFile(candidate)) {
+    return candidate;
+  }
+
+  if (path.extname(candidate) === '') {
+    for (const extension of RELATIVE_IMPORT_EXTENSIONS) {
+      const filePath = `${candidate}${extension}`;
+      if (isFile(filePath)) {
+        return filePath;
+      }
+    }
+  }
+
+  if (isDirectory(candidate)) {
+    for (const extension of RELATIVE_IMPORT_EXTENSIONS) {
+      const indexPath = path.join(candidate, `index${extension}`);
+      if (isFile(indexPath)) {
+        return indexPath;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * ESM-facing helper retained as a public/testing seam.
+ */
+export function resolveRelativeImport(
+  specifier: string,
+  parentURL?: string,
+): string | null {
+  if (!parentURL?.startsWith('file:')) return null;
+
+  const resolved = resolveRelativePath(
+    specifier,
+    fileURLToPath(parentURL),
+  );
+
+  return resolved ? pathToFileURL(resolved).href : null;
+}
+
+/**
+ * Install Testify's compatibility resolution in front of both Node module
+ * systems used by tsx:
+ *
+ *  - ESM: node:module registerHooks()
+ *  - CJS: Module._resolveFilename()
+ *
+ * IMPORTANT: register this AFTER tsx. tsx installs its own CJS resolver shim;
+ * Testify must wrap that resolver rather than be overwritten by it.
+ */
+export function registerTestifyRelativeResolver(): () => void {
+  const esmRegistration = registerHooks({
+    resolve(specifier, context, nextResolve) {
+      const resolved = resolveRelativeImport(specifier, context.parentURL);
+
+      if (resolved) {
+        // Feed a concrete URL back through the remaining chain so tsx can still
+        // transpile TypeScript and apply any other loader behavior it owns.
+        return nextResolve(resolved, context);
+      }
+
+      return nextResolve(specifier, context);
+    },
+  }) as { deregister?: () => void } | undefined;
+
+  const previousResolveFilename = ModuleCtor._resolveFilename;
+
+  const testifyResolveFilename = function (
+    this: unknown,
+    request: string,
+    parent: { filename?: string } | undefined,
+    isMain: boolean,
+    options: unknown,
+  ) {
+    if (typeof request === 'string' && RELATIVE_SPECIFIER_RE.test(request)) {
+      const resolved = resolveRelativePath(request, parent?.filename);
+
+      if (resolved) {
+        // Returning the concrete absolute path lets the tsx CJS extension hooks
+        // load/transpile .ts/.tsx while avoiding Node's extensionless lookup.
+        return resolved;
+      }
+    }
+
+    return previousResolveFilename.call(
+      this,
+      request,
+      parent,
+      isMain,
+      options,
+    );
+  };
+
+  ModuleCtor._resolveFilename = testifyResolveFilename;
+
+  return () => {
+    if (ModuleCtor._resolveFilename === testifyResolveFilename) {
+      ModuleCtor._resolveFilename = previousResolveFilename;
+    }
+
+    esmRegistration?.deregister?.();
+  };
+}
 ````
 
 ## File: src/node-runner-host-types.spec.ts
@@ -9114,112 +9359,6 @@ describe('RunnerSession HMR lifecycle', () => {
 });
 ````
 
-## File: src/symbols.ts
-````typescript
-import { supportsEmoji, setAnsiMode as setAnsiModeConstant, isAnsiMode } from './ansi-constants';
-
-// ─── TTY symbols (emojis & fancy unicode) ──────────────────
-export const TTY_SYMBOLS: Record<string, string> = {
-  checked: '✓',
-  cross: '✕',
-  warn: 'WARN',
-  info: '💡',
-  globe: '🌐',
-  doc: '📄',
-  puzzle: '🧩',
-  stop: '🛑',
-  bulb: '📌',
-  rocket: '🚀',
-  hourglass: '⏳',
-  circle_green: '🟢',
-  plus: '➕',
-  minus: '➖',
-  folder: '📁',
-  box: '📦',
-  refresh: '🔄',
-  broom: '🧹',
-  lock: '🔒',
-  fire: '🔥',
-  satellite: '📡',
-  ok: '👌',
-  eyes: '👀',
-  plug: '🔌',
-  // Console reporter specific
-  passed: '●',
-  failed: 'x',
-  pending: '○',
-  arrow: '→',
-  box_h: '─',
-  box_double_h: '═',
-  box_tl: '╔',
-  box_tr: '╗',
-  box_bl: '╚',
-  box_br: '╝',
-  box_v: '║',
-  arrow_down_right: '↳',
-  skip: '⤼',
-  incomplete: '◷',
-  not_run: '⊘',
-};
-
-// ─── ANSI symbols (plain ASCII text) ───────────────────────
-export const ANSI_SYMBOLS: Record<string, string> = {
-  checked: '[OK]',
-  cross: '[ERROR]',
-  warn: 'WARN',
-  info: '[INFO]',
-  globe: '[BROWSER]',
-  doc: '[FILE]',
-  puzzle: '[TREE]',
-  stop: '[STOP]',
-  bulb: '[TIP]',
-  rocket: '[START]',
-  hourglass: '[WAIT]',
-  circle_green: '[READY]',
-  plus: '[ADD]',
-  minus: '[REM]',
-  folder: '[DIR]',
-  box: '[BUILD]',
-  refresh: '[RETRY]',
-  broom: '[CLEAN]',
-  lock: '[LOCK]',
-  fire: '[HMR]',
-  satellite: '[WS]',
-  ok: '[OK]',
-  eyes: '[WATCH]',
-  plug: '[CONN]',
-  // Console reporter specific
-  passed: '+',
-  failed: 'x',
-  pending: '*',
-  arrow: '->',
-  box_h: '-',
-  box_double_h: '=',
-  box_tl: '+',
-  box_tr: '+',
-  box_bl: '+',
-  box_br: '+',
-  box_v: '|',
-  arrow_down_right: '->',
-  skip: '~',
-  incomplete: 'o',
-  not_run: '-',
-};
-
-export let SYMBOLS = supportsEmoji() ? TTY_SYMBOLS : ANSI_SYMBOLS;
-
-export function setAnsiMode(): void {
-  setAnsiModeConstant(true);
-  SYMBOLS = ANSI_SYMBOLS;
-}
-
-const PLACEHOLDER_RE = /%([a-z_][a-z0-9_]*)%/g;
-
-export function replacePlaceholders(message: string): string {
-  return message.replace(PLACEHOLDER_RE, (match, key) => SYMBOLS[key] ?? match);
-}
-````
-
 ## File: src/test-catalog-index.ts
 ````typescript
 import type {
@@ -9585,70 +9724,20 @@ session.help('retry')
 Playground values are ordinary JavaScript values with enough semantic identity to be useful when evaluated directly in DevTools. Testify does not require `.print()`, `.show()`, or user-written `console.table(...)` calls to make its core values understandable. Empty test, suite, file, and result collections preserve their identity as well.
 ````
 
-## File: src/ansi-constants.ts
-````typescript
-// ─── Terminal width ─────────────────────────────────────────
-export const getMaxWidth = (): number =>
-  typeof process !== 'undefined' && process.stdout?.columns
-    ? Math.max(40, process.stdout.columns)
-    : 80;
-
-/** @deprecated Use getMaxWidth() for accurate terminal width */
-export const MAX_WIDTH = getMaxWidth();
-
-// ─── ANSI regex ────────────────────────────────────────────
-export const ANSI_FULL_REGEX =
-  /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
-
-// ─── Emoji support ─────────────────────────────────────────
-let ansiMode = false;
-
-function getRuntimeProcess(): NodeJS.Process | undefined {
-  return typeof process === 'undefined' ? undefined : process;
-}
-
-export function setAnsiMode(value = true): void {
-  ansiMode = value;
-  const runtimeProcess = getRuntimeProcess();
-  if (value && runtimeProcess) {
-    runtimeProcess.env.NO_EMOJI = '1';
-    runtimeProcess.env.NO_COLOR = '1';
-  }
-}
-
-export function isAnsiMode(): boolean {
-  return ansiMode;
-}
-
-export function supportsEmoji(): boolean {
-  if (ansiMode) return false;
-  const runtimeProcess = getRuntimeProcess();
-  if (!runtimeProcess) return false;
-  if (runtimeProcess.env.NO_EMOJI) return false;
-  if (runtimeProcess.env.FORCE_EMOJI) return true;
-  return runtimeProcess.stdout.isTTY ?? false;
-}
-
-export function supportsColor(): boolean {
-  if (ansiMode) return false;
-  const runtimeProcess = getRuntimeProcess();
-  if (!runtimeProcess) return false;
-  if (runtimeProcess.env.NO_COLOR) return false;
-  if (runtimeProcess.env.FORCE_COLOR === '1' || runtimeProcess.env.FORCE_COLOR === 'true' || runtimeProcess.env.FORCE_COLOR) return true;
-  return runtimeProcess.stdout.isTTY ?? false;
-}
-````
-
 ## File: src/browser-bootstrap-runtime.ts
 ````typescript
 export interface BrowserBootstrapScriptOptions {
   preludeModules: string[];
+  jasmineBootScriptUrl: string;
 }
 
 export function getBrowserBootstrapScript(
   options: BrowserBootstrapScriptOptions,
 ): string {
-  const { preludeModules } = options;
+  const {
+    preludeModules,
+    jasmineBootScriptUrl,
+  } = options;
 
   return `
 // Initialize everything after Jasmine is loaded
@@ -9658,7 +9747,7 @@ export function getBrowserBootstrapScript(
   }
 
   const script = document.createElement('script');
-  script.src = '/node_modules/jasmine-core/lib/jasmine-core/boot0.js';
+  script.src = ${JSON.stringify(jasmineBootScriptUrl)};
 
   script.onload = () => {
     const forwarder = new WebSocketEventForwarder();
@@ -9724,484 +9813,6 @@ export function getBrowserBootstrapScript(
 }
 ````
 
-## File: src/browser-playground-formatters.ts
-````typescript
-export function getBrowserPlaygroundFormattersSource(): string {
-  return `
-function installTestifyPlaygroundFormatters() {
-  const formatters =
-    Array.isArray(globalThis.devtoolsFormatters)
-      ? globalThis.devtoolsFormatters
-      : [];
-
-  if (
-    formatters.some(
-      (formatter) =>
-        formatter?.__testifyPlaygroundFormatter === true,
-    )
-  ) {
-    return;
-  }
-
-  function text(value) {
-    return value === undefined || value === null
-      ? ''
-      : String(value);
-  }
-
-  function shortFile(file) {
-    const value = text(file).replace(/\\\\/g, '/');
-    const parts = value.split('/');
-    return parts[parts.length - 1] || value;
-  }
-
-  function isSession(value) {
-    return Boolean(
-      value &&
-      typeof value === 'object' &&
-      typeof value.plan === 'function' &&
-      typeof value.execute === 'function' &&
-      typeof value.revision === 'function' &&
-      typeof value.tests === 'function',
-    );
-  }
-
-  function isPlan(value) {
-    return Boolean(
-      value &&
-      typeof value === 'object' &&
-      Array.isArray(value.specIds) &&
-      value.source &&
-      typeof value.tests === 'function' &&
-      typeof value.filter === 'function' &&
-      typeof value.slice === 'function',
-    );
-  }
-
-  function isExecutionResult(value) {
-    return Boolean(
-      value &&
-      typeof value === 'object' &&
-      Array.isArray(value.specResults) &&
-      typeof value.total === 'number' &&
-      typeof value.passed === 'number' &&
-      typeof value.failed === 'number' &&
-      typeof value.pending === 'number',
-    );
-  }
-
-  function globalFailureCount(value) {
-    return Array.isArray(value?.globalFailures)
-      ? value.globalFailures.length
-      : 0;
-  }
-
-  function collectionKind(value) {
-    if (!Array.isArray(value)) return null;
-
-    const explicitKind =
-      value.__testifyCollectionKind;
-
-    if (
-      explicitKind === 'tests' ||
-      explicitKind === 'suites' ||
-      explicitKind === 'files' ||
-      explicitKind === 'results' ||
-      explicitKind === 'help'
-    ) {
-      return explicitKind;
-    }
-
-    if (!value.length) return null;
-
-    const item = value[0];
-    if (!item || typeof item !== 'object') return null;
-
-    if (
-      typeof item.status === 'string' &&
-      typeof item.id === 'string'
-    ) {
-      return 'results';
-    }
-
-    if (
-      typeof item.specs === 'number' &&
-      typeof item.file === 'string'
-    ) {
-      return 'files';
-    }
-
-    if (
-      Object.prototype.hasOwnProperty.call(
-        item,
-        'parentSuiteId',
-      )
-    ) {
-      return 'suites';
-    }
-
-    if (
-      typeof item.id === 'string' &&
-      typeof item.fullName === 'string' &&
-      (
-        Object.prototype.hasOwnProperty.call(
-          item,
-          'suiteId',
-        ) ||
-        Object.prototype.hasOwnProperty.call(
-          item,
-          'description',
-        )
-      )
-    ) {
-      return 'tests';
-    }
-
-    return null;
-  }
-
-  function summarySpan(label, detail) {
-    return [
-      'span',
-      {},
-      [
-        'span',
-        {
-          style:
-            'font-weight:600;color:#0b7a53',
-        },
-        label,
-      ],
-      detail
-        ? [
-            'span',
-            {
-              style:
-                'margin-left:8px;color:#777',
-            },
-            detail,
-          ]
-        : '',
-    ];
-  }
-
-  function row(columns) {
-    return [
-      'div',
-      {
-        style:
-          'display:grid;grid-template-columns:minmax(80px,1fr) minmax(180px,3fr) minmax(100px,1.3fr);gap:10px;padding:2px 0;font-family:monospace',
-      },
-      ...columns.map(
-        (column) => [
-          'span',
-          {
-            style:
-              'overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
-          },
-          text(column),
-        ],
-      ),
-    ];
-  }
-
-  function testRows(tests) {
-    return tests.map(
-      (test) =>
-        row([
-          test.id,
-          test.fullName || test.name || test.description,
-          shortFile(test.file),
-        ]),
-    );
-  }
-
-  function suiteRows(suites) {
-    return suites.map(
-      (suite) =>
-        row([
-          suite.id,
-          suite.fullName || suite.name,
-          shortFile(suite.file),
-        ]),
-    );
-  }
-
-  function fileRows(files) {
-    return files.map(
-      (file) =>
-        row([
-          file.specs + ' specs',
-          file.file,
-          '',
-        ]),
-    );
-  }
-
-  function resultRows(results) {
-    return results.map(
-      (result) =>
-        row([
-          result.status,
-          result.fullName || result.description,
-          result.failedExpectations?.length
-            ? result.failedExpectations.length + ' failures'
-            : '',
-        ]),
-    );
-  }
-
-  function globalFailureRows(failures) {
-    return failures.map(
-      (failure) =>
-        row([
-          'error',
-          failure.message || failure.globalErrorType || 'Global error',
-          failure.globalErrorType || '',
-        ]),
-    );
-  }
-
-  function helpRows(entries) {
-    const rows = [];
-    let section = null;
-
-    for (const entry of entries) {
-      if (entry.section !== section) {
-        section = entry.section;
-        rows.push([
-          'div',
-          {
-            style:
-              'margin-top:6px;font-weight:600;color:#0b7a53',
-          },
-          text(section),
-        ]);
-      }
-
-      rows.push(
-        row([
-          '',
-          entry.usage,
-          entry.description,
-        ]),
-      );
-    }
-
-    return rows;
-  }
-
-  function collectionHeader(kind, value) {
-    const labels = {
-      tests: 'Tests',
-      suites: 'Suites',
-      files: 'Files',
-      results: 'Results',
-      help: 'Help',
-    };
-
-    const first = value[0];
-    let hint = value.length + (kind === 'help' ? ' commands' : ' items');
-
-    if (
-      kind === 'results' &&
-      value.some(
-        (result) => result.status === 'failed',
-      )
-    ) {
-      const failed = value.filter(
-        (result) => result.status === 'failed',
-      ).length;
-      hint = value.length + ' items В· ' + failed + ' failed';
-    } else if (
-      (kind === 'tests' || kind === 'suites') &&
-      first
-    ) {
-      const name =
-        first.fullName ||
-        first.name ||
-        first.description;
-      if (name) {
-        hint += ' В· ' + name + (value.length > 1 ? ' вЂ¦' : '');
-      }
-    }
-
-    return summarySpan(
-      labels[kind] || 'Collection',
-      hint,
-    );
-  }
-
-  const formatter = {
-    __testifyPlaygroundFormatter: true,
-
-    header(value) {
-      if (isSession(value)) {
-        let revision = '?';
-        try {
-          revision = value.revision();
-        } catch {}
-
-        return summarySpan(
-          'Testify Session',
-          text(value.state) + ' В· revision ' + revision,
-        );
-      }
-
-      if (isPlan(value)) {
-        const tests = value.tests();
-        const files = new Set(
-          tests
-            .map((test) => test.file)
-            .filter(Boolean),
-        );
-        const source = value.source?.kind || 'plan';
-
-        return summarySpan(
-          'Execution Plan',
-          tests.length +
-            ' tests В· ' +
-            files.size +
-            ' files В· ' +
-            source +
-            (value.catalogVersion !== undefined
-              ? ' В· revision ' + value.catalogVersion
-              : ''),
-        );
-      }
-
-      if (isExecutionResult(value)) {
-        const globalErrors =
-          globalFailureCount(value);
-        const detailParts = [
-          value.passed + ' passed',
-          value.failed + ' failed',
-          value.pending + ' pending',
-        ];
-
-        if (globalErrors > 0) {
-          detailParts.push(
-            globalErrors +
-              ' global error' +
-              (globalErrors === 1
-                ? ''
-                : 's'),
-          );
-        }
-
-        return summarySpan(
-          'Execution Result',
-          detailParts.join(
-            ' В· ',
-          ),
-        );
-      }
-
-      const kind = collectionKind(value);
-      if (kind) {
-        return collectionHeader(
-          kind,
-          value,
-        );
-      }
-
-      return null;
-    },
-
-    hasBody(value) {
-      if (
-        isSession(value) ||
-        isPlan(value) ||
-        isExecutionResult(value)
-      ) {
-        return true;
-      }
-
-      return Boolean(
-        collectionKind(value),
-      );
-    },
-
-    body(value) {
-      if (isSession(value)) {
-        return [
-          'div',
-          {},
-          row([
-            'state',
-            value.state,
-            '',
-          ]),
-          row([
-            'revision',
-            (() => {
-              try {
-                return value.revision();
-              } catch {
-                return '?';
-              }
-            })(),
-            '',
-          ]),
-          row([
-            'controls',
-            'tests В· plan В· run В· rerun В· retry В· exit',
-            '',
-          ]),
-        ];
-      }
-
-      if (isPlan(value)) {
-        return [
-          'div',
-          {},
-          ...testRows(
-            value.tests(),
-          ),
-        ];
-      }
-
-      if (isExecutionResult(value)) {
-        return [
-          'div',
-          {},
-          ...resultRows(
-            value.specResults,
-          ),
-          ...globalFailureRows(
-            value.globalFailures || [],
-          ),
-        ];
-      }
-
-      const kind = collectionKind(value);
-      if (kind === 'tests') {
-        return ['div', {}, ...testRows(value)];
-      }
-      if (kind === 'suites') {
-        return ['div', {}, ...suiteRows(value)];
-      }
-      if (kind === 'files') {
-        return ['div', {}, ...fileRows(value)];
-      }
-      if (kind === 'results') {
-        return ['div', {}, ...resultRows(value)];
-      }
-      if (kind === 'help') {
-        return ['div', {}, ...helpRows(value)];
-      }
-
-      return null;
-    },
-  };
-
-  formatters.push(formatter);
-  globalThis.devtoolsFormatters = formatters;
-}
-`;
-}
-````
-
 ## File: src/browser-runtime-console-ux.spec.ts
 ````typescript
 import {
@@ -10252,469 +9863,6 @@ describe('Browser runtime Playground console UX', () => {
     );
   });
 });
-````
-
-## File: src/browser-websocket-runtime.ts
-````typescript
-export interface BrowserWebSocketReporterScriptOptions {
-  initialSeed: number;
-  initialRandom: boolean;
-}
-
-export function getBrowserWebSocketReporterScript(
-  options: BrowserWebSocketReporterScriptOptions,
-): string {
-  const {
-    initialSeed: seed,
-    initialRandom: random,
-  } = options;
-
-  return `
-function WebSocketEventForwarder() {
-  this.ws = null;
-  this.connected = false;
-  this.messageQueue = [];
-  this.currentSpecId = null;
-  this.pendingSpecFailures = new Map();
-  this.globalFailures = [];
-  this.attributedFailureSignatures = new Set();
-  this.errorHooksInstalled = false;
-
-  const self = this;
-
-  this.failureSignature = function (failure) {
-    return [
-      failure?.message || '',
-      failure?.stack || '',
-    ].join('\\n@@\\n');
-  };
-
-  this.dedupeFailures = function (failures, excludedSignatures) {
-    const seen = new Set();
-    const deduped = [];
-
-    for (const failure of failures || []) {
-      const signature = self.failureSignature(failure);
-      if (excludedSignatures?.has(signature) || seen.has(signature)) {
-        continue;
-      }
-
-      seen.add(signature);
-      deduped.push(failure);
-    }
-
-    return deduped;
-  };
-
-  this.describeThrownValue = function (value) {
-    if (value instanceof Error) {
-      return {
-        message: value.message || String(value),
-        stack: value.stack || value.message || String(value),
-      };
-    }
-
-    if (value && typeof value === 'object') {
-      const message =
-        typeof value.message === 'string'
-          ? value.message
-          : (() => {
-              try {
-                return JSON.stringify(value);
-              } catch {
-                return String(value);
-              }
-            })();
-
-      return {
-        message,
-        stack:
-          typeof value.stack === 'string'
-            ? value.stack
-            : undefined,
-      };
-    }
-
-    return {
-      message:
-        typeof value === 'string'
-          ? value
-          : String(value),
-      stack: undefined,
-    };
-  };
-
-  this.createFailure = function (type, value) {
-    const details =
-      self.describeThrownValue(value);
-
-    return {
-      matcherName: '',
-      passed: false,
-      globalErrorType: type,
-      message: details.message,
-      stack: details.stack,
-    };
-  };
-
-  this.recordAsyncFailure = function (type, value) {
-    const failure =
-      self.createFailure(type, value);
-    const signature =
-      self.failureSignature(failure);
-
-    if (self.currentSpecId) {
-      const pending =
-        self.pendingSpecFailures.get(
-          self.currentSpecId,
-        ) ?? [];
-
-      if (
-        !pending.some(
-          (entry) =>
-            self.failureSignature(entry) === signature,
-        )
-      ) {
-        pending.push(failure);
-        self.pendingSpecFailures.set(
-          self.currentSpecId,
-          pending,
-        );
-      }
-
-      self.attributedFailureSignatures.add(
-        signature,
-      );
-      return;
-    }
-
-    if (
-      self.globalFailures.some(
-        (entry) =>
-          self.failureSignature(entry) === signature,
-      )
-    ) {
-      return;
-    }
-
-    self.globalFailures.push(failure);
-  };
-
-  this.installErrorHooks = function () {
-    if (self.errorHooksInstalled) {
-      return;
-    }
-
-    self.errorHooksInstalled = true;
-
-    window.addEventListener(
-      'unhandledrejection',
-      (event) => {
-        self.recordAsyncFailure(
-          'unhandledRejection',
-          event.reason,
-        );
-      },
-    );
-
-    window.addEventListener(
-      'error',
-      (event) => {
-        if (event.error) {
-          self.recordAsyncFailure(
-            'error',
-            event.error,
-          );
-          return;
-        }
-
-        const location =
-          typeof event.filename === 'string' && event.filename
-            ? event.filename + ':' + event.lineno + ':' + event.colno
-            : undefined;
-
-        self.recordAsyncFailure(
-          'error',
-          {
-            message:
-              event.message || 'Uncaught browser error',
-            stack: location,
-          },
-        );
-      },
-    );
-  };
-
-  this.mergePendingSpecFailures = function (result) {
-    const pending =
-      self.pendingSpecFailures.get(result.id) ?? [];
-
-    self.pendingSpecFailures.delete(
-      result.id,
-    );
-
-    if (!pending.length) {
-      return result;
-    }
-
-    return {
-      ...result,
-      status: 'failed',
-      failedExpectations:
-        self.dedupeFailures([
-          ...(Array.isArray(result.failedExpectations)
-            ? result.failedExpectations
-            : []),
-          ...pending,
-        ]),
-    };
-  };
-
-  this.collectRunLevelFailures = function (result) {
-    return self.dedupeFailures(
-      [
-        ...(
-          Array.isArray(result?.failedExpectations)
-            ? result.failedExpectations
-            : []
-        ),
-        ...self.globalFailures,
-      ],
-      self.attributedFailureSignatures,
-    );
-  };
-
-  this.installErrorHooks();
-
-  this.connect = function () {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = protocol + '//' + window.location.host;
-
-    self.ws = new WebSocket(wsUrl);
-
-    self.ws.onopen = () => {
-      self.connected = true;
-      console.log('WebSocket connected to', wsUrl);
-
-      self.send({
-        type: 'userAgent',
-        data: {
-          userAgent: navigator.userAgent,
-          appName: navigator.appName,
-          appVersion: navigator.appVersion,
-          platform: navigator.platform,
-          vendor: navigator.vendor,
-          language: navigator.language,
-          languages: navigator.languages,
-          orderedSuites: self.getOrderedSuites(${seed}, ${random}).map(suite => ({
-            id: suite.id,
-            description: suite.description,
-            fullName: suite.getFullName ? suite.getFullName() : suite.description
-          })),
-          orderedSpecs: self.getOrderedSpecs(${seed}, ${random}).map(spec => ({
-            id: spec.id,
-            description: spec.description,
-            fullName: spec.getFullName ? spec.getFullName() : spec.description
-          }))
-        },
-        timestamp: Date.now()
-      });
-
-      while (self.messageQueue.length > 0) {
-        const msg = self.messageQueue.shift();
-        self.send(msg);
-      }
-    };
-
-    self.ws.onclose = () => {
-      self.connected = false;
-      console.log('WebSocket disconnected');
-      setTimeout(() => self.connect(), 1000);
-    };
-
-    self.ws.onerror = (err) => {
-      self.connected = false;
-      console.error('WebSocket error:', err);
-    };
-
-    self.ws.onmessage = async (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (window.HMRClient && (message.type === 'hmr:connected' || message.type === 'hmr:update')) {
-          await window.HMRClient.handleMessage(message);
-        }
-      } catch (err) {
-        console.error('Failed to handle WebSocket message:', err);
-      }
-    };
-  };
-
-  this.send = function (msg) {
-    if (self.connected && self.ws && self.ws.readyState === WebSocket.OPEN) {
-      try {
-        self.ws.send(JSON.stringify(msg));
-      } catch (err) {
-        console.error('Failed to send WebSocket message:', err);
-      }
-    } else {
-      self.messageQueue.push(msg);
-    }
-  };
-
-  this.getAllSpecs = function () {
-    const allSpecs = [];
-    function collect(suite) {
-      suite.children.forEach((child) => {
-        if (child.children && child.children.length > 0) {
-          collect(child);
-        } else {
-          allSpecs.push(child);
-        }
-      });
-    }
-    
-    const env = jasmine?.getEnv?.();
-    if (env) collect(env.topSuite());
-    return allSpecs;
-  };
-
-  this.getAllSuites = function () {
-    const allSuites = [];
-    function collect(suite) {
-      allSuites.push(suite);
-      suite.children.forEach((child) => {
-        if (child.children && child.children.length > 0) {
-          collect(child);
-        }
-      });
-    }
-    
-    const env = jasmine?.getEnv?.();
-    if (env) collect(env.topSuite());
-    return allSuites;
-  };
-
-  this.getOrderedSpecs = function (seed, random) {
-    const allSpecs = self.getAllSpecs();
-    if (!random) return allSpecs;
-
-    const OrderCtor = jasmine.Order;
-    if (typeof OrderCtor === 'function') {
-      try {
-        const order = new OrderCtor({ random, seed });
-        if (typeof order.sort === 'function') {
-          return order.sort(allSpecs);
-        }
-      } catch (err) {
-        console.error('Failed to create jasmine.Order:', err);
-      }
-    }
-    return allSpecs;
-  };
-
-  this.getOrderedSuites = function (seed, random) {
-    const allSuites = self.getAllSuites();
-    if (!random) return allSuites;
-
-    const OrderCtor = jasmine.Order;
-    if (typeof OrderCtor === 'function') {
-      try {
-        const order = new OrderCtor({ random, seed });
-        if (typeof order.sort === 'function') {
-          return order.sort(allSuites);
-        }
-      } catch (err) {
-        console.error('Failed to create jasmine.Order for suites:', err);
-      }
-    }
-    return allSuites;
-  };
-
-  // Jasmine reporter hooks
-  this.jasmineStarted = function (config) {
-    self.currentSpecId = null;
-    self.pendingSpecFailures.clear();
-    self.globalFailures = [];
-    self.attributedFailureSignatures.clear();
-
-    self.send({
-      type: 'jasmineStarted',
-      data: config,
-      timestamp: Date.now()
-    });
-  };
-
-  this.suiteStarted = function (suite) {
-    self.send({
-      type: 'suiteStarted',
-      id: suite.id,
-      description: suite.description,
-      fullName: suite.fullName,
-      timestamp: Date.now()
-    });
-  };
-
-  this.specStarted = function (spec) {
-    self.currentSpecId = spec.id;
-
-    self.send({
-      type: 'specStarted',
-      id: spec.id,
-      description: spec.description,
-      fullName: spec.fullName,
-      timestamp: Date.now()
-    });
-  };
-
-  this.specDone = function (result) {
-    const mergedResult =
-      self.mergePendingSpecFailures(result);
-
-    if (self.currentSpecId === result.id) {
-      self.currentSpecId = null;
-    }
-
-    self.send({
-      type: 'specDone',
-      ...mergedResult,
-      timestamp: Date.now()
-    });
-  };
-
-  this.suiteDone = function (suite) {
-    self.send({
-      type: 'suiteDone',
-      id: suite.id,
-      description: suite.description,
-      fullName: suite.fullName,
-      timestamp: Date.now()
-    });
-  };
-
-  this.jasmineDone = function (result) {
-    self.currentSpecId = null;
-
-    const coverage = globalThis.__coverage__;
-    self.send({
-      type: 'jasmineDone',
-      ...result,
-      failedExpectations:
-        self.collectRunLevelFailures(result),
-      coverage: coverage ? JSON.stringify(coverage) : null,
-      timestamp: Date.now()
-    });
-
-    window.jasmineFinished = true;
-
-    if (!window.HMRClient) {
-      setTimeout(() => {
-        if (self.ws) self.ws.close();
-      }, 1000);
-    }
-  };
-}
-`;
-}
 ````
 
 ## File: src/catalog-state.ts
@@ -11054,1361 +10202,6 @@ export function getEmbeddedCatalogStateSource():
 }
 ````
 
-## File: src/hmr-manager.ts
-````typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import { FSWatcher, watch } from 'chokidar';
-import { EventEmitter } from 'events';
-import { ViteJasmineConfig } from './vite-jasmine-config';
-import { capitalize, norm } from './utils';
-import { ViteConfigBuilder } from './vite-config-builder';
-import { glob } from 'glob';
-import picomatch from 'picomatch';
-import { FileDiscoveryService } from './file-discovery-service';
-import { logger } from './logger';
-import { HmrMessages } from './log-messages';
-
-// Dynamic import to avoid top-level await issues
-let viteBuild: any = null;
-async function getViteBuild() {
-  if (!viteBuild) {
-    const vite = await import('vite');
-    viteBuild = vite.build;
-  }
-  return viteBuild;
-}
-
-export interface HmrUpdate {
-  type:
-    | 'update'
-    | 'full-reload'
-    | 'test-update'
-    | 'test-remove';
-  path: string;
-  timestamp: number;
-  content?: string;
-  affectedTests?: string[];
-  reason?: string;
-}
-
-export interface FileFilter {
-  include?: string[];
-  exclude?: string[];
-  extensions?: string[];
-}
-
-export interface RebuildStats {
-  changedFiles: string[];
-  rebuiltFiles: string[];
-  duration: number;
-  timestamp: number;
-  updateType: 'test-only' | 'source-change' | 'full';
-}
-
-export type SourceChangeStrategy = 'smart' | 'always-reload' | 'never-reload';
-
-export interface HmrManagerOptions {
-  fileFilter?: Partial<FileFilter>;
-  rebuildMode?: 'all' | 'selective';
-  sourceChangeStrategy?: SourceChangeStrategy;
-  criticalSourcePatterns?: string[]; // patterns that always trigger full reload
-}
-
-export class HmrManager extends EventEmitter {
-  private watcher: FSWatcher | null = null;
-  private rebuildQueue: Set<string> = new Set();
-  private directChanges: Set<string> = new Set();
-  private allFiles: string[] = [];
-
-  // ✅ FIX: Add atomic operation queue
-  private operationQueue: Promise<void> = Promise.resolve();
-  private rebuildPromise: Promise<void> | null = null;
-
-  private fileFilter: FileFilter = {
-    include: [],
-    exclude: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/coverage/**'],
-    extensions: ['.ts', '.js', '.mjs']
-  };
-
-  private dependencyGraph: Map<string, Set<string>> = new Map();
-  private reverseDependencyGraph: Map<string, Set<string>> = new Map();
-  private pathAliases: Record<string, string> = {};
-  private rebuildMode: 'all' | 'selective' = 'selective';
-  private sourceChangeStrategy: SourceChangeStrategy = 'smart';
-  private criticalSourcePatterns: string[] = [
-    '**/config/**',
-    '**/setup/**',
-    '**/*.config.*',
-    '**/bootstrap.*',
-    '**/main.*',
-    '**/index.*' // root-level index files
-  ];
-
-  private primarySrcDir: string;
-  private primaryTestDir: string;
-
-  constructor(
-    private fileDiscovery: FileDiscoveryService,
-    private config: ViteJasmineConfig,
-    private viteConfigBuilder: ViteConfigBuilder,
-    private viteCache: any = null,
-    options?: HmrManagerOptions
-  ) {
-    super();
-    const srcDir = Array.isArray(config.srcDirs) && config.srcDirs.length > 0 ? config.srcDirs[0] : './src';
-    const testDir = Array.isArray(config.testDirs) && config.testDirs.length > 0 ? config.testDirs[0] : './tests';
-    this.primarySrcDir = norm(srcDir);
-    this.primaryTestDir = norm(testDir);
-    this.pathAliases = (this.viteConfigBuilder as any).createPathAliases();
-    if (options?.fileFilter) this.fileFilter = { ...this.fileFilter, ...options.fileFilter };
-    if (options?.rebuildMode) this.rebuildMode = options.rebuildMode;
-    if (options?.sourceChangeStrategy) this.sourceChangeStrategy = options.sourceChangeStrategy;
-    if (options?.criticalSourcePatterns) {
-      this.criticalSourcePatterns = [...this.criticalSourcePatterns, ...options.criticalSourcePatterns];
-    }
-  }
-
-  setFileFilter(filter: Partial<FileFilter>): void {
-    this.fileFilter = { ...this.fileFilter, ...filter };
-    logger.println(HmrMessages.fileFilterUpdated(this.fileFilter));
-  }
-
-  setRebuildMode(mode: 'all' | 'selective'): void {
-    this.rebuildMode = mode;
-    logger.println(HmrMessages.rebuildModeSet(mode));
-  }
-
-  setSourceChangeStrategy(strategy: SourceChangeStrategy): void {
-    this.sourceChangeStrategy = strategy;
-    logger.println(HmrMessages.sourceChangeStrategySet(strategy));
-  }
-
-  private matchesFilter(filePath: string): boolean {
-    const normalizedPath = filePath;
-
-    if (this.fileFilter.extensions?.length) {
-      const ext = path.extname(normalizedPath);
-      if (!this.fileFilter.extensions.includes(ext)) return false;
-    }
-
-    if (this.fileFilter.exclude?.length) {
-      if (picomatch.isMatch(normalizedPath, this.fileFilter.exclude)) return false;
-    }
-
-    if (this.fileFilter.include?.length) {
-      if (!picomatch.isMatch(normalizedPath, this.fileFilter.include)) return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Determines if a file is a test file.
-   *
-   * Test and source directories may intentionally overlap (for example both
-   * may be "./src"), so directory membership alone cannot classify a file.
-   */
-  private isTestFile(filePath: string): boolean {
-    const normalized =
-      norm(filePath);
-
-    if (
-      !normalized.startsWith(
-        this.primaryTestDir,
-      )
-    ) {
-      return false;
-    }
-
-    return /\.spec\.(?:ts|tsx|js|jsx|mts|cts|mjs)$/i
-      .test(normalized);
-  }
-
-  /**
-   * Determines if a file is a source file.
-   *
-   * Specs are never sources, even when testDirs and srcDirs point at the
-   * same directory.
-   */
-  private isSourceFile(filePath: string): boolean {
-    const normalized =
-      norm(filePath);
-
-    return (
-      normalized.startsWith(
-        this.primarySrcDir,
-      ) &&
-      !this.isTestFile(
-        normalized,
-      )
-    );
-  }
-
-  /**
-   * Checks if a source file is critical and requires full reload
-   */
-  private isCriticalSourceFile(filePath: string): boolean {
-    if (!this.isSourceFile(filePath)) return false;
-    
-    const normalized = norm(filePath);
-    return this.criticalSourcePatterns.some(pattern => 
-      picomatch.isMatch(normalized, pattern)
-    );
-  }
-
-  /**
-   * Determines the appropriate update strategy based on what changed
-   */
-  private determineUpdateStrategy(
-    changedFiles: string[],
-    changeType: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'
-  ): { type: HmrUpdate['type']; reason: string } {
-    const hasSourceChanges = changedFiles.some(f => this.isSourceFile(f));
-    const hasTestChanges = changedFiles.some(f => this.isTestFile(f));
-    const hasCriticalChanges = changedFiles.some(f => this.isCriticalSourceFile(f));
-
-    // Test-only changes never require full reload
-    if (!hasSourceChanges && hasTestChanges) {
-      return {
-        type: 'test-update',
-        reason: 'Test files changed - incremental update'
-      };
-    }
-
-    // Source file/directory removal - check if critical
-    if (changeType === 'unlink' || changeType === 'unlinkDir') {
-      if (hasCriticalChanges) {
-        return {
-          type: 'full-reload',
-          reason: 'Critical source file/directory removed'
-        };
-      }
-      // Non-critical source removal can be handled with update
-      return {
-        type: 'update',
-        reason: 'Source file/directory removed - updating dependents'
-      };
-    }
-
-    // Source file/directory addition
-    if (changeType === 'add' || changeType === 'addDir') {
-      // New sources don't require full reload, just build them
-      return {
-        type: 'update',
-        reason: 'Source file/directory added - building new modules'
-      };
-    }
-
-    // Source file modification - apply strategy
-    if (hasSourceChanges) {
-      if (this.sourceChangeStrategy === 'always-reload') {
-        return {
-          type: 'full-reload',
-          reason: 'Source changed - always-reload strategy'
-        };
-      }
-
-      if (this.sourceChangeStrategy === 'never-reload') {
-        return {
-          type: 'update',
-          reason: 'Source changed - never-reload strategy'
-        };
-      }
-
-      // Smart strategy
-      if (hasCriticalChanges) {
-        return {
-          type: 'full-reload',
-          reason: 'Critical source file changed'
-        };
-      }
-
-      return {
-        type: 'update',
-        reason: 'Source changed - incremental update'
-      };
-    }
-
-    // Default to update
-    return {
-      type: 'update',
-      reason: 'General update'
-    };
-  }
-
-  /**
-   * Rebuilds the dependency graph entry for the given files
-   */
-  private async buildDependencyGraph(files: string[]): Promise<void> {
-    // ✅ FIX: Filter out non-existent files before processing
-    const existingFiles = files.filter(fs.existsSync);
-    
-    for (const file of existingFiles) {
-      const normalizedFile = norm(file);
-      
-      const oldDeps = this.dependencyGraph.get(normalizedFile);
-
-      if (oldDeps) {
-        for (const oldDep of oldDeps) {
-          this.reverseDependencyGraph.get(oldDep)?.delete(normalizedFile);
-        }
-      }
-
-      const newDeps = await this.extractDependencies(file);
-      if (newDeps.size === 0 && !fs.existsSync(normalizedFile)) {
-        // File no longer exists: purge orphaned graph entries
-        this.dependencyGraph.delete(normalizedFile);
-      } else {
-        this.dependencyGraph.set(normalizedFile, newDeps);
-      }
-
-      for (const newDep of newDeps) {
-        if (!this.reverseDependencyGraph.has(newDep)) {
-          this.reverseDependencyGraph.set(newDep, new Set());
-        }
-        this.reverseDependencyGraph.get(newDep)!.add(normalizedFile);
-      }
-    }
-
-    // Prune empty entries from reverse dependency graph to prevent memory leaks
-    for (const [key, set] of this.reverseDependencyGraph) {
-      if (set.size === 0) {
-        this.reverseDependencyGraph.delete(key);
-      }
-    }
-  }
-
-  private async extractDependencies(filePath: string): Promise<Set<string>> {
-    // ✅ FIX: Skip if file doesn't exist
-    if (!fs.existsSync(filePath)) {
-      return new Set();
-    }
-    
-    const deps = new Set<string>();
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const importRegex = /(?:import|export).*?from\s+['"]([^'"]+)['"]/g;
-      const requireRegex = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-      let match;
-      while ((match = importRegex.exec(content)) !== null) {
-        const resolved = this.resolveImport(filePath, match[1]);
-        if (resolved) deps.add(norm(resolved));
-      }
-      while ((match = requireRegex.exec(content)) !== null) {
-        const resolved = this.resolveImport(filePath, match[1]);
-        if (resolved) deps.add(norm(resolved));
-      }
-    } catch (error) {
-      logger.error(HmrMessages.cannotExtractDependencies(filePath, (error as Error).message));
-    }
-    return deps;
-  }
-
-  private resolveImport(fromFile: string, importPath: string): string | null {
-    if (!fs.existsSync(fromFile)) {
-      return null;
-    }
-    
-    if (!importPath.startsWith('.') && !importPath.startsWith('/')) {
-      const aliasResolved = this.resolvePathAlias(importPath);
-      return aliasResolved || null;
-    }
-
-    const dir = path.dirname(fromFile);
-    let resolved = path.resolve(dir, importPath);
-    const extensions = [...this.fileFilter.extensions!, ''];
-
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
-
-    for (const ext of extensions) {
-      const withExt = resolved + ext;
-      if (fs.existsSync(withExt) && fs.statSync(withExt).isFile()) return withExt;
-
-      const indexFile = path.join(resolved, `index${ext}`);
-      if (fs.existsSync(indexFile) && fs.statSync(indexFile).isFile()) return indexFile;
-    }
-
-    return null;
-  }
-
-  private resolvePathAlias(importPath: string): string | null {
-    const extensions = [...this.fileFilter.extensions!, ''];
-    for (const [alias, aliasPath] of Object.entries(this.pathAliases)) {
-      if (importPath === alias || importPath.startsWith(alias.replace(/\/\*$/, '') + '/')) {
-        const relativePart = importPath.slice(alias.replace(/\/\*$/, '').length);
-        const resolvedBase = norm(path.join(aliasPath.replace(/\/\*$/, ''), relativePart));
-        for (const ext of extensions) {
-          const withExt = resolvedBase + ext;
-          if (fs.existsSync(withExt) && fs.statSync(withExt).isFile()) return withExt;
-
-          const indexFile = path.join(resolvedBase, `index${ext}`);
-          if (fs.existsSync(indexFile) && fs.statSync(indexFile).isFile()) return indexFile;
-        }
-      }
-    }
-    return null;
-  }
-
-  private getFilesToRebuild(changedFile: string): Set<string> {
-    const filesToRebuild = new Set<string>();
-
-    if (this.rebuildMode === 'all') {
-      // ✅ FIX: Only include existing files in "all" mode
-      this.allFiles.filter(fs.existsSync).forEach(f => filesToRebuild.add(f));
-      return filesToRebuild;
-    }
-
-    const queue = [norm(changedFile)];
-    const visited = new Set<string>();
-
-    while (queue.length) {
-      const current = queue.shift()!;
-      if (visited.has(current)) continue;
-
-      visited.add(current);
-      
-      // ✅ FIX: Only add to rebuild set if file exists
-      if (fs.existsSync(current)) {
-        filesToRebuild.add(current);
-      }
-
-      const dependents = this.reverseDependencyGraph.get(current);
-      if (dependents) {
-        dependents.forEach(d => {
-          // ✅ FIX: Only queue dependents that exist
-          if (fs.existsSync(d)) {
-            queue.push(d);
-          }
-        });
-      }
-    }
-
-    return filesToRebuild;
-  }
-
-  /**
-   * Gets all test files affected by a source change
-   */
-  private getAffectedTests(sourceFile: string): string[] {
-    const allDependents = this.getFilesToRebuild(sourceFile);
-    return Array.from(allDependents).filter(f => this.isTestFile(f) && fs.existsSync(f));
-  }
-
-  async start(): Promise<void> {
-    const watchDirs = [...(this.config.srcDirs || []), ...(this.config.testDirs || [])].filter(Boolean);
-    const watchTargets = watchDirs.length > 0 ? watchDirs : [this.primarySrcDir, this.primaryTestDir];
-    await this.initializeTrackedFiles(watchTargets);
-    this.watcher = watch(watchTargets, {
-      ignored: /(^|[\/\\])\../,
-      persistent: true,
-      ignoreInitial: true
-    });
-
-    this.watcher.on('change', filePath => {
-      filePath = norm(filePath);
-      if (this.matchesFilter(filePath)) this.queueRebuild(filePath, 'change');
-    });
-
-    this.watcher.on('add', filePath => {
-      filePath = norm(filePath);
-      if (this.matchesFilter(filePath)) this.handleFileAdd(filePath);
-    });
-
-    this.watcher.on('unlink', filePath => {
-      filePath = norm(filePath);
-      if (this.matchesFilter(filePath)) this.handleFileRemove(filePath);
-    });
-
-    this.watcher.on('addDir', dirPath => this.handleDirectoryAdd(norm(dirPath)));
-    this.watcher.on('unlinkDir', dirPath => this.handleDirectoryRemove(norm(dirPath)));
-
-    this.watcher.on('ready', async () => {
-      logger.println(HmrMessages.watchingFiles(this.allFiles.length, this.rebuildMode, this.sourceChangeStrategy));
-      this.emit('hmr:ready');
-    });
-  }
-
-  private async initializeTrackedFiles(watchTargets: string[]): Promise<void> {
-    const defaultExtensions = this.fileFilter.extensions!.join(',');
-    const seen = new Set(this.allFiles);
-    for (const target of watchTargets) {
-      const normalizedTarget = norm(target);
-      if (!fs.existsSync(normalizedTarget)) continue;
-
-      const pattern = norm(path.join(normalizedTarget, `**/*{${defaultExtensions}}`));
-      const files = (await glob(pattern, { absolute: true, ignore: ['**/node_modules/**'] }))
-        .filter(f => this.matchesFilter(norm(f)));
-
-      for (const file of files) {
-        const normalized = norm(file);
-        if (!seen.has(normalized)) {
-          seen.add(normalized);
-          this.allFiles.push(normalized);
-        }
-      }
-    }
-  }
-
-  private async handleFileAdd(filePath: string): Promise<void> {
-    // ✅ FIX: Use operation queue to prevent race conditions
-    this.operationQueue = this.operationQueue.then(async () => {
-      filePath = norm(filePath);
-      if (!this.allFiles.includes(filePath)) {
-        this.allFiles.push(filePath);
-        
-        const fileType = this.isTestFile(filePath) ? 'test' : 
-                        this.isSourceFile(filePath) ? 'source' : 'unknown';
-        const output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
-        logger.println(HmrMessages.fileAdded(capitalize(fileType), output));
-        
-        await this.queueRebuild(
-          filePath,
-          'add',
-        );
-      }
-    }).catch(error => {
-      logger.error(HmrMessages.errorInHandleFileAdd(error));
-    });
-    
-    await this.operationQueue;
-  }
-
-  private async handleFileRemove(filePath: string): Promise<void> {
-    // ✅ FIX: Use operation queue for atomic file removal
-    this.operationQueue = this.operationQueue.then(async () => {
-      filePath = norm(filePath);
-      
-      this.viteConfigBuilder.removeFromInputMap(filePath);
-
-      // ✅ CRITICAL: Remove from rebuild queue immediately to prevent build errors
-      this.rebuildQueue.delete(filePath);
-      this.directChanges.delete(filePath);
-      
-      const affectedFiles = new Set<string>();
-      const dependents = this.reverseDependencyGraph.get(filePath);
-      dependents?.forEach(d => {
-        if (fs.existsSync(d)) {
-          affectedFiles.add(d);
-        }
-      });
-
-      this.allFiles = this.allFiles.filter(f => f !== filePath);
-      this.dependencyGraph.delete(filePath);
-      this.reverseDependencyGraph.delete(filePath);
-
-      for (const deps of this.dependencyGraph.values()) deps.delete(filePath);
-      for (const dep of this.reverseDependencyGraph.values()) dep.delete(filePath);
-
-      const fileType = this.isTestFile(filePath) ? 'test' : 
-                      this.isSourceFile(filePath) ? 'source' : 'unknown';
-      let output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
-      logger.println(HmrMessages.fileRemoved(capitalize(fileType), output));
-
-      // Determine update strategy
-      const strategy = this.determineUpdateStrategy([filePath], 'unlink');
-
-      output = norm(path.join(this.config.outDir, this.fileDiscovery.getOutputName(filePath)));
-
-      if (fs.existsSync(output)) fs.rmSync(output);
-      const map = output.replace(/\.js$/, '.js.map');
-      if (fs.existsSync(map)) fs.rmSync(map);
-    
-      const removedTest =
-        this.isTestFile(filePath);
-
-      this.emit('hmr:update', {
-        type:
-          removedTest
-            ? 'test-remove'
-            : strategy.type,
-        path:
-          this.fileDiscovery
-            .getOutputName(filePath),
-        timestamp:
-          Date.now(),
-        affectedTests:
-          this.isSourceFile(filePath)
-            ? Array.from(
-                affectedFiles,
-              ).filter(
-                (file) =>
-                  this.isTestFile(file),
-              )
-            : undefined,
-        reason:
-          removedTest
-            ? 'Test file removed'
-            : strategy.reason,
-      });
-
-      if (this.rebuildMode === 'selective' && affectedFiles.size > 0) {
-        affectedFiles.forEach(f => this.queueRebuild(f, 'change'));
-      }
-    }).catch(error => {
-      logger.error(HmrMessages.errorInHandleFileRemove(error));
-    });
-    
-    await this.operationQueue;
-  }
-
-  private async handleDirectoryAdd(dirPath: string): Promise<void> {
-    // ✅ FIX: Use operation queue
-    this.operationQueue = this.operationQueue.then(async () => {
-      dirPath = norm(dirPath);
-      const dirType = dirPath.startsWith(this.primaryTestDir) ? 'test': 'source';
-      const output = norm(dirPath.startsWith(this.primaryTestDir) ? path.relative(this.primaryTestDir, dirPath) : path.relative(this.primarySrcDir, dirPath));
-      logger.println(HmrMessages.directoryAdded(capitalize(dirType), output));
-      
-      const defaultExtensions = this.fileFilter.extensions!.join(',');
-      const pattern = norm(path.join(dirPath, `**/*{${defaultExtensions}}`));
-      const newFiles = (await glob(pattern, { absolute: true, ignore: ['**/node_modules/**'] }))
-        .filter(f => this.matchesFilter(norm(f)));
-
-      const filesToProcess: string[] = [];
-      for (const file of newFiles) {
-        const normalized = norm(file);
-        if (!this.allFiles.includes(normalized)) {
-          this.allFiles.push(normalized);
-          filesToProcess.push(normalized);
-        }
-      }
-
-      if (filesToProcess.length) {
-        logger.println(HmrMessages.foundFilesInDirectory(filesToProcess.length, dirType));
-        
-        // Directory additions don't require full reload
-        const strategy = this.determineUpdateStrategy(filesToProcess, 'addDir');
-        
-        this.emit('hmr:update', {
-          type: strategy.type,
-          path: output,
-          timestamp: Date.now(),
-          reason: strategy.reason
-        });
-        
-        filesToProcess.forEach(f => this.queueRebuild(f, 'add'));
-      }
-    }).catch(error => {
-      logger.error(HmrMessages.errorInHandleDirectoryAdd(error));
-    });
-    
-    await this.operationQueue;
-  }
-
-  private async handleDirectoryRemove(dirPath: string): Promise<void> {
-    // ✅ FIX: Use operation queue for atomic directory removal
-    this.operationQueue = this.operationQueue.then(async () => {
-      dirPath = norm(dirPath);
-
-      const dirType = dirPath.startsWith(this.primaryTestDir) ? 'test': 'source';
-      const output = norm(dirPath.startsWith(this.primaryTestDir) ? path.relative(this.primaryTestDir, dirPath) : path.relative(this.primarySrcDir, dirPath));
-      logger.println(HmrMessages.directoryRemoved(capitalize(dirType), output));
-      
-      const removedFiles = this.allFiles.filter(f => f.startsWith(dirPath + path.sep) || f === dirPath);
-      const affectedFiles = new Set<string>();
-
-      // ✅ Remove all files in directory from rebuild queues to prevent build errors
-      for (const file of removedFiles) {
-        this.rebuildQueue.delete(file);
-        this.directChanges.delete(file);
-        
-        const dependents = this.reverseDependencyGraph.get(file);
-        dependents?.forEach(d => {
-          if (fs.existsSync(d)) {
-            affectedFiles.add(d);
-          }
-        });
-
-        this.dependencyGraph.delete(file);
-        this.reverseDependencyGraph.delete(file);
-
-        for (const deps of this.dependencyGraph.values()) deps.delete(file);
-        for (const dep of this.reverseDependencyGraph.values()) dep.delete(file);
-      }
-      
-      // Remove all files at once (more efficient)
-      this.allFiles = this.allFiles.filter(f => !removedFiles.includes(f));
-
-      // Determine strategy based on what was removed
-      const strategy = this.determineUpdateStrategy(removedFiles, 'unlinkDir');
-      this.viteConfigBuilder.removeMultipleFromInputMap(removedFiles);
-    
-      this.emit('hmr:update', {
-        type: strategy.type,
-        path: output,
-        timestamp: Date.now(),
-        affectedTests: Array.from(affectedFiles).filter(f => this.isTestFile(f)),
-        reason: strategy.reason
-      });
-
-      if (this.rebuildMode === 'selective' && affectedFiles.size > 0) {
-        affectedFiles.forEach(f => this.queueRebuild(f, 'change'));
-      }
-    }).catch(error => {
-      logger.error(HmrMessages.errorInHandleDirectoryRemove(error));
-    });
-    
-    await this.operationQueue;
-  }
-
-  private async queueRebuild(filePath: string, changeType: 'add' | 'change' | 'unlink' = 'change') {
-    const normalized = norm(filePath);
-    
-    // ✅ FIX: Skip if file doesn't exist (for unlink cases)
-    if (changeType !== 'unlink' && !fs.existsSync(normalized)) {
-      logger.println(HmrMessages.skippingRebuildNonExistent(normalized));
-      return;
-    }
-    
-    this.directChanges.add(normalized);
-    this.rebuildQueue.add(normalized);
-
-    // If a rebuild is already in progress, return the same promise.
-    // Multiple queued changes will be processed in the same rebuild loop.
-    if (this.rebuildPromise) {
-      return this.rebuildPromise;
-    }
-
-    this.rebuildPromise = this.rebuildAll().catch(error => {
-      logger.error(HmrMessages.rebuildFailed(error));
-      this.emit('hmr:error', error);
-    }).finally(() => {
-      this.rebuildPromise = null;
-    });
-    
-    return this.rebuildPromise;
-  }
-
-  private async rebuildAll() {
-    try {
-      while (this.rebuildQueue.size > 0) {
-        const startTime = Date.now();
-
-        // ✅ FIX: Filter out deleted files from ALL queues before processing
-        const changedFiles = Array.from(this.rebuildQueue).filter(file => {
-          if (!fs.existsSync(file)) {
-            logger.println(HmrMessages.skippingDeletedFileFromQueue(file));
-            return false;
-          }
-          return true;
-        });
-
-        this.rebuildQueue.clear();
-
-        const directChangedFiles = Array.from(this.directChanges).filter(file => {
-          if (!fs.existsSync(file)) {
-            logger.println(HmrMessages.skippingDeletedFileFromDirectChanges(file));
-            return false;
-          }
-          return true;
-        });
-        this.directChanges.clear();
-
-        if (changedFiles.length === 0) {
-          logger.println(HmrMessages.allQueuedFilesDeleted());
-          continue;
-        }
-
-        const filesToRebuild = new Set<string>();
-
-        for (const file of changedFiles) {
-          const deps = this.getFilesToRebuild(file);
-          deps.forEach(f => {
-            // ✅ FIX: Double verify files to rebuild still exist
-            if (fs.existsSync(f)) {
-              filesToRebuild.add(f);
-            }
-          });
-        }
-
-        const rebuiltFiles = Array.from(filesToRebuild);
-
-        if (rebuiltFiles.length === 0) {
-          logger.println(HmrMessages.noValidFilesToRebuild());
-          continue;
-        }
-
-        // Specs are the only build entries. Source files participate only in
-        // dependency analysis and determine which specs are affected.
-        const validSourceFiles =
-          rebuiltFiles.filter(
-            (file) =>
-              this.isSourceFile(file) &&
-              fs.existsSync(file),
-          );
-
-        const validTestFiles =
-          rebuiltFiles.filter(
-            (file) =>
-              this.isTestFile(file) &&
-              fs.existsSync(file),
-          );
-
-        logger.println(
-          HmrMessages.rebuildSummary(
-            directChangedFiles.length,
-            rebuiltFiles.length,
-            validSourceFiles.length,
-            validTestFiles.length,
-          ),
-        );
-
-        // A source change with no dependent spec does not require a browser
-        // build. The source will be pulled transitively the next time a spec
-        // that imports it is rebuilt.
-        if (validTestFiles.length === 0) {
-          logger.println(
-            HmrMessages.noValidSourceOrTestFiles(),
-          );
-          continue;
-        }
-
-        await this.buildDependencyGraph(
-          rebuiltFiles,
-        );
-
-        const viteConfig =
-          this.viteConfigBuilder
-            .createViteConfigForFiles(
-              validTestFiles,
-              this.viteCache,
-            );
-
-        const build = await getViteBuild();
-        const startBuildTime = Date.now();
-
-        try {
-          const result = await build(viteConfig);
-          this.viteCache = result;
-        } catch (buildError: any) {
-          logger.error(HmrMessages.viteBuildFailed(buildError));
-          // Check if it's due to missing entry files
-          if (buildError.code === 'UNRESOLVED_ENTRY') {
-            logger.println(HmrMessages.retryingWithFilteredEntries());
-            // Retry with the remaining spec entries only.
-            const finalTestFiles =
-              validTestFiles.filter(
-                fs.existsSync,
-              );
-
-            if (
-              finalTestFiles.length === 0
-            ) {
-              logger.println(
-                HmrMessages
-                  .allEntryPointsDeleted(),
-              );
-              continue;
-            }
-
-            const retryConfig =
-              this.viteConfigBuilder
-                .createViteConfigForFiles(
-                  finalTestFiles,
-                  this.viteCache,
-                );
-            const result = await build(retryConfig);
-            this.viteCache = result;
-          } else {
-            throw buildError;
-          }
-        }
-
-        // Only spec entries have stable output names. Source modules are
-        // dependency chunks and must never be addressed as HMR entries.
-        for (
-          const file of
-          validTestFiles
-        ) {
-          const relative =
-            this.fileDiscovery
-              .getOutputName(file);
-
-          const outputPath =
-            path.join(
-              this.config.outDir,
-              relative,
-            );
-
-          if (
-            fs.existsSync(
-              outputPath,
-            )
-          ) {
-            const content =
-              fs.readFileSync(
-                outputPath,
-                'utf-8',
-              );
-
-            const strategy =
-              this.determineUpdateStrategy(
-                directChangedFiles,
-                'change',
-              );
-
-            const affectedTests =
-              directChangedFiles
-                .filter(
-                  (changedFile) =>
-                    this.isSourceFile(
-                      changedFile,
-                    ),
-                )
-                .flatMap(
-                  (changedFile) =>
-                    this.getAffectedTests(
-                      changedFile,
-                    ),
-                );
-
-            this.emit(
-              'hmr:update',
-              {
-                type: strategy.type,
-                path: relative,
-                timestamp:
-                  Date.now(),
-                content,
-                affectedTests:
-                  affectedTests.length > 0
-                    ? affectedTests
-                    : undefined,
-                reason:
-                  strategy.reason,
-              },
-            );
-          }
-        }
-
-        logger.println(HmrMessages.viteBuildCompleted(Date.now() - startBuildTime));
-
-        const duration = Date.now() - startTime;
-        const sourceChanges = directChangedFiles.filter(f => this.isSourceFile(f));
-        const testChanges = directChangedFiles.filter(f => this.isTestFile(f));
-        const updateType = sourceChanges.length > 0 ? 'source-change' :
-          testChanges.length > 0 ? 'test-only' : 'full';
-
-        this.emit('hmr:rebuild', {
-          changedFiles: directChangedFiles,
-          rebuiltFiles,
-          duration,
-          timestamp: Date.now(),
-          updateType
-        } as RebuildStats);
-
-        logger.println(HmrMessages.rebuildComplete(updateType, rebuiltFiles.length, duration));
-      }
-    } catch (error) {
-      logger.error(HmrMessages.rebuildFailed(error));
-      this.emit('hmr:error', error);
-      throw error;
-    }
-  }
-
-  getDependencyInfo(filePath: string) {
-    const normalized = norm(filePath);
-    return {
-      dependencies: Array.from(this.dependencyGraph.get(normalized) || []),
-      dependents: Array.from(this.reverseDependencyGraph.get(normalized) || []),
-      isTest: this.isTestFile(normalized),
-      isSource: this.isSourceFile(normalized),
-      isCritical: this.isCriticalSourceFile(normalized),
-      affectedTests: this.isSourceFile(normalized) ? this.getAffectedTests(normalized) : []
-    };
-  }
-
-  getStats() {
-    const sourceFiles = this.allFiles.filter(f => this.isSourceFile(f));
-    const testFiles = this.allFiles.filter(f => this.isTestFile(f));
-    const criticalFiles = sourceFiles.filter(f => this.isCriticalSourceFile(f));
-
-    return {
-      totalFiles: this.allFiles.length,
-      sourceFiles: sourceFiles.length,
-      testFiles: testFiles.length,
-      criticalSourceFiles: criticalFiles.length,
-      trackedDependencies: this.dependencyGraph.size,
-      rebuildMode: this.rebuildMode,
-      sourceChangeStrategy: this.sourceChangeStrategy,
-      fileFilter: this.fileFilter,
-      pathAliases: this.pathAliases,
-      criticalPatterns: this.criticalSourcePatterns
-    };
-  }
-
-  async stop(): Promise<void> {
-    if (this.watcher) {
-      await this.watcher.close();
-      this.watcher = null;
-      this.dependencyGraph.clear();
-      this.reverseDependencyGraph.clear();
-      logger.println(HmrMessages.watcherStopped());
-    }
-  }
-}
-````
-
-## File: src/jasmine-node-runtime.ts
-````typescript
-import {
-  createTestCatalogFromJasmineEnv,
-  getEmbeddedTestCatalogSource,
-  type TestCatalog,
-} from './test-catalog';
-import {
-  getEmbeddedTestMetadataSource,
-} from './test-metadata-runtime';
-
-export interface NodeJasmineRuntimeOptions {
-  reporter?: jasmine.CustomReporter;
-  resetReporters?: boolean;
-}
-
-export interface NodeJasmineRuntime {
-  jasmineEnv: jasmine.Env;
-  jasmineInstance: any;
-  catalog: TestCatalog;
-  utils: {
-    getCatalog: () => TestCatalog;
-    getAllSpecs: () => any[];
-    getAllSuites: () => any[];
-    getOrderedSpecs: (seed: unknown, random: boolean) => any[];
-    getOrderedSuites: (seed: unknown, random: boolean) => any[];
-  };
-}
-
-export function getAllSpecsFromEnv(jasmineEnv: jasmine.Env): any[] {
-  const specs: any[] = [];
-  const topSuite = jasmineEnv?.topSuite?.();
-  if (!topSuite) return specs;
-
-  const traverse = (suite: any) => {
-    suite.children?.forEach((child: any) => {
-      if (child && typeof child.id === 'string' && !child.children) {
-        specs.push(child);
-      }
-      if (child?.children) {
-        traverse(child);
-      }
-    });
-  };
-
-  traverse(topSuite);
-  return specs;
-}
-
-export function getAllSuitesFromEnv(jasmineEnv: jasmine.Env): any[] {
-  const suites: any[] = [];
-  const topSuite = jasmineEnv?.topSuite?.();
-  if (!topSuite) return suites;
-
-  const traverse = (suite: any) => {
-    suites.push(suite);
-    suite.children?.forEach((child: any) => {
-      if (child?.children) {
-        traverse(child);
-      }
-    });
-  };
-
-  traverse(topSuite);
-  return suites;
-}
-
-export function orderJasmineItems(
-  jasmineInstance: any,
-  items: any[],
-  seed: unknown,
-  random: boolean
-): any[] {
-  if (!random) return items;
-
-  const OrderCtor = jasmineInstance?.Order;
-  try {
-    const order = new OrderCtor({ random, seed });
-    return typeof order.sort === 'function' ? order.sort(items) : items;
-  } catch {
-    return items;
-  }
-}
-
-export function createJasmineRuntimeUtils(
-  jasmineEnv: jasmine.Env,
-  jasmineInstance: any,
-) {
-  return {
-    getCatalog: () =>
-      createTestCatalogFromJasmineEnv(jasmineEnv),
-    getAllSpecs: () =>
-      getAllSpecsFromEnv(jasmineEnv),
-    getAllSuites: () =>
-      getAllSuitesFromEnv(jasmineEnv),
-    getOrderedSpecs: (
-      seed: unknown,
-      random: boolean,
-    ) =>
-      orderJasmineItems(
-        jasmineInstance,
-        getAllSpecsFromEnv(jasmineEnv),
-        seed,
-        random,
-      ),
-    getOrderedSuites: (
-      seed: unknown,
-      random: boolean,
-    ) =>
-      orderJasmineItems(
-        jasmineInstance,
-        getAllSuitesFromEnv(jasmineEnv),
-        seed,
-        random,
-      ),
-  };
-}
-
-export function exposeNodeJasmineGlobals(
-  jasmineRequire: any,
-  jasmineInstance: any,
-  jasmineEnv: jasmine.Env,
-  utils: NodeJasmineRuntime['utils']
-): void {
-  Object.assign(
-    globalThis,
-    jasmineRequire.interface(
-      jasmineInstance,
-      jasmineEnv,
-    ),
-  );
-
-  globalThis.jasmine = {
-    ...(globalThis.jasmine ?? {}),
-    ...jasmineInstance,
-    ...utils,
-  };
-}
-
-export function initializeNodeJasmineEnvironment(
-  jasmineRequire: any,
-  options: NodeJasmineRuntimeOptions = {}
-): NodeJasmineRuntime {
-  const jasmineInstance =
-    jasmineRequire.core(jasmineRequire);
-  const jasmineEnv =
-    jasmineInstance.getEnv();
-  const utils =
-    createJasmineRuntimeUtils(
-      jasmineEnv,
-      jasmineInstance,
-    );
-
-  exposeNodeJasmineGlobals(
-    jasmineRequire,
-    jasmineInstance,
-    jasmineEnv,
-    utils,
-  );
-
-  if (
-    options.resetReporters !== false &&
-    typeof jasmineEnv.clearReporters === 'function'
-  ) {
-    jasmineEnv.clearReporters();
-  }
-
-  if (
-    options.reporter &&
-    typeof jasmineEnv.addReporter === 'function'
-  ) {
-    jasmineEnv.addReporter(options.reporter);
-  }
-
-  return {
-    jasmineEnv,
-    jasmineInstance,
-    get catalog() {
-      return utils.getCatalog();
-    },
-    utils,
-  };
-}
-
-export function getEmbeddedNodeJasmineRuntimeSource(): string {
-  return [
-    getEmbeddedTestMetadataSource(),
-    getEmbeddedTestCatalogSource(),
-    [
-      getAllSpecsFromEnv,
-      getAllSuitesFromEnv,
-      orderJasmineItems,
-      createJasmineRuntimeUtils,
-      exposeNodeJasmineGlobals,
-      initializeNodeJasmineEnvironment,
-    ]
-      .map((fn) => fn.toString())
-      .join('\n\n'),
-  ].join('\n\n');
-}
-````
-
-## File: src/messages.ts
-````typescript
-export interface LogMessageTemplate {
-    type: 'error' | 'warning' | 'info' | 'debug'; // New property to semantically categorize messages
-    icon?: string;
-    text: (...args: any[]) => string;
-}
-
-export const LOG_MESSAGES = {
-    // =================================================================
-    // General / CLI
-    // =================================================================
-    
-    startingExclusive: {
-        type: 'info',
-        icon: '⚡',
-        text: () => '[⚡] Exclusive mode: Terminating existing instances...',
-    },
-    runningInProjectScope: {
-        type: 'info',
-        icon: '📁',
-        text: (projectName: string, path: string) => `[📁] Running tests for project "${projectName}" in: ${path}`,
-    },
-    projectNotFound: {
-        type: 'error',
-        icon: 'x',
-        text: (projectName: string) => `%error% Project "${projectName}" not found in tsconfig.json or workspace definitions.`,
-    },
-    invalidExitCode: {
-        type: 'warning',
-        icon: '🚨',
-        text: (code: number) => `[warning] Exiting with an unusual code: ${code}.`,
-    },
-    
-    // =================================================================
-    // Browser Lifecycle (BrowserManager)
-    // =================================================================
-    
-    browserManagerCleanup: {
-        type: 'debug',
-        icon: '🧹',
-        text: () => '[debug] BrowserManager: Cleaning up browser processes.',
-    },
-    browserProcessTerminated: {
-        type: 'debug',
-        icon: '✔️',
-        text: (pid: number) => `[debug] BrowserManager: Terminated process with PID: ${pid}.`,
-    },
-    browserCleanupFailed: {
-        type: 'warning',
-        icon: '🚨',
-        text: (pid: number, error: string) => `%error% BrowserManager: Failed to terminate process ${pid}. Reason: ${error}`,
-    },
-    headlessModeImplied: {
-        type: 'info',
-        icon: '💡',
-        text: () => '[info] Using --browser node implies --headless. Running in headless mode.',
-    },
-
-    // =================================================================
-    // Test Runner (NodeTestRunner)
-    // =================================================================
-    
-    noJsFilesForRunner: {
-        type: 'warning',
-        icon: '🚨',
-        text: () => '[warning] No JS files found for test runner generation.',
-    },
-    generatedInProcessRunner: {
-        type: 'info',
-        icon: '🤖',
-        text: (runnerPath: string) => `[robot] Generated in-process test runner: ${runnerPath}`,
-    },
-    startingTestRunner: {
-        type: 'info',
-        icon: '🚀',
-        text: () => '[rocket] Starting test runner in current process...',
-    },
-    testProcessAlreadyRunning: {
-        type: 'warning',
-        icon: '🚨',
-        text: () => '%error% Test process already running.',
-    },
-    testExecutionError: {
-        type: 'error',
-        icon: 'x',
-        text: (message: string) => `%error% Test execution error: ${message}`,
-    },
-    failedToRunTests: {
-        type: 'error',
-        icon: 'x',
-        text: (error: string) => `%error% Failed to run tests: ${error}`,
-    },
-    errorDuringExecution: {
-        type: 'error',
-        icon: 'x',
-        text: (error: string) => `%error% Error during test execution: ${error}`,
-    },
-
-    // =================================================================
-    // Signal Handling & Interruptions
-    // =================================================================
-    
-    caughtSignal: {
-        type: 'info',
-        icon: '⚙️',
-        text: (signal: string) => `[gear] Caught ${signal}. Cleaning up...`,
-    },
-    abortingRun: {
-        type: 'warning',
-        icon: '🛑',
-        text: () => '[warning] Test run aborted. Generating partial report...',
-    },
-    forceExiting: {
-        type: 'warning',
-        icon: '💥',
-        text: () => '[warning] Double Ctrl+C detected. Forcing exit.',
-    },
-    unhandledRejection: {
-        type: 'error',
-        icon: 'x',
-        text: (error: string) => `%error% Unhandled Rejection: ${error}`,
-    },
-    uncaughtException: {
-        type: 'error',
-        icon: 'x',
-        text: (error: string) => `%error% Uncaught Exception: ${error}`,
-    },
-    
-    // =================================================================
-    // Watch Mode & HMR
-    // =================================================================
-    
-    watchingFiles: {
-        type: 'info',
-        icon: '👀',
-        text: () => '[👀] Watch mode enabled. Waiting for file changes...',
-    },
-    rebuildingDueToChange: {
-        type: 'info',
-        icon: '🔄',
-        text: (filePath: string) => `[🔄] File change detected, rebuilding: ${filePath}`,
-    },
-    
-    // =================================================================
-    // Coverage
-    // =================================================================
-    
-    remappingCoverage: {
-        type: 'debug',
-        icon: '🗺️',
-        text: () => '[🗺️] Remapping coverage paths using source maps.',
-    },
-} as const;
-````
-
 ## File: src/node-execution-adapter.ts
 ````typescript
 import type { ExecutionPlan } from './execution-plan';
@@ -12509,355 +10302,6 @@ export function getEmbeddedNodeExecutionAdapterSource():
   ]
     .map((fn) => fn.toString())
     .join('\n\n');
-}
-````
-
-## File: src/node-execution-environment-host.spec.ts
-````typescript
-import {
-  NodeExecutionEnvironmentHost,
-} from './node-execution-environment-host';
-
-describe('NodeExecutionEnvironmentHost', () => {
-  it('applies and restores environment values', async () => {
-    const originalNodeEnv =
-      process.env.NODE_ENV;
-
-    const originalValue =
-      process.env
-        .TESTIFY_STEP29_VALUE;
-
-    const host =
-      new NodeExecutionEnvironmentHost({
-        env: {
-          TESTIFY_STEP29_VALUE:
-            'inside',
-        },
-        nodeEnv: 'test',
-      });
-
-    try {
-      await host.run(
-        async () => {
-          expect(
-            process.env.NODE_ENV,
-          ).toBe('test');
-
-          expect(
-            process.env
-              .TESTIFY_STEP29_VALUE,
-          ).toBe('inside');
-        },
-      );
-
-      expect(
-        process.env.NODE_ENV,
-      ).toBe(
-        originalNodeEnv,
-      );
-
-      expect(
-        process.env
-          .TESTIFY_STEP29_VALUE,
-      ).toBe(
-        originalValue,
-      );
-    } finally {
-      if (
-        originalNodeEnv ===
-        undefined
-      ) {
-        delete process.env.NODE_ENV;
-      } else {
-        process.env.NODE_ENV =
-          originalNodeEnv;
-      }
-
-      if (
-        originalValue ===
-        undefined
-      ) {
-        delete process.env
-          .TESTIFY_STEP29_VALUE;
-      } else {
-        process.env
-          .TESTIFY_STEP29_VALUE =
-          originalValue;
-      }
-    }
-  });
-
-  it('restores environment even when work fails', async () => {
-    const original =
-      process.env
-        .TESTIFY_STEP29_FAILURE;
-
-    const host =
-      new NodeExecutionEnvironmentHost({
-        env: {
-          TESTIFY_STEP29_FAILURE:
-            'inside',
-        },
-      });
-
-    try {
-      await expectAsync(
-        host.run(
-          async () => {
-            throw new Error(
-              'expected',
-            );
-          },
-        ),
-      ).toBeRejected();
-
-      expect(
-        process.env
-          .TESTIFY_STEP29_FAILURE,
-      ).toBe(original);
-    } finally {
-      if (original === undefined) {
-        delete process.env
-          .TESTIFY_STEP29_FAILURE;
-      } else {
-        process.env
-          .TESTIFY_STEP29_FAILURE =
-          original;
-      }
-    }
-  });
-
-  it('suppresses and restores console methods', async () => {
-    const originalLog =
-      console.log;
-
-    let calls = 0;
-
-    console.log =
-      (() => {
-        calls++;
-      }) as typeof console.log;
-
-    const installedLog =
-      console.log;
-
-    const host =
-      new NodeExecutionEnvironmentHost({
-        suppressConsoleLogs: true,
-      });
-
-    try {
-      await host.run(
-        async () => {
-          console.log(
-            'hidden',
-          );
-
-          expect(calls).toBe(0);
-        },
-      );
-
-      expect(
-        console.log,
-      ).toBe(installedLog);
-
-      console.log(
-        'visible',
-      );
-
-      expect(calls).toBe(1);
-    } finally {
-      console.log =
-        originalLog;
-    }
-  });
-});
-````
-
-## File: src/node-execution-environment-host.ts
-````typescript
-export interface NodeExecutionEnvironmentHostOptions {
-  env?: NodeJS.ProcessEnv;
-  nodeEnv?: string;
-  suppressConsoleLogs?: boolean;
-}
-
-type ConsoleMethod =
-  | 'log'
-  | 'info'
-  | 'debug'
-  | 'trace'
-  | 'warn'
-  | 'table';
-
-const SILENT_CONSOLE_METHODS:
-  readonly ConsoleMethod[] = [
-    'log',
-    'info',
-    'debug',
-    'trace',
-    'warn',
-    'table',
-  ];
-
-export class NodeExecutionEnvironmentHost {
-  constructor(
-    private readonly options:
-      NodeExecutionEnvironmentHostOptions = {},
-  ) {}
-
-  async run<T>(
-    work: () => Promise<T>,
-  ): Promise<T> {
-    const envSnapshot =
-      this.captureEnvironment();
-
-    const consoleSnapshot =
-      this.captureConsole();
-
-    const logSuppressionSnapshot =
-      (globalThis as any)
-        .__testifySuppressLogs;
-
-    try {
-      this.applyEnvironment();
-
-      if (
-        this.options
-          .suppressConsoleLogs
-      ) {
-        this.suppressConsole();
-        (globalThis as any)
-          .__testifySuppressLogs = true;
-      }
-
-      return await work();
-    } finally {
-      this.restoreConsole(
-        consoleSnapshot,
-      );
-
-      (globalThis as any)
-        .__testifySuppressLogs =
-        logSuppressionSnapshot;
-
-      this.restoreEnvironment(
-        envSnapshot,
-      );
-    }
-  }
-
-  private captureEnvironment():
-    Map<
-      string,
-      string | undefined
-    > {
-    const keys =
-      new Set<string>([
-        ...Object.keys(
-          this.options.env ?? {},
-        ),
-        'NODE_ENV',
-      ]);
-
-    return new Map(
-      [...keys].map(
-        (key) => [
-          key,
-          process.env[key],
-        ],
-      ),
-    );
-  }
-
-  private applyEnvironment(): void {
-    for (
-      const [key, value] of
-      Object.entries(
-        this.options.env ?? {},
-      )
-    ) {
-      if (value == null) {
-        delete process.env[key];
-      } else {
-        process.env[key] =
-          value;
-      }
-    }
-
-    if (
-      this.options.nodeEnv !==
-      undefined
-    ) {
-      process.env.NODE_ENV =
-        this.options.nodeEnv;
-    }
-  }
-
-  private restoreEnvironment(
-    snapshot: Map<
-      string,
-      string | undefined
-    >,
-  ): void {
-    for (
-      const [key, value] of
-      snapshot
-    ) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] =
-          value;
-      }
-    }
-  }
-
-  private captureConsole():
-    Map<
-      ConsoleMethod,
-      (...args: any[]) => any
-    > {
-    return new Map(
-      SILENT_CONSOLE_METHODS.map(
-        (method) => [
-          method,
-          console[method],
-        ],
-      ),
-    );
-  }
-
-  private suppressConsole(): void {
-    for (
-      const method of
-      SILENT_CONSOLE_METHODS
-    ) {
-      console[method] =
-        (() => {}) as
-          typeof console[
-            typeof method
-          ];
-    }
-  }
-
-  private restoreConsole(
-    snapshot: Map<
-      ConsoleMethod,
-      (...args: any[]) => any
-    >,
-  ): void {
-    for (
-      const [method, value] of
-      snapshot
-    ) {
-      console[method] =
-        value as
-          typeof console[
-            typeof method
-          ];
-    }
-  }
 }
 ````
 
@@ -13018,6 +10462,396 @@ describe('Testify 2 package surface', () => {
     ).toBeDefined();
   });
 });
+````
+
+## File: src/process-lock.ts
+````typescript
+import * as fs from 'fs';
+import * as path from 'path';
+import { exec } from 'child_process';
+import { logger } from './logger';
+import { ProcessLockMessages } from './log-messages';
+import { norm } from './utils';
+
+export class ProcessLock {
+  private pidFile: string;
+
+  constructor(projectPath?: string, port?: number, lockDir?: string) {
+    const cwd = norm(path.resolve(lockDir ?? process.cwd()));
+    const parts: string[] = ['testify'];
+    if (projectPath) {
+      const sanitized = norm(path.resolve(projectPath))
+        .replace(/^\//, '')
+        .replace(/\//g, '_');
+      parts.push(sanitized);
+    }
+    if (port !== undefined) {
+      parts.push(String(port));
+    }
+    this.pidFile = path.join(cwd, `.${parts.join('-')}.pid`);
+  }
+
+  async acquire(killPrevious: boolean = true): Promise<void> {
+    if (killPrevious) {
+      await this.releasePrevious();
+    }
+    fs.mkdirSync(path.dirname(this.pidFile), { recursive: true });
+    fs.writeFileSync(this.pidFile, String(process.pid), 'utf-8');
+  }
+
+  releaseSync(): void {
+    try {
+      this.unlinkPidFileSync();
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      // ignore
+    }
+  }
+
+  private async releasePrevious(): Promise<void> {
+    try {
+      if (!fs.existsSync(this.pidFile)) return;
+
+      const raw = fs.readFileSync(this.pidFile, 'utf-8').trim();
+      const pid = parseInt(raw, 10);
+      if (!Number.isFinite(pid)) {
+        this.unlinkPidFileSync();
+        return;
+      }
+
+      // Check if process is still alive
+      try {
+        process.kill(pid, 0);
+      } catch (err: any) {
+        logger.error(`${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+        if (err.code === 'EPERM') {
+          // Process exists but we lack permission to query it (e.g. debugger attached).
+          // Assume it's alive and proceed with the kill attempt.
+        } else {
+          // Stale PID file
+          logger.println(ProcessLockMessages.staleLockFile(pid));
+          this.unlinkPidFileSync();
+          return;
+        }
+      }
+
+      // Verify the process is actually a Node process before killing it
+      const processName = await this.getProcessName(pid);
+      if (!processName || !/node/i.test(processName)) {
+        logger.println(ProcessLockMessages.nonNodeProcess(pid, processName || 'unknown'));
+        this.unlinkPidFileSync();
+        return;
+      }
+
+      // Try graceful tree termination
+      await this.killProcessTree(pid, false);
+      await this.waitForExit(pid, 2000);
+
+      // Force-kill the entire tree if still alive
+      const stillAlive = await this.isAlive(pid);
+      if (stillAlive) {
+        await this.killProcessTree(pid, true);
+        await this.waitForExit(pid, 2000);
+      }
+
+      // Verify final state and log
+      const finalAlive = await this.isAlive(pid);
+      if (finalAlive) {
+        logger.error(ProcessLockMessages.couldNotTerminate(pid));
+      } else {
+        logger.println(ProcessLockMessages.terminatedPrevious(pid));
+      }
+      this.unlinkPidFileSync();
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      // Ignore any errors during cleanup
+    }
+  }
+
+  private unlinkPidFileSync(): void {
+    try {
+      fs.unlinkSync(this.pidFile);
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private static readonly BROWSER_NAMES = /chrome|chromium|firefox|webkit|safari|edge/i;
+
+  /**
+   * Kill the target process and any browser children it may have spawned.
+   * On Windows we enumerate children by ParentPID and only kill browsers.
+   * On Unix we recursively find descendants and only kill browsers.
+   */
+  private async killProcessTree(pid: number, force: boolean): Promise<void> {
+    // 1. Kill the main testify process (proven method on both platforms)
+    try {
+      if (process.platform === 'win32') {
+        process.kill(pid);
+      } else {
+        process.kill(pid, force ? 'SIGKILL' : 'SIGTERM');
+      }
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      // ignore — may already be gone
+    }
+
+    // 2. Find and kill only browser children — never touch unrelated descendants
+    if (process.platform === 'win32') {
+      const children = await this.getWindowsChildren(pid);
+      for (const child of children) {
+        if (ProcessLock.BROWSER_NAMES.test(child.name)) {
+          try {
+            process.kill(child.pid);
+          } catch (error) {
+            logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+            // ignore
+          }
+        }
+      }
+    } else {
+      const descendants = await this.getDescendantPids(pid);
+      for (const childPid of descendants) {
+        const name = await this.getProcessName(childPid);
+        if (name && ProcessLock.BROWSER_NAMES.test(name)) {
+          try {
+            process.kill(childPid, force ? 'SIGKILL' : 'SIGTERM');
+          } catch (error) {
+            logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+            // ignore
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Enumerate direct children of a PID on Windows.
+   * Returns [{ pid, name }] for each child process.
+   */
+  private async getWindowsChildren(pid: number): Promise<Array<{ pid: number; name: string }>> {
+    return new Promise((resolve) => {
+      exec(`tasklist /FI "ParentPID eq ${pid}" /FO CSV /NH`, { encoding: 'utf-8' }, (error, stdout) => {
+        if (error) {
+          resolve([]);
+          return;
+        }
+        const lines = stdout.trim().split(/\r?\n/).filter((l) => l.trim());
+        const children: Array<{ pid: number; name: string }> = [];
+        for (const line of lines) {
+          // CSV format: "Image Name","PID","Session Name","Session#","Mem Usage"
+          const match = line.match(/^"([^"]+)","(\d+)"/);
+          if (match) {
+            children.push({ name: match[1], pid: parseInt(match[2], 10) });
+          }
+        }
+        resolve(children);
+      });
+    });
+  }
+
+  /**
+   * Recursively collect all descendant PIDs of the given PID on Unix.
+   * Returns an empty array on Windows.
+   */
+  private async getDescendantPids(pid: number): Promise<number[]> {
+    if (process.platform === 'win32') {
+      return [];
+    }
+
+    const directChildren = await new Promise<number[]>((resolve) => {
+      exec(`ps -o pid= --ppid ${pid}`, { encoding: 'utf-8' }, (error, stdout) => {
+        if (error) {
+          resolve([]);
+          return;
+        }
+        const pids = stdout
+          .trim()
+          .split(/\s+/)
+          .map((p) => parseInt(p.trim(), 10))
+          .filter(Number.isFinite);
+        resolve(pids);
+      });
+    });
+
+    const allDescendants: number[] = [...directChildren];
+    for (const childPid of directChildren) {
+      const grandchildren = await this.getDescendantPids(childPid);
+      allDescendants.push(...grandchildren);
+    }
+
+    return [...new Set(allDescendants)];
+  }
+
+  private async isAlive(pid: number): Promise<boolean> {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      return false;
+    }
+  }
+
+  private async waitForExit(pid: number, timeoutMs: number): Promise<void> {
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      const mainAlive = await this.isAlive(pid);
+
+      if (!mainAlive) {
+        if (process.platform === 'win32') {
+          // On Windows the main process is the only thing holding the port;
+          // browser children don't keep sockets open.
+          return;
+        }
+        // On Unix make sure no descendants are still running
+        const descendants = await this.getDescendantPids(pid);
+        const anyAlive = descendants.length > 0;
+        if (!anyAlive) {
+          return;
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
+  private async getProcessName(pid: number): Promise<string | null> {
+    return new Promise((resolve) => {
+      const cmd = process.platform === 'win32'
+        ? `tasklist /FI "PID eq ${pid}" /FO CSV /NH`
+        : `ps -p ${pid} -o comm=`;
+
+      exec(cmd, { encoding: 'utf-8' }, (error, stdout) => {
+        if (error) {
+          resolve(null);
+          return;
+        }
+        const output = stdout.trim();
+        if (process.platform === 'win32') {
+          const match = output.match(/^"([^"]+)"/);
+          resolve(match ? match[1] : null);
+        } else {
+          resolve(output || null);
+        }
+      });
+    });
+  }
+
+  getPidFilePath(): string {
+    return this.pidFile;
+  }
+}
+````
+
+## File: src/symbols.ts
+````typescript
+import { supportsEmoji, setAnsiMode as setAnsiModeConstant, isAnsiMode } from './ansi-constants';
+
+// ─── TTY symbols (emojis & fancy unicode) ──────────────────
+export const TTY_SYMBOLS: Record<string, string> = {
+  checked: '✓',
+  cross: '✕',
+  warn: 'WARN',
+  info: '💡',
+  globe: '🌐',
+  doc: '📄',
+  puzzle: '🧩',
+  stop: '🛑',
+  bulb: '📌',
+  rocket: '🚀',
+  hourglass: '⏳',
+  circle_green: '🟢',
+  plus: '➕',
+  minus: '➖',
+  folder: '📁',
+  box: '📦',
+  refresh: '🔄',
+  broom: '🧹',
+  lock: '🔒',
+  fire: '🔥',
+  satellite: '📡',
+  ok: '👌',
+  eyes: '👀',
+  plug: '🔌',
+  // Console reporter specific
+  passed: '●',
+  failed: 'x',
+  pending: '○',
+  arrow: '→',
+  box_h: '─',
+  box_double_h: '═',
+  box_tl: '╔',
+  box_tr: '╗',
+  box_bl: '╚',
+  box_br: '╝',
+  box_v: '║',
+  arrow_down_right: '↳',
+  skip: '⤼',
+  incomplete: '◷',
+  not_run: '⊘',
+};
+
+// ─── ANSI symbols (plain ASCII text) ───────────────────────
+export const ANSI_SYMBOLS: Record<string, string> = {
+  checked: '[OK]',
+  cross: '[ERROR]',
+  warn: 'WARN',
+  info: '[INFO]',
+  globe: '[BROWSER]',
+  doc: '[FILE]',
+  puzzle: '[TREE]',
+  stop: '[STOP]',
+  bulb: '[TIP]',
+  rocket: '[START]',
+  hourglass: '[WAIT]',
+  circle_green: '[READY]',
+  plus: '[ADD]',
+  minus: '[REM]',
+  folder: '[DIR]',
+  box: '[BUILD]',
+  refresh: '[RETRY]',
+  broom: '[CLEAN]',
+  lock: '[LOCK]',
+  fire: '[HMR]',
+  satellite: '[WS]',
+  ok: '[OK]',
+  eyes: '[WATCH]',
+  plug: '[CONN]',
+  // Console reporter specific
+  passed: '+',
+  failed: 'x',
+  pending: '*',
+  arrow: '->',
+  box_h: '-',
+  box_double_h: '=',
+  box_tl: '+',
+  box_tr: '+',
+  box_bl: '+',
+  box_br: '+',
+  box_v: '|',
+  arrow_down_right: '->',
+  skip: '~',
+  incomplete: 'o',
+  not_run: '-',
+};
+
+export let SYMBOLS = supportsEmoji() ? TTY_SYMBOLS : ANSI_SYMBOLS;
+
+export function setAnsiMode(): void {
+  setAnsiModeConstant(true);
+  SYMBOLS = ANSI_SYMBOLS;
+}
+
+const PLACEHOLDER_RE = /%([a-z_][a-z0-9_]*)%/g;
+
+export function replacePlaceholders(message: string): string {
+  return message.replace(PLACEHOLDER_RE, (match, key) => SYMBOLS[key] ?? match);
+}
 ````
 
 ## File: src/test-catalog.spec.ts
@@ -14126,6 +11960,485 @@ describe('Testify Playground DevTools formatters', () => {
 });
 ````
 
+## File: src/browser-playground-formatters.ts
+````typescript
+export function getBrowserPlaygroundFormattersSource(): string {
+  return `
+function installTestifyPlaygroundFormatters() {
+  const formatters =
+    Array.isArray(globalThis.devtoolsFormatters)
+      ? globalThis.devtoolsFormatters
+      : [];
+
+  if (
+    formatters.some(
+      (formatter) =>
+        formatter?.__testifyPlaygroundFormatter === true,
+    )
+  ) {
+    return;
+  }
+
+  function text(value) {
+    return value === undefined || value === null
+      ? ''
+      : String(value);
+  }
+
+  function shortFile(file) {
+    const value = text(file).replace(/\\\\/g, '/');
+    const parts = value.split('/');
+    return parts[parts.length - 1] || value;
+  }
+
+  function isSession(value) {
+    return Boolean(
+      value &&
+      typeof value === 'object' &&
+      typeof value.plan === 'function' &&
+      typeof value.execute === 'function' &&
+      typeof value.revision === 'function' &&
+      typeof value.tests === 'function',
+    );
+  }
+
+  function isPlan(value) {
+    return Boolean(
+      value &&
+      typeof value === 'object' &&
+      Array.isArray(value.specIds) &&
+      value.source &&
+      typeof value.tests === 'function' &&
+      typeof value.filter === 'function' &&
+      typeof value.slice === 'function',
+    );
+  }
+
+  function isExecutionResult(value) {
+    return Boolean(
+      value &&
+      typeof value === 'object' &&
+      Array.isArray(value.specResults) &&
+      typeof value.total === 'number' &&
+      typeof value.passed === 'number' &&
+      typeof value.failed === 'number' &&
+      typeof value.pending === 'number',
+    );
+  }
+
+  function globalFailureCount(value) {
+    return Array.isArray(value?.globalFailures)
+      ? value.globalFailures.length
+      : 0;
+  }
+
+  function collectionKind(value) {
+    if (!Array.isArray(value)) return null;
+
+    const explicitKind =
+      value.__testifyCollectionKind;
+
+    if (
+      explicitKind === 'tests' ||
+      explicitKind === 'suites' ||
+      explicitKind === 'files' ||
+      explicitKind === 'results' ||
+      explicitKind === 'help'
+    ) {
+      return explicitKind;
+    }
+
+    if (!value.length) return null;
+
+    const item = value[0];
+    if (!item || typeof item !== 'object') return null;
+
+    if (
+      typeof item.status === 'string' &&
+      typeof item.id === 'string'
+    ) {
+      return 'results';
+    }
+
+    if (
+      typeof item.specs === 'number' &&
+      typeof item.file === 'string'
+    ) {
+      return 'files';
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        item,
+        'parentSuiteId',
+      )
+    ) {
+      return 'suites';
+    }
+
+    if (
+      typeof item.id === 'string' &&
+      typeof item.fullName === 'string' &&
+      (
+        Object.prototype.hasOwnProperty.call(
+          item,
+          'suiteId',
+        ) ||
+        Object.prototype.hasOwnProperty.call(
+          item,
+          'description',
+        )
+      )
+    ) {
+      return 'tests';
+    }
+
+    return null;
+  }
+
+  function summarySpan(label, detail) {
+    return [
+      'span',
+      {},
+      [
+        'span',
+        {
+          style:
+            'font-weight:600;color:#0b7a53',
+        },
+        label,
+      ],
+      detail
+        ? [
+            'span',
+            {
+              style:
+                'margin-left:8px;color:#777',
+            },
+            detail,
+          ]
+        : '',
+    ];
+  }
+
+  function row(columns) {
+    return [
+      'div',
+      {
+        style:
+          'display:grid;grid-template-columns:minmax(80px,1fr) minmax(180px,3fr) minmax(100px,1.3fr);gap:10px;padding:2px 0;font-family:monospace',
+      },
+      ...columns.map(
+        (column) => [
+          'span',
+          {
+            style:
+              'overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
+          },
+          text(column),
+        ],
+      ),
+    ];
+  }
+
+  function testRows(tests) {
+    return tests.map(
+      (test) =>
+        row([
+          test.id,
+          test.fullName || test.name || test.description,
+          shortFile(test.file),
+        ]),
+    );
+  }
+
+  function suiteRows(suites) {
+    return suites.map(
+      (suite) =>
+        row([
+          suite.id,
+          suite.fullName || suite.name,
+          shortFile(suite.file),
+        ]),
+    );
+  }
+
+  function fileRows(files) {
+    return files.map(
+      (file) =>
+        row([
+          file.specs + ' specs',
+          file.file,
+          '',
+        ]),
+    );
+  }
+
+  function resultRows(results) {
+    return results.map(
+      (result) =>
+        row([
+          result.status,
+          result.fullName || result.description,
+          result.failedExpectations?.length
+            ? result.failedExpectations.length + ' failures'
+            : '',
+        ]),
+    );
+  }
+
+  function globalFailureRows(failures) {
+    return failures.map(
+      (failure) =>
+        row([
+          'error',
+          failure.message || failure.globalErrorType || 'Global error',
+          failure.globalErrorType || '',
+        ]),
+    );
+  }
+
+  function helpRows(entries) {
+    const rows = [];
+    let section = null;
+
+    for (const entry of entries) {
+      if (entry.section !== section) {
+        section = entry.section;
+        rows.push([
+          'div',
+          {
+            style:
+              'margin-top:6px;font-weight:600;color:#0b7a53',
+          },
+          text(section),
+        ]);
+      }
+
+      rows.push(
+        row([
+          '',
+          entry.usage,
+          entry.description,
+        ]),
+      );
+    }
+
+    return rows;
+  }
+
+  function collectionHeader(kind, value) {
+    const labels = {
+      tests: 'Tests',
+      suites: 'Suites',
+      files: 'Files',
+      results: 'Results',
+      help: 'Help',
+    };
+
+    const first = value[0];
+    let hint = value.length + (kind === 'help' ? ' commands' : ' items');
+
+    if (
+      kind === 'results' &&
+      value.some(
+        (result) => result.status === 'failed',
+      )
+    ) {
+      const failed = value.filter(
+        (result) => result.status === 'failed',
+      ).length;
+      hint = value.length + ' items В· ' + failed + ' failed';
+    } else if (
+      (kind === 'tests' || kind === 'suites') &&
+      first
+    ) {
+      const name =
+        first.fullName ||
+        first.name ||
+        first.description;
+      if (name) {
+        hint += ' В· ' + name + (value.length > 1 ? ' вЂ¦' : '');
+      }
+    }
+
+    return summarySpan(
+      labels[kind] || 'Collection',
+      hint,
+    );
+  }
+
+  const formatter = {
+    __testifyPlaygroundFormatter: true,
+
+    header(value) {
+      if (isSession(value)) {
+        let revision = '?';
+        try {
+          revision = value.revision();
+        } catch (error) { console.error('Testify runtime error:', error); }
+
+        return summarySpan(
+          'Testify Session',
+          text(value.state) + ' В· revision ' + revision,
+        );
+      }
+
+      if (isPlan(value)) {
+        const tests = value.tests();
+        const files = new Set(
+          tests
+            .map((test) => test.file)
+            .filter(Boolean),
+        );
+        const source = value.source?.kind || 'plan';
+
+        return summarySpan(
+          'Execution Plan',
+          tests.length +
+            ' tests В· ' +
+            files.size +
+            ' files В· ' +
+            source +
+            (value.catalogVersion !== undefined
+              ? ' В· revision ' + value.catalogVersion
+              : ''),
+        );
+      }
+
+      if (isExecutionResult(value)) {
+        const globalErrors =
+          globalFailureCount(value);
+        const detailParts = [
+          value.passed + ' passed',
+          value.failed + ' failed',
+          value.pending + ' pending',
+        ];
+
+        if (globalErrors > 0) {
+          detailParts.push(
+            globalErrors +
+              ' global error' +
+              (globalErrors === 1
+                ? ''
+                : 's'),
+          );
+        }
+
+        return summarySpan(
+          'Execution Result',
+          detailParts.join(
+            ' В· ',
+          ),
+        );
+      }
+
+      const kind = collectionKind(value);
+      if (kind) {
+        return collectionHeader(
+          kind,
+          value,
+        );
+      }
+
+      return null;
+    },
+
+    hasBody(value) {
+      if (
+        isSession(value) ||
+        isPlan(value) ||
+        isExecutionResult(value)
+      ) {
+        return true;
+      }
+
+      return Boolean(
+        collectionKind(value),
+      );
+    },
+
+    body(value) {
+      if (isSession(value)) {
+        return [
+          'div',
+          {},
+          row([
+            'state',
+            value.state,
+            '',
+          ]),
+          row([
+            'revision',
+            (() => {
+              try {
+                return value.revision();
+              } catch (error) {
+                console.error('Testify runtime error:', error);
+                return '?';
+              }
+            })(),
+            '',
+          ]),
+          row([
+            'controls',
+            'tests В· plan В· run В· rerun В· retry В· exit',
+            '',
+          ]),
+        ];
+      }
+
+      if (isPlan(value)) {
+        return [
+          'div',
+          {},
+          ...testRows(
+            value.tests(),
+          ),
+        ];
+      }
+
+      if (isExecutionResult(value)) {
+        return [
+          'div',
+          {},
+          ...resultRows(
+            value.specResults,
+          ),
+          ...globalFailureRows(
+            value.globalFailures || [],
+          ),
+        ];
+      }
+
+      const kind = collectionKind(value);
+      if (kind === 'tests') {
+        return ['div', {}, ...testRows(value)];
+      }
+      if (kind === 'suites') {
+        return ['div', {}, ...suiteRows(value)];
+      }
+      if (kind === 'files') {
+        return ['div', {}, ...fileRows(value)];
+      }
+      if (kind === 'results') {
+        return ['div', {}, ...resultRows(value)];
+      }
+      if (kind === 'help') {
+        return ['div', {}, ...helpRows(value)];
+      }
+
+      return null;
+    },
+  };
+
+  formatters.push(formatter);
+  globalThis.devtoolsFormatters = formatters;
+}
+`;
+}
+````
+
 ## File: src/browser-runtime.spec.ts
 ````typescript
 import {
@@ -14198,6 +12511,470 @@ describe('Browser runtime', () => {
     ).not.toThrow();
   });
 });
+````
+
+## File: src/browser-websocket-runtime.ts
+````typescript
+export interface BrowserWebSocketReporterScriptOptions {
+  initialSeed: number;
+  initialRandom: boolean;
+}
+
+export function getBrowserWebSocketReporterScript(
+  options: BrowserWebSocketReporterScriptOptions,
+): string {
+  const {
+    initialSeed: seed,
+    initialRandom: random,
+  } = options;
+
+  return `
+function WebSocketEventForwarder() {
+  this.ws = null;
+  this.connected = false;
+  this.messageQueue = [];
+  this.currentSpecId = null;
+  this.pendingSpecFailures = new Map();
+  this.globalFailures = [];
+  this.attributedFailureSignatures = new Set();
+  this.errorHooksInstalled = false;
+
+  const self = this;
+
+  this.failureSignature = function (failure) {
+    return [
+      failure?.message || '',
+      failure?.stack || '',
+    ].join('\\n@@\\n');
+  };
+
+  this.dedupeFailures = function (failures, excludedSignatures) {
+    const seen = new Set();
+    const deduped = [];
+
+    for (const failure of failures || []) {
+      const signature = self.failureSignature(failure);
+      if (excludedSignatures?.has(signature) || seen.has(signature)) {
+        continue;
+      }
+
+      seen.add(signature);
+      deduped.push(failure);
+    }
+
+    return deduped;
+  };
+
+  this.describeThrownValue = function (value) {
+    if (value instanceof Error) {
+      return {
+        message: value.message || String(value),
+        stack: value.stack || value.message || String(value),
+      };
+    }
+
+    if (value && typeof value === 'object') {
+      const message =
+        typeof value.message === 'string'
+          ? value.message
+          : (() => {
+              try {
+                return JSON.stringify(value);
+              } catch (error) {
+                console.error('Testify runtime error:', error);
+                return String(value);
+              }
+            })();
+
+      return {
+        message,
+        stack:
+          typeof value.stack === 'string'
+            ? value.stack
+            : undefined,
+      };
+    }
+
+    return {
+      message:
+        typeof value === 'string'
+          ? value
+          : String(value),
+      stack: undefined,
+    };
+  };
+
+  this.createFailure = function (type, value) {
+    const details =
+      self.describeThrownValue(value);
+
+    return {
+      matcherName: '',
+      passed: false,
+      globalErrorType: type,
+      message: details.message,
+      stack: details.stack,
+    };
+  };
+
+  this.recordAsyncFailure = function (type, value) {
+    const failure =
+      self.createFailure(type, value);
+    const signature =
+      self.failureSignature(failure);
+
+    if (self.currentSpecId) {
+      const pending =
+        self.pendingSpecFailures.get(
+          self.currentSpecId,
+        ) ?? [];
+
+      if (
+        !pending.some(
+          (entry) =>
+            self.failureSignature(entry) === signature,
+        )
+      ) {
+        pending.push(failure);
+        self.pendingSpecFailures.set(
+          self.currentSpecId,
+          pending,
+        );
+      }
+
+      self.attributedFailureSignatures.add(
+        signature,
+      );
+      return;
+    }
+
+    if (
+      self.globalFailures.some(
+        (entry) =>
+          self.failureSignature(entry) === signature,
+      )
+    ) {
+      return;
+    }
+
+    self.globalFailures.push(failure);
+  };
+
+  this.installErrorHooks = function () {
+    if (self.errorHooksInstalled) {
+      return;
+    }
+
+    self.errorHooksInstalled = true;
+
+    window.addEventListener(
+      'unhandledrejection',
+      (event) => {
+        self.recordAsyncFailure(
+          'unhandledRejection',
+          event.reason,
+        );
+      },
+    );
+
+    window.addEventListener(
+      'error',
+      (event) => {
+        if (event.error) {
+          self.recordAsyncFailure(
+            'error',
+            event.error,
+          );
+          return;
+        }
+
+        const location =
+          typeof event.filename === 'string' && event.filename
+            ? event.filename + ':' + event.lineno + ':' + event.colno
+            : undefined;
+
+        self.recordAsyncFailure(
+          'error',
+          {
+            message:
+              event.message || 'Uncaught browser error',
+            stack: location,
+          },
+        );
+      },
+    );
+  };
+
+  this.mergePendingSpecFailures = function (result) {
+    const pending =
+      self.pendingSpecFailures.get(result.id) ?? [];
+
+    self.pendingSpecFailures.delete(
+      result.id,
+    );
+
+    if (!pending.length) {
+      return result;
+    }
+
+    return {
+      ...result,
+      status: 'failed',
+      failedExpectations:
+        self.dedupeFailures([
+          ...(Array.isArray(result.failedExpectations)
+            ? result.failedExpectations
+            : []),
+          ...pending,
+        ]),
+    };
+  };
+
+  this.collectRunLevelFailures = function (result) {
+    return self.dedupeFailures(
+      [
+        ...(
+          Array.isArray(result?.failedExpectations)
+            ? result.failedExpectations
+            : []
+        ),
+        ...self.globalFailures,
+      ],
+      self.attributedFailureSignatures,
+    );
+  };
+
+  this.installErrorHooks();
+
+  this.connect = function () {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + window.location.host;
+
+    self.ws = new WebSocket(wsUrl);
+
+    self.ws.onopen = () => {
+      self.connected = true;
+      console.log('WebSocket connected to', wsUrl);
+
+      self.send({
+        type: 'userAgent',
+        data: {
+          userAgent: navigator.userAgent,
+          appName: navigator.appName,
+          appVersion: navigator.appVersion,
+          platform: navigator.platform,
+          vendor: navigator.vendor,
+          language: navigator.language,
+          languages: navigator.languages,
+          orderedSuites: self.getOrderedSuites(${seed}, ${random}).map(suite => ({
+            id: suite.id,
+            description: suite.description,
+            fullName: suite.getFullName ? suite.getFullName() : suite.description
+          })),
+          orderedSpecs: self.getOrderedSpecs(${seed}, ${random}).map(spec => ({
+            id: spec.id,
+            description: spec.description,
+            fullName: spec.getFullName ? spec.getFullName() : spec.description
+          }))
+        },
+        timestamp: Date.now()
+      });
+
+      while (self.messageQueue.length > 0) {
+        const msg = self.messageQueue.shift();
+        self.send(msg);
+      }
+    };
+
+    self.ws.onclose = () => {
+      self.connected = false;
+      console.log('WebSocket disconnected');
+      setTimeout(() => self.connect(), 1000);
+    };
+
+    self.ws.onerror = (err) => {
+      self.connected = false;
+      console.error('WebSocket error:', err);
+    };
+
+    self.ws.onmessage = async (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (window.HMRClient && (message.type === 'hmr:connected' || message.type === 'hmr:update')) {
+          await window.HMRClient.handleMessage(message);
+        }
+      } catch (err) {
+        console.error('Failed to handle WebSocket message:', err);
+      }
+    };
+  };
+
+  this.send = function (msg) {
+    if (self.connected && self.ws && self.ws.readyState === WebSocket.OPEN) {
+      try {
+        self.ws.send(JSON.stringify(msg));
+      } catch (err) {
+        console.error('Failed to send WebSocket message:', err);
+      }
+    } else {
+      self.messageQueue.push(msg);
+    }
+  };
+
+  this.getAllSpecs = function () {
+    const allSpecs = [];
+    function collect(suite) {
+      suite.children.forEach((child) => {
+        if (child.children && child.children.length > 0) {
+          collect(child);
+        } else {
+          allSpecs.push(child);
+        }
+      });
+    }
+    
+    const env = jasmine?.getEnv?.();
+    if (env) collect(env.topSuite());
+    return allSpecs;
+  };
+
+  this.getAllSuites = function () {
+    const allSuites = [];
+    function collect(suite) {
+      allSuites.push(suite);
+      suite.children.forEach((child) => {
+        if (child.children && child.children.length > 0) {
+          collect(child);
+        }
+      });
+    }
+    
+    const env = jasmine?.getEnv?.();
+    if (env) collect(env.topSuite());
+    return allSuites;
+  };
+
+  this.getOrderedSpecs = function (seed, random) {
+    const allSpecs = self.getAllSpecs();
+    if (!random) return allSpecs;
+
+    const OrderCtor = jasmine.Order;
+    if (typeof OrderCtor === 'function') {
+      try {
+        const order = new OrderCtor({ random, seed });
+        if (typeof order.sort === 'function') {
+          return order.sort(allSpecs);
+        }
+      } catch (err) {
+        console.error('Failed to create jasmine.Order:', err);
+      }
+    }
+    return allSpecs;
+  };
+
+  this.getOrderedSuites = function (seed, random) {
+    const allSuites = self.getAllSuites();
+    if (!random) return allSuites;
+
+    const OrderCtor = jasmine.Order;
+    if (typeof OrderCtor === 'function') {
+      try {
+        const order = new OrderCtor({ random, seed });
+        if (typeof order.sort === 'function') {
+          return order.sort(allSuites);
+        }
+      } catch (err) {
+        console.error('Failed to create jasmine.Order for suites:', err);
+      }
+    }
+    return allSuites;
+  };
+
+  // Jasmine reporter hooks
+  this.jasmineStarted = function (config) {
+    self.currentSpecId = null;
+    self.pendingSpecFailures.clear();
+    self.globalFailures = [];
+    self.attributedFailureSignatures.clear();
+
+    self.send({
+      type: 'jasmineStarted',
+      data: config,
+      timestamp: Date.now()
+    });
+  };
+
+  this.suiteStarted = function (suite) {
+    self.send({
+      type: 'suiteStarted',
+      id: suite.id,
+      description: suite.description,
+      fullName: suite.fullName,
+      timestamp: Date.now()
+    });
+  };
+
+  this.specStarted = function (spec) {
+    self.currentSpecId = spec.id;
+
+    self.send({
+      type: 'specStarted',
+      id: spec.id,
+      description: spec.description,
+      fullName: spec.fullName,
+      timestamp: Date.now()
+    });
+  };
+
+  this.specDone = function (result) {
+    const mergedResult =
+      self.mergePendingSpecFailures(result);
+
+    if (self.currentSpecId === result.id) {
+      self.currentSpecId = null;
+    }
+
+    self.send({
+      type: 'specDone',
+      ...mergedResult,
+      timestamp: Date.now()
+    });
+  };
+
+  this.suiteDone = function (suite) {
+    self.send({
+      type: 'suiteDone',
+      id: suite.id,
+      description: suite.description,
+      fullName: suite.fullName,
+      timestamp: Date.now()
+    });
+  };
+
+  this.jasmineDone = function (result) {
+    self.currentSpecId = null;
+
+    const coverage = globalThis.__coverage__;
+    self.send({
+      type: 'jasmineDone',
+      ...result,
+      failedExpectations:
+        self.collectRunLevelFailures(result),
+      coverage: coverage ? JSON.stringify(coverage) : null,
+      timestamp: Date.now()
+    });
+
+    window.jasmineFinished = true;
+
+    if (!window.HMRClient) {
+      setTimeout(() => {
+        if (self.ws) self.ws.close();
+      }, 1000);
+    }
+  };
+}
+`;
+}
 ````
 
 ## File: src/cli-watch-contract.spec.ts
@@ -14299,360 +13076,1722 @@ describe('Testify CLI watch contract', () => {
 });
 ````
 
-## File: src/http-server-manager.ts
+## File: src/hmr-manager.ts
 ````typescript
-import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
-import { parse } from 'url';
-import { createServer } from 'http';
-import { extname } from 'path';
-import { exec } from 'child_process';   // ✅ new top‑level import
+import { FSWatcher, watch } from 'chokidar';
+import { EventEmitter } from 'events';
 import { ViteJasmineConfig } from './vite-jasmine-config';
-import { norm } from './utils';
+import { capitalize, norm } from './utils';
+import { ViteConfigBuilder } from './vite-config-builder';
+import { glob } from 'glob';
+import picomatch from 'picomatch';
+import { FileDiscoveryService } from './file-discovery-service';
 import { logger } from './logger';
-import { HttpServerMessages } from './log-messages';
+import { HmrMessages } from './log-messages';
 
-interface ResolvedRequestPath {
-  rootDir: string;
-  resolvedPath: string;
-}
-
-interface StaticPathRoots {
-  outDir: string;
-  workspaceNodeModulesDir: string;
-  vendorDir: string;
-  assetDirs: string[];
-}
-
-export function resolveStaticRequestPath(
-  filePath: string,
-  roots: StaticPathRoots,
-): ResolvedRequestPath {
-  if (filePath.startsWith('/node_modules/')) {
-    const relativePath =
-      filePath.replace(
-        /^\/node_modules\//,
-        '',
-      );
-
-    const resolvedCandidate = [
-      roots.workspaceNodeModulesDir,
-      roots.vendorDir,
-    ]
-      .map((candidateRoot) => ({
-        rootDir: candidateRoot,
-        resolvedPath: path.resolve(
-          candidateRoot,
-          relativePath,
-        ),
-      }))
-      .find((candidate) =>
-        isPathInside(
-          candidate.rootDir,
-          candidate.resolvedPath,
-        ) &&
-        fs.existsSync(
-          candidate.resolvedPath,
-        ),
-      );
-
-    return {
-      rootDir:
-        resolvedCandidate?.rootDir ??
-        roots.workspaceNodeModulesDir,
-      resolvedPath: path.normalize(
-        resolvedCandidate?.resolvedPath ??
-          path.resolve(
-            roots.workspaceNodeModulesDir,
-            relativePath,
-          ),
-      ),
-    };
+// Dynamic import to avoid top-level await issues
+let viteBuild: any = null;
+async function getViteBuild() {
+  if (!viteBuild) {
+    const vite = await import('vite');
+    viteBuild = vite.build;
   }
+  return viteBuild;
+}
 
-  if (filePath === '/favicon.ico') {
-    const faviconCandidate =
-      roots.assetDirs
-        .map((assetDir) => ({
-          rootDir: assetDir,
-          resolvedPath: path.resolve(
-            assetDir,
-            'favicon.ico',
-          ),
-        }))
-        .find((candidate) =>
-          isPathInside(
-            candidate.rootDir,
-            candidate.resolvedPath,
-          ) &&
-          fs.existsSync(
-            candidate.resolvedPath,
-          ),
-        );
+export interface HmrUpdate {
+  type:
+    | 'update'
+    | 'full-reload'
+    | 'test-update'
+    | 'test-remove';
+  path: string;
+  timestamp: number;
+  content?: string;
+  affectedTests?: string[];
+  reason?: string;
+}
 
-    if (faviconCandidate) {
-      return {
-        rootDir:
-          faviconCandidate.rootDir,
-        resolvedPath: path.normalize(
-          faviconCandidate.resolvedPath,
-        ),
-      };
+export interface FileFilter {
+  include?: string[];
+  exclude?: string[];
+  extensions?: string[];
+}
+
+export interface RebuildStats {
+  changedFiles: string[];
+  rebuiltFiles: string[];
+  duration: number;
+  timestamp: number;
+  updateType: 'test-only' | 'source-change' | 'full';
+}
+
+export type SourceChangeStrategy = 'smart' | 'always-reload' | 'never-reload';
+
+export interface HmrManagerOptions {
+  fileFilter?: Partial<FileFilter>;
+  rebuildMode?: 'all' | 'selective';
+  sourceChangeStrategy?: SourceChangeStrategy;
+  criticalSourcePatterns?: string[]; // patterns that always trigger full reload
+}
+
+export class HmrManager extends EventEmitter {
+  private watcher: FSWatcher | null = null;
+  private rebuildQueue: Set<string> = new Set();
+  private directChanges: Set<string> = new Set();
+  private allFiles: string[] = [];
+
+  // ✅ FIX: Add atomic operation queue
+  private operationQueue: Promise<void> = Promise.resolve();
+  private rebuildPromise: Promise<void> | null = null;
+
+  private fileFilter: FileFilter = {
+    include: [],
+    exclude: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/coverage/**'],
+    extensions: ['.ts', '.js', '.mjs']
+  };
+
+  private dependencyGraph: Map<string, Set<string>> = new Map();
+  private reverseDependencyGraph: Map<string, Set<string>> = new Map();
+  private pathAliases: Record<string, string> = {};
+  private rebuildMode: 'all' | 'selective' = 'selective';
+  private sourceChangeStrategy: SourceChangeStrategy = 'smart';
+  private criticalSourcePatterns: string[] = [
+    '**/config/**',
+    '**/setup/**',
+    '**/*.config.*',
+    '**/bootstrap.*',
+    '**/main.*',
+    '**/index.*' // root-level index files
+  ];
+
+  private primarySrcDir: string;
+  private primaryTestDir: string;
+
+  constructor(
+    private fileDiscovery: FileDiscoveryService,
+    private config: ViteJasmineConfig,
+    private viteConfigBuilder: ViteConfigBuilder,
+    private viteCache: any = null,
+    options?: HmrManagerOptions
+  ) {
+    super();
+    const srcDir = Array.isArray(config.srcDirs) && config.srcDirs.length > 0 ? config.srcDirs[0] : './src';
+    const testDir = Array.isArray(config.testDirs) && config.testDirs.length > 0 ? config.testDirs[0] : './tests';
+    this.primarySrcDir = norm(srcDir);
+    this.primaryTestDir = norm(testDir);
+    this.pathAliases = (this.viteConfigBuilder as any).createPathAliases();
+    if (options?.fileFilter) this.fileFilter = { ...this.fileFilter, ...options.fileFilter };
+    if (options?.rebuildMode) this.rebuildMode = options.rebuildMode;
+    if (options?.sourceChangeStrategy) this.sourceChangeStrategy = options.sourceChangeStrategy;
+    if (options?.criticalSourcePatterns) {
+      this.criticalSourcePatterns = [...this.criticalSourcePatterns, ...options.criticalSourcePatterns];
     }
   }
 
-  if (filePath.startsWith('/assets/')) {
-    const relativePath =
-      filePath.replace(
-        /^\/assets\//,
-        '',
-      );
+  setFileFilter(filter: Partial<FileFilter>): void {
+    this.fileFilter = { ...this.fileFilter, ...filter };
+    logger.println(HmrMessages.fileFilterUpdated(this.fileFilter));
+  }
 
-    const assetCandidate =
-      roots.assetDirs
-        .map((assetDir) => ({
-          rootDir: assetDir,
-          resolvedPath: path.resolve(
-            assetDir,
-            relativePath,
-          ),
-        }))
-        .find((candidate) =>
-          isPathInside(
-            candidate.rootDir,
-            candidate.resolvedPath,
-          ) &&
-          fs.existsSync(
-            candidate.resolvedPath,
-          ),
-        );
+  setRebuildMode(mode: 'all' | 'selective'): void {
+    this.rebuildMode = mode;
+    logger.println(HmrMessages.rebuildModeSet(mode));
+  }
 
-    if (assetCandidate) {
+  setSourceChangeStrategy(strategy: SourceChangeStrategy): void {
+    this.sourceChangeStrategy = strategy;
+    logger.println(HmrMessages.sourceChangeStrategySet(strategy));
+  }
+
+  private matchesFilter(filePath: string): boolean {
+    const normalizedPath = filePath;
+
+    if (this.fileFilter.extensions?.length) {
+      const ext = path.extname(normalizedPath);
+      if (!this.fileFilter.extensions.includes(ext)) return false;
+    }
+
+    if (this.fileFilter.exclude?.length) {
+      if (picomatch.isMatch(normalizedPath, this.fileFilter.exclude)) return false;
+    }
+
+    if (this.fileFilter.include?.length) {
+      if (!picomatch.isMatch(normalizedPath, this.fileFilter.include)) return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Determines if a file is a test file.
+   *
+   * Test and source directories may intentionally overlap (for example both
+   * may be "./src"), so directory membership alone cannot classify a file.
+   */
+  private isTestFile(filePath: string): boolean {
+    const normalized =
+      norm(filePath);
+
+    if (
+      !normalized.startsWith(
+        this.primaryTestDir,
+      )
+    ) {
+      return false;
+    }
+
+    return /\.spec\.(?:ts|tsx|js|jsx|mts|cts|mjs)$/i
+      .test(normalized);
+  }
+
+  /**
+   * Determines if a file is a source file.
+   *
+   * Specs are never sources, even when testDirs and srcDirs point at the
+   * same directory.
+   */
+  private isSourceFile(filePath: string): boolean {
+    const normalized =
+      norm(filePath);
+
+    return (
+      normalized.startsWith(
+        this.primarySrcDir,
+      ) &&
+      !this.isTestFile(
+        normalized,
+      )
+    );
+  }
+
+  /**
+   * Checks if a source file is critical and requires full reload
+   */
+  private isCriticalSourceFile(filePath: string): boolean {
+    if (!this.isSourceFile(filePath)) return false;
+    
+    const normalized = norm(filePath);
+    return this.criticalSourcePatterns.some(pattern => 
+      picomatch.isMatch(normalized, pattern)
+    );
+  }
+
+  /**
+   * Determines the appropriate update strategy based on what changed
+   */
+  private determineUpdateStrategy(
+    changedFiles: string[],
+    changeType: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'
+  ): { type: HmrUpdate['type']; reason: string } {
+    const hasSourceChanges = changedFiles.some(f => this.isSourceFile(f));
+    const hasTestChanges = changedFiles.some(f => this.isTestFile(f));
+    const hasCriticalChanges = changedFiles.some(f => this.isCriticalSourceFile(f));
+
+    // Test-only changes never require full reload
+    if (!hasSourceChanges && hasTestChanges) {
       return {
-        rootDir: assetCandidate.rootDir,
-        resolvedPath: path.normalize(
-          assetCandidate.resolvedPath,
-        ),
+        type: 'test-update',
+        reason: 'Test files changed - incremental update'
       };
     }
 
+    // Source file/directory removal - check if critical
+    if (changeType === 'unlink' || changeType === 'unlinkDir') {
+      if (hasCriticalChanges) {
+        return {
+          type: 'full-reload',
+          reason: 'Critical source file/directory removed'
+        };
+      }
+      // Non-critical source removal can be handled with update
+      return {
+        type: 'update',
+        reason: 'Source file/directory removed - updating dependents'
+      };
+    }
+
+    // Source file/directory addition
+    if (changeType === 'add' || changeType === 'addDir') {
+      // New sources don't require full reload, just build them
+      return {
+        type: 'update',
+        reason: 'Source file/directory added - building new modules'
+      };
+    }
+
+    // Source file modification - apply strategy
+    if (hasSourceChanges) {
+      if (this.sourceChangeStrategy === 'always-reload') {
+        return {
+          type: 'full-reload',
+          reason: 'Source changed - always-reload strategy'
+        };
+      }
+
+      if (this.sourceChangeStrategy === 'never-reload') {
+        return {
+          type: 'update',
+          reason: 'Source changed - never-reload strategy'
+        };
+      }
+
+      // Smart strategy
+      if (hasCriticalChanges) {
+        return {
+          type: 'full-reload',
+          reason: 'Critical source file changed'
+        };
+      }
+
+      return {
+        type: 'update',
+        reason: 'Source changed - incremental update'
+      };
+    }
+
+    // Default to update
     return {
-      rootDir: path.resolve(
-        roots.outDir,
-        'assets',
-      ),
-      resolvedPath: path.normalize(
-        path.resolve(
-          roots.outDir,
-          `.${filePath}`,
-        ),
-      ),
+      type: 'update',
+      reason: 'General update'
     };
   }
 
-  return {
-    rootDir: roots.outDir,
-    resolvedPath: path.normalize(
-      path.resolve(
-        roots.outDir,
-        `.${filePath}`,
-      ),
-    ),
+  /**
+   * Rebuilds the dependency graph entry for the given files
+   */
+  private async buildDependencyGraph(files: string[]): Promise<void> {
+    // ✅ FIX: Filter out non-existent files before processing
+    const existingFiles = files.filter(fs.existsSync);
+    
+    for (const file of existingFiles) {
+      const normalizedFile = norm(file);
+      
+      const oldDeps = this.dependencyGraph.get(normalizedFile);
+
+      if (oldDeps) {
+        for (const oldDep of oldDeps) {
+          this.reverseDependencyGraph.get(oldDep)?.delete(normalizedFile);
+        }
+      }
+
+      const newDeps = await this.extractDependencies(file);
+      if (newDeps.size === 0 && !fs.existsSync(normalizedFile)) {
+        // File no longer exists: purge orphaned graph entries
+        this.dependencyGraph.delete(normalizedFile);
+      } else {
+        this.dependencyGraph.set(normalizedFile, newDeps);
+      }
+
+      for (const newDep of newDeps) {
+        if (!this.reverseDependencyGraph.has(newDep)) {
+          this.reverseDependencyGraph.set(newDep, new Set());
+        }
+        this.reverseDependencyGraph.get(newDep)!.add(normalizedFile);
+      }
+    }
+
+    // Prune empty entries from reverse dependency graph to prevent memory leaks
+    for (const [key, set] of this.reverseDependencyGraph) {
+      if (set.size === 0) {
+        this.reverseDependencyGraph.delete(key);
+      }
+    }
+  }
+
+  private async extractDependencies(filePath: string): Promise<Set<string>> {
+    // ✅ FIX: Skip if file doesn't exist
+    if (!fs.existsSync(filePath)) {
+      return new Set();
+    }
+    
+    const deps = new Set<string>();
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const importRegex = /(?:import|export).*?from\s+['"]([^'"]+)['"]/g;
+      const requireRegex = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+      let match;
+      while ((match = importRegex.exec(content)) !== null) {
+        const resolved = this.resolveImport(filePath, match[1]);
+        if (resolved) deps.add(norm(resolved));
+      }
+      while ((match = requireRegex.exec(content)) !== null) {
+        const resolved = this.resolveImport(filePath, match[1]);
+        if (resolved) deps.add(norm(resolved));
+      }
+    } catch (error) {
+      logger.error(HmrMessages.cannotExtractDependencies(filePath, (error as Error).message));
+    }
+    return deps;
+  }
+
+  private resolveImport(fromFile: string, importPath: string): string | null {
+    if (!fs.existsSync(fromFile)) {
+      return null;
+    }
+    
+    if (!importPath.startsWith('.') && !importPath.startsWith('/')) {
+      const aliasResolved = this.resolvePathAlias(importPath);
+      return aliasResolved || null;
+    }
+
+    const dir = path.dirname(fromFile);
+    let resolved = path.resolve(dir, importPath);
+    const extensions = [...this.fileFilter.extensions!, ''];
+
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
+
+    for (const ext of extensions) {
+      const withExt = resolved + ext;
+      if (fs.existsSync(withExt) && fs.statSync(withExt).isFile()) return withExt;
+
+      const indexFile = path.join(resolved, `index${ext}`);
+      if (fs.existsSync(indexFile) && fs.statSync(indexFile).isFile()) return indexFile;
+    }
+
+    return null;
+  }
+
+  private resolvePathAlias(importPath: string): string | null {
+    const extensions = [...this.fileFilter.extensions!, ''];
+    for (const [alias, aliasPath] of Object.entries(this.pathAliases)) {
+      if (importPath === alias || importPath.startsWith(alias.replace(/\/\*$/, '') + '/')) {
+        const relativePart = importPath.slice(alias.replace(/\/\*$/, '').length);
+        const resolvedBase = norm(path.join(aliasPath.replace(/\/\*$/, ''), relativePart));
+        for (const ext of extensions) {
+          const withExt = resolvedBase + ext;
+          if (fs.existsSync(withExt) && fs.statSync(withExt).isFile()) return withExt;
+
+          const indexFile = path.join(resolvedBase, `index${ext}`);
+          if (fs.existsSync(indexFile) && fs.statSync(indexFile).isFile()) return indexFile;
+        }
+      }
+    }
+    return null;
+  }
+
+  private getFilesToRebuild(changedFile: string): Set<string> {
+    const filesToRebuild = new Set<string>();
+
+    if (this.rebuildMode === 'all') {
+      // ✅ FIX: Only include existing files in "all" mode
+      this.allFiles.filter(fs.existsSync).forEach(f => filesToRebuild.add(f));
+      return filesToRebuild;
+    }
+
+    const queue = [norm(changedFile)];
+    const visited = new Set<string>();
+
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+
+      visited.add(current);
+      
+      // ✅ FIX: Only add to rebuild set if file exists
+      if (fs.existsSync(current)) {
+        filesToRebuild.add(current);
+      }
+
+      const dependents = this.reverseDependencyGraph.get(current);
+      if (dependents) {
+        dependents.forEach(d => {
+          // ✅ FIX: Only queue dependents that exist
+          if (fs.existsSync(d)) {
+            queue.push(d);
+          }
+        });
+      }
+    }
+
+    return filesToRebuild;
+  }
+
+  /**
+   * Gets all test files affected by a source change
+   */
+  private getAffectedTests(sourceFile: string): string[] {
+    const allDependents = this.getFilesToRebuild(sourceFile);
+    return Array.from(allDependents).filter(f => this.isTestFile(f) && fs.existsSync(f));
+  }
+
+  async start(): Promise<void> {
+    const watchDirs = [...(this.config.srcDirs || []), ...(this.config.testDirs || [])].filter(Boolean);
+    const watchTargets = watchDirs.length > 0 ? watchDirs : [this.primarySrcDir, this.primaryTestDir];
+    await this.initializeTrackedFiles(watchTargets);
+    this.watcher = watch(watchTargets, {
+      ignored: /(^|[\/\\])\../,
+      persistent: true,
+      ignoreInitial: true
+    });
+
+    this.watcher.on('change', filePath => {
+      filePath = norm(filePath);
+      if (this.matchesFilter(filePath)) this.queueRebuild(filePath, 'change');
+    });
+
+    this.watcher.on('add', filePath => {
+      filePath = norm(filePath);
+      if (this.matchesFilter(filePath)) this.handleFileAdd(filePath);
+    });
+
+    this.watcher.on('unlink', filePath => {
+      filePath = norm(filePath);
+      if (this.matchesFilter(filePath)) this.handleFileRemove(filePath);
+    });
+
+    this.watcher.on('addDir', dirPath => this.handleDirectoryAdd(norm(dirPath)));
+    this.watcher.on('unlinkDir', dirPath => this.handleDirectoryRemove(norm(dirPath)));
+
+    this.watcher.on('ready', async () => {
+      logger.println(HmrMessages.watchingFiles(this.allFiles.length, this.rebuildMode, this.sourceChangeStrategy));
+      this.emit('hmr:ready');
+    });
+  }
+
+  private async initializeTrackedFiles(watchTargets: string[]): Promise<void> {
+    const defaultExtensions = this.fileFilter.extensions!.join(',');
+    const seen = new Set(this.allFiles);
+    for (const target of watchTargets) {
+      const normalizedTarget = norm(target);
+      if (!fs.existsSync(normalizedTarget)) continue;
+
+      const pattern = norm(path.join(normalizedTarget, `**/*{${defaultExtensions}}`));
+      const files = (await glob(pattern, { absolute: true, ignore: ['**/node_modules/**'] }))
+        .filter(f => this.matchesFilter(norm(f)));
+
+      for (const file of files) {
+        const normalized = norm(file);
+        if (!seen.has(normalized)) {
+          seen.add(normalized);
+          this.allFiles.push(normalized);
+        }
+      }
+    }
+  }
+
+  private async handleFileAdd(filePath: string): Promise<void> {
+    // ✅ FIX: Use operation queue to prevent race conditions
+    this.operationQueue = this.operationQueue.then(async () => {
+      filePath = norm(filePath);
+      if (!this.allFiles.includes(filePath)) {
+        this.allFiles.push(filePath);
+        
+        const fileType = this.isTestFile(filePath) ? 'test' : 
+                        this.isSourceFile(filePath) ? 'source' : 'unknown';
+        const output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
+        logger.println(HmrMessages.fileAdded(capitalize(fileType), output));
+        
+        await this.queueRebuild(
+          filePath,
+          'add',
+        );
+      }
+    }).catch(error => {
+      logger.error(HmrMessages.errorInHandleFileAdd(error));
+    });
+    
+    await this.operationQueue;
+  }
+
+  private async handleFileRemove(filePath: string): Promise<void> {
+    // ✅ FIX: Use operation queue for atomic file removal
+    this.operationQueue = this.operationQueue.then(async () => {
+      filePath = norm(filePath);
+      
+      this.viteConfigBuilder.removeFromInputMap(filePath);
+
+      // ✅ CRITICAL: Remove from rebuild queue immediately to prevent build errors
+      this.rebuildQueue.delete(filePath);
+      this.directChanges.delete(filePath);
+      
+      const affectedFiles = new Set<string>();
+      const dependents = this.reverseDependencyGraph.get(filePath);
+      dependents?.forEach(d => {
+        if (fs.existsSync(d)) {
+          affectedFiles.add(d);
+        }
+      });
+
+      this.allFiles = this.allFiles.filter(f => f !== filePath);
+      this.dependencyGraph.delete(filePath);
+      this.reverseDependencyGraph.delete(filePath);
+
+      for (const deps of this.dependencyGraph.values()) deps.delete(filePath);
+      for (const dep of this.reverseDependencyGraph.values()) dep.delete(filePath);
+
+      const fileType = this.isTestFile(filePath) ? 'test' : 
+                      this.isSourceFile(filePath) ? 'source' : 'unknown';
+      let output = norm(this.isTestFile(filePath) ? path.relative(this.primaryTestDir, filePath) : path.relative(this.primarySrcDir, filePath)); 
+      logger.println(HmrMessages.fileRemoved(capitalize(fileType), output));
+
+      // Determine update strategy
+      const strategy = this.determineUpdateStrategy([filePath], 'unlink');
+
+      output = norm(path.join(this.config.outDir, this.fileDiscovery.getOutputName(filePath)));
+
+      if (fs.existsSync(output)) fs.rmSync(output);
+      const map = output.replace(/\.js$/, '.js.map');
+      if (fs.existsSync(map)) fs.rmSync(map);
+    
+      const removedTest =
+        this.isTestFile(filePath);
+
+      this.emit('hmr:update', {
+        type:
+          removedTest
+            ? 'test-remove'
+            : strategy.type,
+        path:
+          this.fileDiscovery
+            .getOutputName(filePath),
+        timestamp:
+          Date.now(),
+        affectedTests:
+          this.isSourceFile(filePath)
+            ? Array.from(
+                affectedFiles,
+              ).filter(
+                (file) =>
+                  this.isTestFile(file),
+              )
+            : undefined,
+        reason:
+          removedTest
+            ? 'Test file removed'
+            : strategy.reason,
+      });
+
+      if (this.rebuildMode === 'selective' && affectedFiles.size > 0) {
+        affectedFiles.forEach(f => this.queueRebuild(f, 'change'));
+      }
+    }).catch(error => {
+      logger.error(HmrMessages.errorInHandleFileRemove(error));
+    });
+    
+    await this.operationQueue;
+  }
+
+  private async handleDirectoryAdd(dirPath: string): Promise<void> {
+    // ✅ FIX: Use operation queue
+    this.operationQueue = this.operationQueue.then(async () => {
+      dirPath = norm(dirPath);
+      const dirType = dirPath.startsWith(this.primaryTestDir) ? 'test': 'source';
+      const output = norm(dirPath.startsWith(this.primaryTestDir) ? path.relative(this.primaryTestDir, dirPath) : path.relative(this.primarySrcDir, dirPath));
+      logger.println(HmrMessages.directoryAdded(capitalize(dirType), output));
+      
+      const defaultExtensions = this.fileFilter.extensions!.join(',');
+      const pattern = norm(path.join(dirPath, `**/*{${defaultExtensions}}`));
+      const newFiles = (await glob(pattern, { absolute: true, ignore: ['**/node_modules/**'] }))
+        .filter(f => this.matchesFilter(norm(f)));
+
+      const filesToProcess: string[] = [];
+      for (const file of newFiles) {
+        const normalized = norm(file);
+        if (!this.allFiles.includes(normalized)) {
+          this.allFiles.push(normalized);
+          filesToProcess.push(normalized);
+        }
+      }
+
+      if (filesToProcess.length) {
+        logger.println(HmrMessages.foundFilesInDirectory(filesToProcess.length, dirType));
+        
+        // Directory additions don't require full reload
+        const strategy = this.determineUpdateStrategy(filesToProcess, 'addDir');
+        
+        this.emit('hmr:update', {
+          type: strategy.type,
+          path: output,
+          timestamp: Date.now(),
+          reason: strategy.reason
+        });
+        
+        filesToProcess.forEach(f => this.queueRebuild(f, 'add'));
+      }
+    }).catch(error => {
+      logger.error(HmrMessages.errorInHandleDirectoryAdd(error));
+    });
+    
+    await this.operationQueue;
+  }
+
+  private async handleDirectoryRemove(dirPath: string): Promise<void> {
+    // ✅ FIX: Use operation queue for atomic directory removal
+    this.operationQueue = this.operationQueue.then(async () => {
+      dirPath = norm(dirPath);
+
+      const dirType = dirPath.startsWith(this.primaryTestDir) ? 'test': 'source';
+      const output = norm(dirPath.startsWith(this.primaryTestDir) ? path.relative(this.primaryTestDir, dirPath) : path.relative(this.primarySrcDir, dirPath));
+      logger.println(HmrMessages.directoryRemoved(capitalize(dirType), output));
+      
+      const removedFiles = this.allFiles.filter(f => f.startsWith(dirPath + path.sep) || f === dirPath);
+      const affectedFiles = new Set<string>();
+
+      // ✅ Remove all files in directory from rebuild queues to prevent build errors
+      for (const file of removedFiles) {
+        this.rebuildQueue.delete(file);
+        this.directChanges.delete(file);
+        
+        const dependents = this.reverseDependencyGraph.get(file);
+        dependents?.forEach(d => {
+          if (fs.existsSync(d)) {
+            affectedFiles.add(d);
+          }
+        });
+
+        this.dependencyGraph.delete(file);
+        this.reverseDependencyGraph.delete(file);
+
+        for (const deps of this.dependencyGraph.values()) deps.delete(file);
+        for (const dep of this.reverseDependencyGraph.values()) dep.delete(file);
+      }
+      
+      // Remove all files at once (more efficient)
+      this.allFiles = this.allFiles.filter(f => !removedFiles.includes(f));
+
+      // Determine strategy based on what was removed
+      const strategy = this.determineUpdateStrategy(removedFiles, 'unlinkDir');
+      this.viteConfigBuilder.removeMultipleFromInputMap(removedFiles);
+    
+      this.emit('hmr:update', {
+        type: strategy.type,
+        path: output,
+        timestamp: Date.now(),
+        affectedTests: Array.from(affectedFiles).filter(f => this.isTestFile(f)),
+        reason: strategy.reason
+      });
+
+      if (this.rebuildMode === 'selective' && affectedFiles.size > 0) {
+        affectedFiles.forEach(f => this.queueRebuild(f, 'change'));
+      }
+    }).catch(error => {
+      logger.error(HmrMessages.errorInHandleDirectoryRemove(error));
+    });
+    
+    await this.operationQueue;
+  }
+
+  private async queueRebuild(filePath: string, changeType: 'add' | 'change' | 'unlink' = 'change') {
+    const normalized = norm(filePath);
+    
+    // ✅ FIX: Skip if file doesn't exist (for unlink cases)
+    if (changeType !== 'unlink' && !fs.existsSync(normalized)) {
+      logger.warn(HmrMessages.skippingRebuildNonExistent(normalized));
+      return;
+    }
+    
+    this.directChanges.add(normalized);
+    this.rebuildQueue.add(normalized);
+
+    // If a rebuild is already in progress, return the same promise.
+    // Multiple queued changes will be processed in the same rebuild loop.
+    if (this.rebuildPromise) {
+      return this.rebuildPromise;
+    }
+
+    this.rebuildPromise = this.rebuildAll().catch(error => {
+      logger.error(HmrMessages.rebuildFailed(error));
+      this.emit('hmr:error', error);
+    }).finally(() => {
+      this.rebuildPromise = null;
+    });
+    
+    return this.rebuildPromise;
+  }
+
+  private async rebuildAll() {
+    try {
+      while (this.rebuildQueue.size > 0) {
+        const startTime = Date.now();
+
+        // ✅ FIX: Filter out deleted files from ALL queues before processing
+        const changedFiles = Array.from(this.rebuildQueue).filter(file => {
+          if (!fs.existsSync(file)) {
+            logger.warn(HmrMessages.skippingDeletedFileFromQueue(file));
+            return false;
+          }
+          return true;
+        });
+
+        this.rebuildQueue.clear();
+
+        const directChangedFiles = Array.from(this.directChanges).filter(file => {
+          if (!fs.existsSync(file)) {
+            logger.warn(HmrMessages.skippingDeletedFileFromDirectChanges(file));
+            return false;
+          }
+          return true;
+        });
+        this.directChanges.clear();
+
+        if (changedFiles.length === 0) {
+          logger.warn(HmrMessages.allQueuedFilesDeleted());
+          continue;
+        }
+
+        const filesToRebuild = new Set<string>();
+
+        for (const file of changedFiles) {
+          const deps = this.getFilesToRebuild(file);
+          deps.forEach(f => {
+            // ✅ FIX: Double verify files to rebuild still exist
+            if (fs.existsSync(f)) {
+              filesToRebuild.add(f);
+            }
+          });
+        }
+
+        const rebuiltFiles = Array.from(filesToRebuild);
+
+        if (rebuiltFiles.length === 0) {
+          logger.warn(HmrMessages.noValidFilesToRebuild());
+          continue;
+        }
+
+        // Specs are the only build entries. Source files participate only in
+        // dependency analysis and determine which specs are affected.
+        const validSourceFiles =
+          rebuiltFiles.filter(
+            (file) =>
+              this.isSourceFile(file) &&
+              fs.existsSync(file),
+          );
+
+        const validTestFiles =
+          rebuiltFiles.filter(
+            (file) =>
+              this.isTestFile(file) &&
+              fs.existsSync(file),
+          );
+
+        logger.println(
+          HmrMessages.rebuildSummary(
+            directChangedFiles.length,
+            rebuiltFiles.length,
+            validSourceFiles.length,
+            validTestFiles.length,
+          ),
+        );
+
+        // A source change with no dependent spec does not require a browser
+        // build. The source will be pulled transitively the next time a spec
+        // that imports it is rebuilt.
+        if (validTestFiles.length === 0) {
+          logger.warn(
+            HmrMessages.noValidSourceOrTestFiles(),
+          );
+          continue;
+        }
+
+        await this.buildDependencyGraph(
+          rebuiltFiles,
+        );
+
+        const viteConfig =
+          this.viteConfigBuilder
+            .createViteConfigForFiles(
+              validTestFiles,
+              this.viteCache,
+            );
+
+        const build = await getViteBuild();
+        const startBuildTime = Date.now();
+
+        try {
+          const result = await build(viteConfig);
+          this.viteCache = result;
+        } catch (buildError: any) {
+          logger.error(HmrMessages.viteBuildFailed(buildError));
+          // Check if it's due to missing entry files
+          if (buildError.code === 'UNRESOLVED_ENTRY') {
+            logger.println(HmrMessages.retryingWithFilteredEntries());
+            // Retry with the remaining spec entries only.
+            const finalTestFiles =
+              validTestFiles.filter(
+                fs.existsSync,
+              );
+
+            if (
+              finalTestFiles.length === 0
+            ) {
+              logger.warn(
+                HmrMessages
+                  .allEntryPointsDeleted(),
+              );
+              continue;
+            }
+
+            const retryConfig =
+              this.viteConfigBuilder
+                .createViteConfigForFiles(
+                  finalTestFiles,
+                  this.viteCache,
+                );
+            const result = await build(retryConfig);
+            this.viteCache = result;
+          } else {
+            throw buildError;
+          }
+        }
+
+        // Only spec entries have stable output names. Source modules are
+        // dependency chunks and must never be addressed as HMR entries.
+        for (
+          const file of
+          validTestFiles
+        ) {
+          const relative =
+            this.fileDiscovery
+              .getOutputName(file);
+
+          const outputPath =
+            path.join(
+              this.config.outDir,
+              relative,
+            );
+
+          if (
+            fs.existsSync(
+              outputPath,
+            )
+          ) {
+            const content =
+              fs.readFileSync(
+                outputPath,
+                'utf-8',
+              );
+
+            const strategy =
+              this.determineUpdateStrategy(
+                directChangedFiles,
+                'change',
+              );
+
+            const affectedTests =
+              directChangedFiles
+                .filter(
+                  (changedFile) =>
+                    this.isSourceFile(
+                      changedFile,
+                    ),
+                )
+                .flatMap(
+                  (changedFile) =>
+                    this.getAffectedTests(
+                      changedFile,
+                    ),
+                );
+
+            this.emit(
+              'hmr:update',
+              {
+                type: strategy.type,
+                path: relative,
+                timestamp:
+                  Date.now(),
+                content,
+                affectedTests:
+                  affectedTests.length > 0
+                    ? affectedTests
+                    : undefined,
+                reason:
+                  strategy.reason,
+              },
+            );
+          }
+        }
+
+        logger.println(HmrMessages.viteBuildCompleted(Date.now() - startBuildTime));
+
+        const duration = Date.now() - startTime;
+        const sourceChanges = directChangedFiles.filter(f => this.isSourceFile(f));
+        const testChanges = directChangedFiles.filter(f => this.isTestFile(f));
+        const updateType = sourceChanges.length > 0 ? 'source-change' :
+          testChanges.length > 0 ? 'test-only' : 'full';
+
+        this.emit('hmr:rebuild', {
+          changedFiles: directChangedFiles,
+          rebuiltFiles,
+          duration,
+          timestamp: Date.now(),
+          updateType
+        } as RebuildStats);
+
+        logger.println(HmrMessages.rebuildComplete(updateType, rebuiltFiles.length, duration));
+      }
+    } catch (error) {
+      logger.error(HmrMessages.rebuildFailed(error));
+      this.emit('hmr:error', error);
+      throw error;
+    }
+  }
+
+  getDependencyInfo(filePath: string) {
+    const normalized = norm(filePath);
+    return {
+      dependencies: Array.from(this.dependencyGraph.get(normalized) || []),
+      dependents: Array.from(this.reverseDependencyGraph.get(normalized) || []),
+      isTest: this.isTestFile(normalized),
+      isSource: this.isSourceFile(normalized),
+      isCritical: this.isCriticalSourceFile(normalized),
+      affectedTests: this.isSourceFile(normalized) ? this.getAffectedTests(normalized) : []
+    };
+  }
+
+  getStats() {
+    const sourceFiles = this.allFiles.filter(f => this.isSourceFile(f));
+    const testFiles = this.allFiles.filter(f => this.isTestFile(f));
+    const criticalFiles = sourceFiles.filter(f => this.isCriticalSourceFile(f));
+
+    return {
+      totalFiles: this.allFiles.length,
+      sourceFiles: sourceFiles.length,
+      testFiles: testFiles.length,
+      criticalSourceFiles: criticalFiles.length,
+      trackedDependencies: this.dependencyGraph.size,
+      rebuildMode: this.rebuildMode,
+      sourceChangeStrategy: this.sourceChangeStrategy,
+      fileFilter: this.fileFilter,
+      pathAliases: this.pathAliases,
+      criticalPatterns: this.criticalSourcePatterns
+    };
+  }
+
+  async stop(): Promise<void> {
+    if (this.watcher) {
+      await this.watcher.close();
+      this.watcher = null;
+      this.dependencyGraph.clear();
+      this.reverseDependencyGraph.clear();
+      logger.println(HmrMessages.watcherStopped());
+    }
+  }
+}
+````
+
+## File: src/jasmine-node-runtime.ts
+````typescript
+import {
+  createTestCatalogFromJasmineEnv,
+  getEmbeddedTestCatalogSource,
+  type TestCatalog,
+} from './test-catalog';
+import {
+  getEmbeddedTestMetadataSource,
+} from './test-metadata-runtime';
+
+export interface NodeJasmineRuntimeOptions {
+  reporter?: jasmine.CustomReporter;
+  resetReporters?: boolean;
+}
+
+export interface NodeJasmineRuntime {
+  jasmineEnv: jasmine.Env;
+  jasmineInstance: any;
+  catalog: TestCatalog;
+  utils: {
+    getCatalog: () => TestCatalog;
+    getAllSpecs: () => any[];
+    getAllSuites: () => any[];
+    getOrderedSpecs: (seed: unknown, random: boolean) => any[];
+    getOrderedSuites: (seed: unknown, random: boolean) => any[];
   };
 }
 
-function isPathInside(
-  root: string,
-  candidate: string,
-): boolean {
-  const relative = path.relative(
-    path.resolve(root),
-    path.resolve(candidate),
-  );
+export function getAllSpecsFromEnv(jasmineEnv: jasmine.Env): any[] {
+  const specs: any[] = [];
+  const topSuite = jasmineEnv?.topSuite?.();
+  if (!topSuite) return specs;
 
-  return (
-    relative === '' ||
-    (!relative.startsWith('..') &&
-      !path.isAbsolute(relative))
-  );
+  const traverse = (suite: any) => {
+    suite.children?.forEach((child: any) => {
+      if (child && typeof child.id === 'string' && !child.children) {
+        specs.push(child);
+      }
+      if (child?.children) {
+        traverse(child);
+      }
+    });
+  };
+
+  traverse(topSuite);
+  return specs;
 }
 
-export class HttpServerManager {
-  private server: http.Server | null = null;
+export function getAllSuitesFromEnv(jasmineEnv: jasmine.Env): any[] {
+  const suites: any[] = [];
+  const topSuite = jasmineEnv?.topSuite?.();
+  if (!topSuite) return suites;
 
-  constructor(private config: ViteJasmineConfig) {}
-
-  private createHttpServer(): http.Server {
-    const outDir = path.resolve(this.config.outDir);
-    const __filename = norm(fileURLToPath(import.meta.url));
-    const __dirname = norm(path.dirname(__filename));
-    const vendorDir = path.resolve(path.join(__dirname, '../node_modules'));
-    const workspaceNodeModulesDir = path.resolve(path.join(process.cwd(), 'node_modules'));
-    const packageRoot = path.resolve(path.join(__dirname, '..'));
-    const assetDirs = [
-      path.resolve(outDir, 'assets'),
-      path.resolve(process.cwd(), 'assets'),
-      path.resolve(packageRoot, 'assets'),
-    ];
-
-    return createServer((req, res) => {
-      let { pathname } = parse(req.url === '/' ? '/index.html' : req.url!, true);
-      const filePath = decodeURIComponent(pathname!);
-
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-      
-      if (req.method === 'OPTIONS') {
-        res.writeHead(200, {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type'
-        });
-        res.end();
-        return;
+  const traverse = (suite: any) => {
+    suites.push(suite);
+    suite.children?.forEach((child: any) => {
+      if (child?.children) {
+        traverse(child);
       }
+    });
+  };
 
-      const {
-        rootDir,
-        resolvedPath,
-      } = resolveStaticRequestPath(
-        filePath,
-        {
-          outDir,
-          workspaceNodeModulesDir,
-          vendorDir,
-          assetDirs,
+  traverse(topSuite);
+  return suites;
+}
+
+export function orderJasmineItems(
+  jasmineInstance: any,
+  items: any[],
+  seed: unknown,
+  random: boolean
+): any[] {
+  if (!random) return items;
+
+  const OrderCtor = jasmineInstance?.Order;
+  try {
+    const order = new OrderCtor({ random, seed });
+    return typeof order.sort === 'function' ? order.sort(items) : items;
+  } catch (error) {
+    console.error('Testify runtime error:', error);
+    return items;
+  }
+}
+
+export function createJasmineRuntimeUtils(
+  jasmineEnv: jasmine.Env,
+  jasmineInstance: any,
+) {
+  return {
+    getCatalog: () =>
+      createTestCatalogFromJasmineEnv(jasmineEnv),
+    getAllSpecs: () =>
+      getAllSpecsFromEnv(jasmineEnv),
+    getAllSuites: () =>
+      getAllSuitesFromEnv(jasmineEnv),
+    getOrderedSpecs: (
+      seed: unknown,
+      random: boolean,
+    ) =>
+      orderJasmineItems(
+        jasmineInstance,
+        getAllSpecsFromEnv(jasmineEnv),
+        seed,
+        random,
+      ),
+    getOrderedSuites: (
+      seed: unknown,
+      random: boolean,
+    ) =>
+      orderJasmineItems(
+        jasmineInstance,
+        getAllSuitesFromEnv(jasmineEnv),
+        seed,
+        random,
+      ),
+  };
+}
+
+export function exposeNodeJasmineGlobals(
+  jasmineRequire: any,
+  jasmineInstance: any,
+  jasmineEnv: jasmine.Env,
+  utils: NodeJasmineRuntime['utils']
+): void {
+  Object.assign(
+    globalThis,
+    jasmineRequire.interface(
+      jasmineInstance,
+      jasmineEnv,
+    ),
+  );
+
+  globalThis.jasmine = {
+    ...(globalThis.jasmine ?? {}),
+    ...jasmineInstance,
+    ...utils,
+  };
+}
+
+export function initializeNodeJasmineEnvironment(
+  jasmineRequire: any,
+  options: NodeJasmineRuntimeOptions = {}
+): NodeJasmineRuntime {
+  const jasmineInstance =
+    jasmineRequire.core(jasmineRequire);
+  const jasmineEnv =
+    jasmineInstance.getEnv();
+  const utils =
+    createJasmineRuntimeUtils(
+      jasmineEnv,
+      jasmineInstance,
+    );
+
+  exposeNodeJasmineGlobals(
+    jasmineRequire,
+    jasmineInstance,
+    jasmineEnv,
+    utils,
+  );
+
+  if (
+    options.resetReporters !== false &&
+    typeof jasmineEnv.clearReporters === 'function'
+  ) {
+    jasmineEnv.clearReporters();
+  }
+
+  if (
+    options.reporter &&
+    typeof jasmineEnv.addReporter === 'function'
+  ) {
+    jasmineEnv.addReporter(options.reporter);
+  }
+
+  return {
+    jasmineEnv,
+    jasmineInstance,
+    get catalog() {
+      return utils.getCatalog();
+    },
+    utils,
+  };
+}
+
+export function getEmbeddedNodeJasmineRuntimeSource(): string {
+  return [
+    getEmbeddedTestMetadataSource(),
+    getEmbeddedTestCatalogSource(),
+    [
+      getAllSpecsFromEnv,
+      getAllSuitesFromEnv,
+      orderJasmineItems,
+      createJasmineRuntimeUtils,
+      exposeNodeJasmineGlobals,
+      initializeNodeJasmineEnvironment,
+    ]
+      .map((fn) => fn.toString())
+      .join('\n\n'),
+  ].join('\n\n');
+}
+````
+
+## File: src/messages.ts
+````typescript
+export interface LogMessageTemplate {
+    type: 'error' | 'warning' | 'info' | 'debug'; // New property to semantically categorize messages
+    icon?: string;
+    text: (...args: any[]) => string;
+}
+
+export const LOG_MESSAGES = {
+    // =================================================================
+    // General / CLI
+    // =================================================================
+    
+    startingExclusive: {
+        type: 'info',
+        icon: '⚡',
+        text: () => '[⚡] Exclusive mode: Terminating existing instances...',
+    },
+    runningInProjectScope: {
+        type: 'info',
+        icon: '📁',
+        text: (projectName: string, path: string) => `[📁] Running tests for project "${projectName}" in: ${path}`,
+    },
+    projectNotFound: {
+        type: 'error',
+        icon: 'x',
+        text: (projectName: string) => `%error% Project "${projectName}" not found in tsconfig.json or workspace definitions.`,
+    },
+    invalidExitCode: {
+        type: 'warning',
+        icon: '🚨',
+        text: (code: number) => `[warning] Exiting with an unusual code: ${code}.`,
+    },
+    
+    // =================================================================
+    // Browser Lifecycle (BrowserManager)
+    // =================================================================
+    
+    browserManagerCleanup: {
+        type: 'debug',
+        icon: '🧹',
+        text: () => '[debug] BrowserManager: Cleaning up browser processes.',
+    },
+    browserProcessTerminated: {
+        type: 'debug',
+        icon: '✔️',
+        text: (pid: number) => `[debug] BrowserManager: Terminated process with PID: ${pid}.`,
+    },
+    browserCleanupFailed: {
+        type: 'warning',
+        icon: '🚨',
+        text: (pid: number, error: string) => `%error% BrowserManager: Failed to terminate process ${pid}. Reason: ${error}`,
+    },
+    headlessModeImplied: {
+        type: 'info',
+        icon: '💡',
+        text: () => '[info] Using --browser node implies --headless. Running in headless mode.',
+    },
+
+    // =================================================================
+    // Test Runner (NodeTestRunner)
+    // =================================================================
+    
+    noJsFilesForRunner: {
+        type: 'warning',
+        icon: '🚨',
+        text: () => '[warning] No JS files found for test runner generation.',
+    },
+    generatedInProcessRunner: {
+        type: 'info',
+        icon: '🤖',
+        text: (runnerPath: string) => `[robot] Generated in-process test runner: ${runnerPath}`,
+    },
+    startingTestRunner: {
+        type: 'info',
+        icon: '🚀',
+        text: () => '[rocket] Starting test runner in current process...',
+    },
+    testProcessAlreadyRunning: {
+        type: 'warning',
+        icon: '🚨',
+        text: () => '%error% Test process already running.',
+    },
+    testExecutionError: {
+        type: 'error',
+        icon: 'x',
+        text: (message: string) => `%error% Test execution error: ${message}`,
+    },
+    failedToRunTests: {
+        type: 'error',
+        icon: 'x',
+        text: (error: string) => `%error% Failed to run tests: ${error}`,
+    },
+    errorDuringExecution: {
+        type: 'error',
+        icon: 'x',
+        text: (error: string) => `%error% Error during test execution: ${error}`,
+    },
+
+    // =================================================================
+    // Signal Handling & Interruptions
+    // =================================================================
+    
+    caughtSignal: {
+        type: 'info',
+        icon: '⚙️',
+        text: (signal: string) => `[gear] Caught ${signal}. Cleaning up...`,
+    },
+    abortingRun: {
+        type: 'warning',
+        icon: '🛑',
+        text: () => '[warning] Test run aborted. Generating partial report...',
+    },
+    forceExiting: {
+        type: 'warning',
+        icon: '💥',
+        text: () => '[warning] Double Ctrl+C detected. Forcing exit.',
+    },
+    unhandledRejection: {
+        type: 'error',
+        icon: 'x',
+        text: (error: string) => `%error% Unhandled Rejection: ${error}`,
+    },
+    uncaughtException: {
+        type: 'error',
+        icon: 'x',
+        text: (error: string) => `%error% Uncaught Exception: ${error}`,
+    },
+    
+    // =================================================================
+    // Watch Mode & HMR
+    // =================================================================
+    
+    watchingFiles: {
+        type: 'info',
+        icon: '👀',
+        text: () => '[👀] Watch mode enabled. Waiting for file changes...',
+    },
+    rebuildingDueToChange: {
+        type: 'info',
+        icon: '🔄',
+        text: (filePath: string) => `[🔄] File change detected, rebuilding: ${filePath}`,
+    },
+    
+    // =================================================================
+    // Coverage
+    // =================================================================
+    
+    remappingCoverage: {
+        type: 'debug',
+        icon: '🗺️',
+        text: () => '[🗺️] Remapping coverage paths using source maps.',
+    },
+} as const;
+````
+
+## File: src/node-execution-environment-host.spec.ts
+````typescript
+import {
+  NodeExecutionEnvironmentHost,
+} from './node-execution-environment-host';
+
+describe('NodeExecutionEnvironmentHost', () => {
+  it('applies and restores environment values', async () => {
+    const originalNodeEnv =
+      process.env.NODE_ENV;
+
+    const originalValue =
+      process.env
+        .TESTIFY_STEP29_VALUE;
+
+    const host =
+      new NodeExecutionEnvironmentHost({
+        env: {
+          TESTIFY_STEP29_VALUE:
+            'inside',
+        },
+        nodeEnv: 'test',
+      });
+
+    try {
+      await host.run(
+        async () => {
+          expect(
+            process.env.NODE_ENV,
+          ).toBe('test');
+
+          expect(
+            process.env
+              .TESTIFY_STEP29_VALUE,
+          ).toBe('inside');
         },
       );
 
-      if (!isPathInside(rootDir, resolvedPath)) {
-        res.writeHead(403);
-        res.end('Forbidden');
-        return;
+      expect(
+        process.env.NODE_ENV,
+      ).toBe(
+        originalNodeEnv,
+      );
+
+      expect(
+        process.env
+          .TESTIFY_STEP29_VALUE,
+      ).toBe(
+        originalValue,
+      );
+    } finally {
+      if (
+        originalNodeEnv ===
+        undefined
+      ) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV =
+          originalNodeEnv;
       }
 
-      const stream = fs.createReadStream(resolvedPath);
-      stream.on('error', () => {
-        res.writeHead(404);
-        res.end('Not found');
-      });
-      stream.on('open', () => {
-        const ext = extname(resolvedPath);
-        res.writeHead(200, {
-          'Content-Type': this.getContentType(ext),
-          'Access-Control-Allow-Origin': '*'
-        });
-        stream.pipe(res);
-      });
-    });
-  }
-
-  async startServer(): Promise<http.Server> {
-    const port = this.config.port ?? 8888;
-    this.server = this.createHttpServer();
-
-    return new Promise((resolve, reject) => {
-      const tryListen = (attempt = 1) => {
-        this.server!.listen(port, () => {
-          logger.println(HttpServerMessages.serverRunning(port));
-          resolve(this.server!);
-        });
-
-        this.server!.on('error', (error: any) => {
-          if (error.code === 'EADDRINUSE' && attempt < 3) {
-            logger.println(HttpServerMessages.portBusyRetrying(port));
-
-            this.server!.close(() => {
-              setTimeout(() => {
-                const isWindows = process.platform === 'win32';
-                const killCommand = isWindows
-                  ? `powershell -command "Get-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess | Stop-Process -Force"`
-                  : `lsof -ti:${port} | xargs -r kill -9`;
-
-                // ✅ Fixed: pass empty options object as second argument
-                exec(killCommand, {}, (err, stdout, stderr) => {
-                  if (err) {
-                    logger.error(HttpServerMessages.failedToKillProcess(port, err.message, stderr));
-                  } else {
-                    logger.println(HttpServerMessages.portReclaimed(port));
-                  }
-                  this.server = this.createHttpServer();
-                  tryListen(attempt + 1);
-                });
-              }, 3000);
-            });
-          } else if (error.code === 'EADDRINUSE') {
-            logger.error(HttpServerMessages.portStillBusy(port));
-            reject(error);
-          } else {
-            logger.error(HttpServerMessages.serverError(error));
-            reject(error);
-          }
-        });
-      };
-      tryListen();
-    });
-  }
-
-  private getContentType(ext: string): string {
-    const types: Record<string, string> = {
-      '.html': 'text/html',
-      '.js': 'application/javascript',
-      '.mjs': 'application/javascript',
-      '.css': 'text/css',
-      '.json': 'application/json',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.gif': 'image/gif',
-      '.svg': 'image/svg+xml',
-      '.ico': 'image/x-icon'
-    };
-    return types[ext] || 'application/octet-stream';
-  }
-
-  async waitForServerReady(url: string, timeout = 5000): Promise<void> {
-    const start = Date.now();
-    const { hostname, port } = new URL(url);
-
-    while (Date.now() - start < timeout) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const req = http.request({
-            hostname,
-            port,
-            path: '/',
-            method: 'HEAD',
-            timeout: 1000
-          }, (res) => {
-            res.resume();
-            resolve();
-          });
-
-          req.on("error", reject);
-          req.on("timeout", () => {
-            req.destroy();
-            reject(new Error('Timeout'));
-          });
-
-          req.end();
-        });
-        return;
-      } catch {
-        await new Promise(r => setTimeout(r, 100));
+      if (
+        originalValue ===
+        undefined
+      ) {
+        delete process.env
+          .TESTIFY_STEP29_VALUE;
+      } else {
+        process.env
+          .TESTIFY_STEP29_VALUE =
+          originalValue;
       }
     }
-    throw new Error(`Server not ready at ${url} after ${timeout}ms`);
+  });
+
+  it('restores environment even when work fails', async () => {
+    const original =
+      process.env
+        .TESTIFY_STEP29_FAILURE;
+
+    const host =
+      new NodeExecutionEnvironmentHost({
+        env: {
+          TESTIFY_STEP29_FAILURE:
+            'inside',
+        },
+      });
+
+    try {
+      await expectAsync(
+        host.run(
+          async () => {
+            throw new Error(
+              'expected',
+            );
+          },
+        ),
+      ).toBeRejected();
+
+      expect(
+        process.env
+          .TESTIFY_STEP29_FAILURE,
+      ).toBe(original);
+    } finally {
+      if (original === undefined) {
+        delete process.env
+          .TESTIFY_STEP29_FAILURE;
+      } else {
+        process.env
+          .TESTIFY_STEP29_FAILURE =
+          original;
+      }
+    }
+  });
+
+  it('suppresses and restores console methods', async () => {
+    const originalLog =
+      console.log;
+
+    let calls = 0;
+
+    console.log =
+      (() => {
+        calls++;
+      }) as typeof console.log;
+
+    const installedLog =
+      console.log;
+
+    const host =
+      new NodeExecutionEnvironmentHost({
+        suppressConsoleLogs: true,
+      });
+
+    try {
+      await host.run(
+        async () => {
+          console.log(
+            'hidden',
+          );
+
+          expect(calls).toBe(0);
+        },
+      );
+
+      expect(
+        console.log,
+      ).toBe(installedLog);
+
+      console.log(
+        'visible',
+      );
+
+      expect(calls).toBe(1);
+    } finally {
+      console.log =
+        originalLog;
+    }
+  });
+
+  it('does not suppress logger output when console logs are muted', async () => {
+    const originalFlag =
+      (globalThis as any)
+        .__testifySuppressLogs;
+
+    const host =
+      new NodeExecutionEnvironmentHost({
+        suppressConsoleLogs: true,
+      });
+
+    try {
+      await host.run(
+        async () => {
+          expect(
+            (globalThis as any)
+              .__testifySuppressLogs,
+          ).toBe(originalFlag);
+        },
+      );
+    } finally {
+      (globalThis as any)
+        .__testifySuppressLogs =
+        originalFlag;
+    }
+  });
+});
+````
+
+## File: src/node-execution-environment-host.ts
+````typescript
+export interface NodeExecutionEnvironmentHostOptions {
+  env?: NodeJS.ProcessEnv;
+  nodeEnv?: string;
+  suppressConsoleLogs?: boolean;
+}
+
+type ConsoleMethod =
+  | 'log'
+  | 'info'
+  | 'debug'
+  | 'trace'
+  | 'warn'
+  | 'table';
+
+const SILENT_CONSOLE_METHODS:
+  readonly ConsoleMethod[] = [
+    'log',
+    'info',
+    'debug',
+    'trace',
+    'warn',
+    'table',
+  ];
+
+export class NodeExecutionEnvironmentHost {
+  constructor(
+    private readonly options:
+      NodeExecutionEnvironmentHostOptions = {},
+  ) {}
+
+  async run<T>(
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const envSnapshot =
+      this.captureEnvironment();
+
+    const consoleSnapshot =
+      this.captureConsole();
+
+    try {
+      this.applyEnvironment();
+
+      if (
+        this.options
+          .suppressConsoleLogs
+      ) {
+        this.suppressConsole();
+      }
+
+      return await work();
+    } finally {
+      this.restoreConsole(
+        consoleSnapshot,
+      );
+
+      this.restoreEnvironment(
+        envSnapshot,
+      );
+    }
   }
 
-  async cleanup(): Promise<void> {
-    if (this.server) {
-      await new Promise<void>((resolve, reject) => {
-        this.server!.close(err => (err ? reject(err) : resolve()));
-      });
-      this.server = null;
+  private captureEnvironment():
+    Map<
+      string,
+      string | undefined
+    > {
+    const keys =
+      new Set<string>([
+        ...Object.keys(
+          this.options.env ?? {},
+        ),
+        'NODE_ENV',
+      ]);
+
+    return new Map(
+      [...keys].map(
+        (key) => [
+          key,
+          process.env[key],
+        ],
+      ),
+    );
+  }
+
+  private applyEnvironment(): void {
+    for (
+      const [key, value] of
+      Object.entries(
+        this.options.env ?? {},
+      )
+    ) {
+      if (value == null) {
+        delete process.env[key];
+      } else {
+        process.env[key] =
+          value;
+      }
+    }
+
+    if (
+      this.options.nodeEnv !==
+      undefined
+    ) {
+      process.env.NODE_ENV =
+        this.options.nodeEnv;
+    }
+  }
+
+  private restoreEnvironment(
+    snapshot: Map<
+      string,
+      string | undefined
+    >,
+  ): void {
+    for (
+      const [key, value] of
+      snapshot
+    ) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] =
+          value;
+      }
+    }
+  }
+
+  private captureConsole():
+    Map<
+      ConsoleMethod,
+      (...args: any[]) => any
+    > {
+    return new Map(
+      SILENT_CONSOLE_METHODS.map(
+        (method) => [
+          method,
+          console[method],
+        ],
+      ),
+    );
+  }
+
+  private suppressConsole(): void {
+    for (
+      const method of
+      SILENT_CONSOLE_METHODS
+    ) {
+      console[method] =
+        (() => {}) as
+          typeof console[
+            typeof method
+          ];
+    }
+  }
+
+  private restoreConsole(
+    snapshot: Map<
+      ConsoleMethod,
+      (...args: any[]) => any
+    >,
+  ): void {
+    for (
+      const [method, value] of
+      snapshot
+    ) {
+      console[method] =
+        value as
+          typeof console[
+            typeof method
+          ];
     }
   }
 }
@@ -15421,197 +15560,6 @@ export interface TypedRollupOptions extends Partial<RollupOptions> {
 }
 ````
 
-## File: src/websocket-manager.ts
-````typescript
-import { EventEmitter } from 'events';
-import { WebSocketServer, WebSocket } from 'ws';
-import http from 'http';
-import JSONCleaner from './json-cleaner';
-import { Reporter } from './compound-reporter';
-import { HmrManager, HmrUpdate } from './hmr-manager';
-import { FileDiscoveryService } from './file-discovery-service';
-import { ViteJasmineConfig } from './vite-jasmine-config';
-import path from 'path';
-import { logger } from './logger';
-import { WebSocketMessages } from './log-messages';
-
-export class WebSocketManager extends EventEmitter {
-  private wss: WebSocketServer | null = null;
-  private wsClients: WebSocket[] = [];
-  private hmrManager: HmrManager | null = null;
-  private hmrEnabled: boolean = false;
-  private jsonCleaner = new JSONCleaner();
-  private failedSpecsCount: number = 0;
-  private pendingSpecsCount: number = 0;
-
-  constructor(private fileDiscovery: FileDiscoveryService, private config: ViteJasmineConfig, private server: http.Server, private reporter: Reporter) {
-    super();
-    this.createWebSocketServer();
-  }
-
-  private createWebSocketServer(): void {
-    this.wss = new WebSocketServer({ server: this.server });
-    
-    this.wss.on('connection', async (ws: WebSocket) => {
-      logger.println(WebSocketMessages.clientConnected());
-      this.wsClients.push(ws);
-      // Send HMR status on connection
-      if (this.hmrEnabled) {
-        const files = await this.fileDiscovery.scanDir(this.config.outDir, '/**/*.{js,mjs}');
-        this.sendToClient(ws, { 
-          type: 'hmr:connected',
-          specFiles: files
-            .filter(file => /\.spec\.(?:js|mjs)$/i.test(file))
-            .map(file => path.basename(file))
-            .sort(),
-          enabled: true 
-        });
-      }
-      
-      
-      ws.on('message', (data: Buffer) => {
-        try {
-          const message = this.jsonCleaner.parse(data.toString());
-          this.handleWebSocketMessage(message);
-        } catch (error) {
-          logger.error(WebSocketMessages.failedToParseMessage(error));
-        }
-      });
-      
-      ws.on('close', () => {
-        this.wsClients = this.wsClients.filter(client => client !== ws);
-      });
-      
-      ws.on('error', (error) => {
-        logger.error(WebSocketMessages.websocketError(error));
-        this.wsClients = this.wsClients.filter(client => client !== ws);
-      });
-    });
-  }
-
-  private handleWebSocketMessage(message: any): void {
-    try {
-      switch (message.type) {
-        case 'userAgent':
-          (this.reporter as any)?.userAgent?.(message.data, message.data.orderedSuites, message.data.orderedSpecs);
-          break;
-
-        case 'jasmineStarted':
-          this.failedSpecsCount = 0;
-          this.pendingSpecsCount = 0;
-          this.reporter?.jasmineStarted(message);
-          break;
-        
-        case 'suiteStarted':
-          this.reporter?.suiteStarted(message);
-          break;
-        
-        case 'specStarted':
-          this.reporter?.specStarted(message);
-          break;
-        
-        case 'specDone':
-          const specStatus = message.status ?? message.overallStatus;
-          if (specStatus === 'failed') this.failedSpecsCount++;
-          if (specStatus === 'pending') this.pendingSpecsCount++;
-          this.reporter?.specDone(message);
-          break;
-        
-        case 'suiteDone':
-          this.reporter?.suiteDone(message);
-          break;
-
-        case 'jasmineDone':
-          this.reporter?.jasmineDone(message);
-          
-          const coverage = message.coverage ? this.jsonCleaner.parse(message.coverage) : null;
-          const globalFailureCount =
-            Array.isArray(
-              message.failedExpectations,
-            )
-              ? message.failedExpectations.length
-              : 0;
-          const success = message.overallStatus === 'passed' && this.failedSpecsCount === 0 && globalFailureCount === 0;
-          const hasPending = message.overallStatus === 'incomplete' || this.pendingSpecsCount > 0;
-          this.emit('testsCompleted', { success, hasPending, coverage });
-          break;
-
-        case 'session:exit':
-          this.emit('sessionExitRequested');
-          break;
-
-        case 'hmr:ready':
-          logger.println(WebSocketMessages.hmrClientReady());
-          break;
-
-        case 'hmr:error':
-          logger.error(WebSocketMessages.hmrClientError(message.error));
-          break;
-          
-        default:
-          logger.println(WebSocketMessages.unknownMessageType(message.type));
-      }
-    } catch (error) {
-      logger.error(WebSocketMessages.errorHandlingMessage(error));
-    }
-  }
-
-  // New method to enable HMR
-  enableHmr(hmrManager: HmrManager): void {
-    this.hmrManager = hmrManager;
-    this.hmrEnabled = true;
-
-    // Listen for HMR updates from the file watcher
-    this.hmrManager.on('hmr:update', (update: HmrUpdate) => {
-      this.broadcast({
-        type: 'hmr:update',
-        data: update,
-      });
-    });
-
-    logger.println(WebSocketMessages.hmrEnabled());
-  }
-
-  private broadcast(message: any): void {
-    const data = JSON.stringify(message);
-    this.wsClients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
-      }
-    });
-  }
-
-  private sendToClient(client: WebSocket, message: any): void {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(message));
-    }
-  }
-
-  async cleanup(): Promise<void> {
-    if (this.hmrManager) {
-      await this.hmrManager.stop();
-      this.hmrManager = null;
-    }
-
-    if (this.wsClients.length > 0) {
-      for (const client of this.wsClients) {
-        try {
-          if (client.readyState === WebSocket.OPEN) client.close();
-        } catch (err) {
-          logger.error(WebSocketMessages.errorClosingClient(err));
-        }
-      }
-      this.wsClients = [];
-    }
-
-    if (this.wss) {
-      await new Promise<void>(resolve => this.wss!.close(() => resolve()));
-      this.wss = null;
-    }
-  }
-}
-````
-
 ## File: testify.json
 ````json
 {
@@ -15733,7 +15681,7 @@ export class BrowserManager {
       const playwright = await this.getPlaywright();
       const resolved = this.resolveBrowserType(playwright, browserName);
       if (!resolved) {
-        logger.println(BrowserMessages.unknownBrowserFallback(browserName));
+        logger.warn(BrowserMessages.unknownBrowserFallback(browserName));
         return null;
       }
       return resolved.type;
@@ -15788,7 +15736,7 @@ export class BrowserManager {
         const type = msg.type();
         if (text.match(/error|failed/i)) {
           if (type === 'error') logger.error(BrowserMessages.browserConsoleError(text));
-          else if (type === 'warning') logger.println(BrowserMessages.browserConsoleWarn(text));
+          else if (type === 'warning') logger.warn(BrowserMessages.browserConsoleWarn(text));
         }
       });
 
@@ -15850,7 +15798,7 @@ export class BrowserManager {
       let resolved = this.resolveBrowserType(playwright, browserName);
 
       if (!resolved) {
-        logger.println(BrowserMessages.unknownBrowserFallbackToChrome(browserName));
+        logger.warn(BrowserMessages.unknownBrowserFallbackToChrome(browserName));
         resolved = { type: playwright.chromium, normalized: 'chrome' };
         browserName = 'chrome';
       }
@@ -16002,6 +15950,7 @@ import { getBrowserJasmineRegistrationPatchScript } from './browser-jasmine-runt
 import { getBrowserWebSocketReporterScript } from './browser-websocket-runtime';
 import { getBrowserHmrClientScript } from './browser-hmr-client';
 import { getBrowserBootstrapScript } from './browser-bootstrap-runtime';
+import { getJasmineBrowserAssets } from './jasmine-browser-assets';
 
 function resolveEmbeddedFaviconHref():
   string | null {
@@ -16042,6 +15991,8 @@ function resolveEmbeddedFaviconHref():
 export class BrowserPageBuilder {
   private readonly faviconHref =
     resolveEmbeddedFaviconHref();
+  private readonly jasmineAssets =
+    getJasmineBrowserAssets();
 
   constructor(
     private readonly config: ViteJasmineConfig,
@@ -16076,9 +16027,16 @@ export class BrowserPageBuilder {
         'Jasmine Test Runner',
       faviconTag:
         this.getFaviconTag(),
+      headStyles: [
+        `<link rel="stylesheet" href="${this.jasmineAssets.cssUrl}">`,
+      ],
       headScripts: [
-        '<script src="/node_modules/jasmine-core/lib/jasmine-core/boot0.js"></script>',
-        '<script src="/node_modules/jasmine-core/lib/jasmine-core/boot1.js"></script>',
+        `<script src="${this.jasmineAssets.jasmineScriptUrl}"></script>`,
+        `<script src="${this.jasmineAssets.jasmineHtmlScriptUrl}"></script>`,
+        ...this.jasmineAssets.bootScriptUrls.map(
+          (url) =>
+            `<script src="${url}"></script>`,
+        ),
         `<script type="module">
 ${websocketReporter}
 
@@ -16107,6 +16065,13 @@ ${this.getStaticSuiteFilterScript()}
         this.config.htmlOptions?.title ||
         'Jasmine Test Runner (HMR)',
       faviconTag: this.getFaviconTag(),
+      headStyles: [
+        `<link rel="stylesheet" href="${this.jasmineAssets.cssUrl}">`,
+      ],
+      headScripts: [
+        `<script src="${this.jasmineAssets.jasmineScriptUrl}"></script>`,
+        `<script src="${this.jasmineAssets.jasmineHtmlScriptUrl}"></script>`,
+      ],
       inlineScripts: [
         getBrowserJasmineRegistrationPatchScript(),
         getBrowserWebSocketReporterScript({
@@ -16121,6 +16086,9 @@ ${this.getStaticSuiteFilterScript()}
         getBrowserBootstrapScript({
           preludeModules:
             this.getPreludeModules(),
+          jasmineBootScriptUrl:
+            this.jasmineAssets
+              .primaryBootScriptUrl,
         }),
         this.getRuntimeScript(),
       ],
@@ -16719,586 +16687,397 @@ describe('ExecutionPlan programmable selection', () => {
 });
 ````
 
-## File: src/file-discovery-service.ts
+## File: src/http-server-manager.ts
 ````typescript
-import { glob } from "glob";
-import { ViteJasmineConfig } from "./vite-jasmine-config";
-import { norm } from "./utils";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { builtinModules } from "module";
-import { createHash } from 'crypto';
+import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+import { parse } from 'url';
+import { createServer } from 'http';
+import { extname } from 'path';
+import { exec } from 'child_process';   // ✅ new top‑level import
+import { ViteJasmineConfig } from './vite-jasmine-config';
+import { norm } from './utils';
 import { logger } from './logger';
-import { FileDiscoveryMessages } from './log-messages';
+import { HttpServerMessages } from './log-messages';
+import { resolveJasmineBrowserAssetDir } from './jasmine-browser-assets';
 
-const NODE_BUILTIN_SPECIFIERS = new Set(
-  builtinModules.map((specifier) => specifier.replace(/^node:/, '')),
-);
+interface ResolvedRequestPath {
+  rootDir: string;
+  resolvedPath: string;
+}
 
-const BROWSER_UNSUPPORTED_PACKAGES = new Set([
-  'glob',
-  'playwright',
-  'playwright-core',
-  'chromium-bidi',
-  'ws',
-  'istanbul-api',
-  'istanbul-lib-coverage',
-  'istanbul-lib-instrument',
-  'istanbul-lib-report',
-  'istanbul-lib-source-maps',
-  'istanbul-reports',
-]);
+interface StaticPathRoots {
+  outDir: string;
+  workspaceNodeModulesDir: string;
+  vendorDir: string;
+  assetDirs: string[];
+  jasmineAssetDir: string | null;
+}
 
-const BROWSER_UNSUPPORTED_GLOBAL_PATTERNS = [
-  /\bprocess\s*(?:\.|\[)/,
-  /\bBuffer\s*(?:\.|\[|\()/,
-  /\b__dirname\b/,
-  /\b__filename\b/,
-];
-
-export class FileDiscoveryService {
-  constructor(private config: ViteJasmineConfig) {}
-
-  private getSrcDirConfigs(): string[] {
-    const srcDirs = Array.isArray(this.config.srcDirs) ? this.config.srcDirs : [this.config.srcDirs];
-    if (srcDirs.filter(Boolean).length === 0) return ['./src'];
-    return srcDirs.filter(Boolean) as string[];
-  }
-
-  private getTestDirConfigs(): string[] {
-    const testDirs = Array.isArray(this.config.testDirs) ? this.config.testDirs : [this.config.testDirs];
-    if (testDirs.filter(Boolean).length === 0) return ['./tests'];
-    return testDirs.filter(Boolean) as string[];
-  }
-
-  async scanDir(dir: string, pattern: string, exclude: string[] = []): Promise<string[]> {
-    const cleanPattern = pattern.startsWith('/') || pattern.startsWith('**') 
-      ? pattern 
-      : `/${pattern}`;
-    const basePath = norm(path.join(dir, cleanPattern)).replace(/^\//, '');
-    
-    try {
-      let files = await glob(basePath, { absolute: true, ignore: exclude });
-      return files.map((s) => norm(s));
-    } catch (error) {
-      logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
-      throw new Error("Failed to discover source and test files");
-    }
-  }
-
-  async filterExistingFiles(paths: string[]): Promise<string[]> {
-    const results = await Promise.all(
-      paths.map(async (filePath) => {
-        const normalizedPath = norm(filePath);
-        try {
-          await fs.access(normalizedPath);
-          return normalizedPath;
-        } catch {
-          return null;
-        }
-      })
-    );
-    return results.filter((p): p is string => p !== null);
-  }
-
-  async discoverSources(): Promise<{ srcFiles: string[]; specFiles: string[] }> {
-    const { srcFiles, specFiles } = await this.discoverAllSources();
-
-    return await this.filterBrowserCompatibleFiles(
-      srcFiles,
-      specFiles,
-    );
-  }
-
-  async discoverAllSources(): Promise<{ srcFiles: string[]; specFiles: string[] }> {
-    try {
-      const defaultSrcExclude = ["**/node_modules/**", "**/*.spec.*"];
-      const defaultTestExclude = ["**/node_modules/**"];
-      const sharedExclude = this.config.exclude ?? [];
-
-      const srcDirs = this.getSrcDirConfigs();
-      const testDirs = this.getTestDirConfigs();
-
-      const srcFiles: string[] = [];
-      for (const inc of srcDirs) {
-        const exclude = [...defaultSrcExclude, ...sharedExclude];
-        const files = await this.scanDir(norm(inc), '/**/*.{ts,js,mjs}', exclude);
-        srcFiles.push(...files);
-      }
-
-      const specFiles: string[] = [];
-      for (const inc of testDirs) {
-        const exclude = [...defaultTestExclude, ...sharedExclude];
-        const files = await this.scanDir(norm(inc), '/**/*.spec.{ts,js,mjs}', exclude);
-        specFiles.push(...files);
-      }
-
-      const dedupedSrcFiles =
-        [...new Set(srcFiles)];
-
-      const dedupedSpecFiles =
-        [...new Set(specFiles)];
-
-      return {
-        srcFiles: dedupedSrcFiles,
-        specFiles: dedupedSpecFiles,
-      };
-    } catch (error) {
-      logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
-      throw new Error("Failed to discover source and test files");
-    }
-  }
-
-  private async filterBrowserCompatibleFiles(
-    srcFiles: string[],
-    specFiles: string[],
-  ): Promise<{
-    srcFiles: string[];
-    specFiles: string[];
-  }> {
-    if (this.config.browser === 'node') {
-      return {
-        srcFiles,
-        specFiles,
-      };
-    }
-
-    const compatibility =
-      new Map<string, boolean>();
-
-    const isCompatible = async (
-      filePath: string,
-      stack = new Set<string>(),
-    ): Promise<boolean> => {
-      const normalizedPath =
-        norm(path.resolve(filePath));
-
-      const cached =
-        compatibility.get(
-          normalizedPath,
-        );
-
-      if (cached !== undefined) {
-        return cached;
-      }
-
-      if (stack.has(normalizedPath)) {
-        return true;
-      }
-
-      stack.add(normalizedPath);
-
-      const result =
-        await this.computeBrowserCompatibility(
-          normalizedPath,
-          isCompatible,
-          stack,
-        );
-
-      stack.delete(normalizedPath);
-      compatibility.set(
-        normalizedPath,
-        result,
+export function resolveStaticRequestPath(
+  filePath: string,
+  roots: StaticPathRoots,
+): ResolvedRequestPath {
+  if (
+    filePath.startsWith(
+      '/__testify/jasmine/',
+    )
+  ) {
+    const relativePath =
+      filePath.replace(
+        /^\/__testify\/jasmine\//,
+        '',
+      );
+    const jasmineAssetDir =
+      roots.jasmineAssetDir ??
+      path.resolve(
+        roots.vendorDir,
+        'jasmine-core/lib/jasmine-core',
       );
 
-      return result;
+    return {
+      rootDir: jasmineAssetDir,
+      resolvedPath: path.normalize(
+        path.resolve(
+          jasmineAssetDir,
+          relativePath,
+        ),
+      ),
     };
+  }
 
-    const filterFiles = async (
-      files: string[],
-    ): Promise<string[]> => {
-      const matches =
-        await Promise.all(
-          files.map(
-            async (filePath) => ({
-              filePath,
-              isCompatible:
-                await isCompatible(
-                  filePath,
-                ),
-            }),
+  if (filePath.startsWith('/node_modules/')) {
+    const relativePath =
+      filePath.replace(
+        /^\/node_modules\//,
+        '',
+      );
+
+    const resolvedCandidate = [
+      roots.workspaceNodeModulesDir,
+      roots.vendorDir,
+    ]
+      .map((candidateRoot) => ({
+        rootDir: candidateRoot,
+        resolvedPath: path.resolve(
+          candidateRoot,
+          relativePath,
+        ),
+      }))
+      .find((candidate) =>
+        isPathInside(
+          candidate.rootDir,
+          candidate.resolvedPath,
+        ) &&
+        fs.existsSync(
+          candidate.resolvedPath,
+        ),
+      );
+
+    return {
+      rootDir:
+        resolvedCandidate?.rootDir ??
+        roots.workspaceNodeModulesDir,
+      resolvedPath: path.normalize(
+        resolvedCandidate?.resolvedPath ??
+          path.resolve(
+            roots.workspaceNodeModulesDir,
+            relativePath,
+          ),
+      ),
+    };
+  }
+
+  if (filePath === '/favicon.ico') {
+    const faviconCandidate =
+      roots.assetDirs
+        .map((assetDir) => ({
+          rootDir: assetDir,
+          resolvedPath: path.resolve(
+            assetDir,
+            'favicon.ico',
+          ),
+        }))
+        .find((candidate) =>
+          isPathInside(
+            candidate.rootDir,
+            candidate.resolvedPath,
+          ) &&
+          fs.existsSync(
+            candidate.resolvedPath,
           ),
         );
 
-      return matches
-        .filter(
-          (entry) =>
-            entry.isCompatible,
-        )
-        .map(
-          (entry) =>
-            entry.filePath,
+    if (faviconCandidate) {
+      return {
+        rootDir:
+          faviconCandidate.rootDir,
+        resolvedPath: path.normalize(
+          faviconCandidate.resolvedPath,
+        ),
+      };
+    }
+  }
+
+  if (filePath.startsWith('/assets/')) {
+    const relativePath =
+      filePath.replace(
+        /^\/assets\//,
+        '',
+      );
+
+    const assetCandidate =
+      roots.assetDirs
+        .map((assetDir) => ({
+          rootDir: assetDir,
+          resolvedPath: path.resolve(
+            assetDir,
+            relativePath,
+          ),
+        }))
+        .find((candidate) =>
+          isPathInside(
+            candidate.rootDir,
+            candidate.resolvedPath,
+          ) &&
+          fs.existsSync(
+            candidate.resolvedPath,
+          ),
         );
-    };
+
+    if (assetCandidate) {
+      return {
+        rootDir: assetCandidate.rootDir,
+        resolvedPath: path.normalize(
+          assetCandidate.resolvedPath,
+        ),
+      };
+    }
 
     return {
-      srcFiles:
-        await filterFiles(srcFiles),
-      specFiles:
-        await filterFiles(specFiles),
+      rootDir: path.resolve(
+        roots.outDir,
+        'assets',
+      ),
+      resolvedPath: path.normalize(
+        path.resolve(
+          roots.outDir,
+          `.${filePath}`,
+        ),
+      ),
     };
   }
 
-  private async computeBrowserCompatibility(
-    filePath: string,
-    isCompatible: (
-      filePath: string,
-      stack?: Set<string>,
-    ) => Promise<boolean>,
-    stack: Set<string>,
-  ): Promise<boolean> {
-    let source = '';
-
-    try {
-      source =
-        await fs.readFile(
-          filePath,
-          'utf8',
-        );
-    } catch {
-      return true;
-    }
-
-    const importedSpecifiers =
-      this.collectImportedSpecifiers(
-        source,
-      );
-
-    if (
-      !this.usesEnvironmentSpecHelper(
-        source,
-      ) &&
-      this.usesBrowserUnsupportedGlobals(
-        source,
-      )
-    ) {
-      return false;
-    }
-
-    for (
-      const specifier of
-      importedSpecifiers
-    ) {
-      if (
-        this.isBrowserUnsupportedSpecifier(
-          specifier,
-        )
-      ) {
-        return false;
-      }
-
-      const resolvedImport =
-        await this.resolveLocalImport(
-          filePath,
-          specifier,
-        );
-
-      if (
-        resolvedImport &&
-        !(await isCompatible(
-          resolvedImport,
-          stack,
-        ))
-      ) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  private usesEnvironmentSpecHelper(
-    source: string,
-  ): boolean {
-    return /from\s*['"][^'"]*env\.spec['"]/.test(
-      source,
-    ) || /require\s*\(\s*['"][^'"]*env\.spec['"]\s*\)/.test(
-      source,
-    );
-  }
-
-  private usesBrowserUnsupportedGlobals(
-    source: string,
-  ): boolean {
-    const code =
-      this.stripCommentsAndStrings(
-        source,
-      );
-
-    return BROWSER_UNSUPPORTED_GLOBAL_PATTERNS.some(
-      (pattern) => {
-        pattern.lastIndex = 0;
-        return pattern.test(code);
-      },
-    );
-  }
-
-  private stripCommentsAndStrings(
-    source: string,
-  ): string {
-    let output = source.replace(
-      /\/\*[\s\S]*?\*\//g,
-      '',
-    );
-
-    output = output.replace(
-      /\/\/.*$/gm,
-      '',
-    );
-
-    output = output.replace(
-      /'(?:\\.|[^'\\])*'/g,
-      "''",
-    );
-
-    output = output.replace(
-      /"(?:\\.|[^"\\])*"/g,
-      '""',
-    );
-
-    output = output.replace(
-      /`(?:\\.|[^`\\])*`/g,
-      '``',
-    );
-
-    return output;
-  }
-
-  private collectImportedSpecifiers(
-    source: string,
-  ): string[] {
-    const patterns = [
-      /\bimport\s+[\s\S]*?\s+from\s*['"]([^'"]+)['"]/g,
-      /\bexport\s+[\s\S]*?\s+from\s*['"]([^'"]+)['"]/g,
-      /\bimport\s*['"]([^'"]+)['"]/g,
-      /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-      /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-    ];
-
-    const specifiers: string[] = [];
-
-    for (const pattern of patterns) {
-      pattern.lastIndex = 0;
-
-      for (
-        const match of
-        source.matchAll(pattern)
-      ) {
-        const specifier = match[1]?.trim();
-        if (specifier) {
-          specifiers.push(specifier);
-        }
-      }
-    }
-
-    return [...new Set(specifiers)];
-  }
-
-  private isBrowserUnsupportedSpecifier(
-    specifier: string,
-  ): boolean {
-    if (
-      specifier.startsWith('.') ||
-      specifier.startsWith('/')
-    ) {
-      return false;
-    }
-
-    const normalizedSpecifier =
-      specifier.replace(/^node:/, '');
-
-    if (
-      NODE_BUILTIN_SPECIFIERS.has(
-        normalizedSpecifier,
-      ) ||
-      NODE_BUILTIN_SPECIFIERS.has(
-        normalizedSpecifier.split('/')[0]!,
-      )
-    ) {
-      return true;
-    }
-
-    const packageName =
-      normalizedSpecifier.startsWith('@')
-        ? normalizedSpecifier
-            .split('/')
-            .slice(0, 2)
-            .join('/')
-        : (normalizedSpecifier
-            .split('/')[0] ??
-          normalizedSpecifier);
-
-    return BROWSER_UNSUPPORTED_PACKAGES.has(
-      packageName,
-    );
-  }
-
-  private async resolveLocalImport(
-    importerPath: string,
-    specifier: string,
-  ): Promise<string | null> {
-    if (
-      !specifier.startsWith('.') &&
-      !specifier.startsWith('/')
-    ) {
-      return null;
-    }
-
-    const basePath =
-      specifier.startsWith('/')
-        ? path.resolve(specifier)
-        : path.resolve(
-            path.dirname(importerPath),
-            specifier,
-          );
-
-    const candidates = [
-      basePath,
-      `${basePath}.ts`,
-      `${basePath}.js`,
-      `${basePath}.mjs`,
-      path.join(basePath, 'index.ts'),
-      path.join(basePath, 'index.js'),
-      path.join(basePath, 'index.mjs'),
-    ];
-
-    for (const candidate of candidates) {
-      try {
-        await fs.access(candidate);
-        return norm(candidate);
-      } catch {
-        // Keep probing the local import candidates.
-      }
-    }
-
-    return null;
-  }
-
-  getOutputName(filePath: string): string {
-    const srcDirs = this.getSrcDirConfigs();
-    const testDirs = this.getTestDirConfigs();
-    const normalizedPath = norm(path.resolve(filePath));
-
-    const resolveDirs = (dirs: string[]) =>
-      dirs.map((dir) => norm(path.resolve(dir)));
-
-    const normalizedSrcDirs = resolveDirs(srcDirs);
-    const normalizedTestDirs = resolveDirs(testDirs);
-    if (!normalizedSrcDirs.length) {
-      normalizedSrcDirs.push(norm(path.resolve('./src')));
-    }
-    if (!normalizedTestDirs.length) {
-      normalizedTestDirs.push(norm(path.resolve('./tests')));
-    }
-
-    const matchDir = (dirs: string[]): string | null => {
-      for (const candidate of dirs) {
-        if (
-          normalizedPath === candidate ||
-          normalizedPath.startsWith(`${candidate}/`)
-        ) {
-          return candidate;
-        }
-      }
-      return null;
-    };
-
-    const baseTest = matchDir(normalizedTestDirs);
-    const baseSrc = matchDir(normalizedSrcDirs) ?? normalizedSrcDirs[0];
-    const base = baseTest ?? baseSrc;
-
-    const relativePath = path.relative(base, normalizedPath);
-    const relativeNormalized = norm(relativePath);
-    const relativeWithoutExt = relativeNormalized.replace(/\.(ts|js|mjs)$/, '');
-    const isSpecFile = relativeWithoutExt.endsWith('.spec');
-    const stemPath = isSpecFile
-      ? relativeWithoutExt.slice(0, -'.spec'.length)
-      : relativeWithoutExt;
-
-    const sanitizeSegment = (segment: string) => {
-      if (segment === '..') return 'up';
-      if (segment === '.') return 'dot';
-      return segment;
-    };
-
-    const segments = stemPath.split('/').filter(Boolean).map(sanitizeSegment);
-    const fileName = segments.pop() ?? sanitizeSegment(path.basename(stemPath) || 'index');
-
-    const hash = createHash('sha1')
-      .update(normalizedPath)
-      .digest('hex')
-      .slice(0, 8);
-
-    if (isSpecFile) {
-      const prefix = segments.join('_');
-      const flattened = prefix ? `${prefix}__${fileName}` : fileName;
-      return `${flattened}__${hash}.spec.mjs`;
-    }
-
-    const sanitized =
-      segments.length > 0 ? `${segments.join('_')}__${fileName}` : fileName;
-    
-    return `${sanitized}__${hash}.mjs`;
-  }
-}
-````
-
-## File: src/logger-prompt.spec.ts
-````typescript
-import fs from 'fs';
-import path from 'path';
-
-describe('Logger prompt styling', () => {
-  const source = fs.readFileSync(
-    path.resolve(
-      process.cwd(),
-      'src/logger.ts',
+  return {
+    rootDir: roots.outDir,
+    resolvedPath: path.normalize(
+      path.resolve(
+        roots.outDir,
+        `.${filePath}`,
+      ),
     ),
-    'utf8',
+  };
+}
+
+function isPathInside(
+  root: string,
+  candidate: string,
+): boolean {
+  const relative = path.relative(
+    path.resolve(root),
+    path.resolve(candidate),
   );
 
-  it('uses a thicker prompt marker for interactive output', () => {
-    expect(source).toContain(
-      '> ',
-    );
-    expect(source).toContain(
-      "plainPrompt = '> '",
-    );
-  });
+  return (
+    relative === '' ||
+    (!relative.startsWith('..') &&
+      !path.isAbsolute(relative))
+  );
+}
 
-  it('uses the %error% prefix to drive error formatting', () => {
-    expect(source).toContain(
-      "const errorToken =",
-    );
-    expect(source).toContain(
-      "'%error% ';",
-    );
-    expect(source).toContain(
-      'this.errorPrefix() +',
-    );
-  });
+export class HttpServerManager {
+  private server: http.Server | null = null;
 
-  it('uses the %warn% prefix to drive warning badge formatting', () => {
-    expect(source).toContain(
-      "const warnToken =",
-    );
-    expect(source).toContain(
-      "'%warn% ';",
-    );
-    expect(source).toContain(
-      'this.warnPrefix() +',
-    );
-  });
+  constructor(private config: ViteJasmineConfig) {}
 
-  it('exposes a dedicated warn logger method', () => {
-    expect(source).toContain(
-      'warn(msg: string)',
-    );
-    expect(source).toContain(
-      'forceWarnPrefix',
-    );
-  });
-});
+  private createHttpServer(): http.Server {
+    const outDir = path.resolve(this.config.outDir);
+    const __filename = norm(fileURLToPath(import.meta.url));
+    const __dirname = norm(path.dirname(__filename));
+    const vendorDir = path.resolve(path.join(__dirname, '../node_modules'));
+    const workspaceNodeModulesDir = path.resolve(path.join(process.cwd(), 'node_modules'));
+    const packageRoot = path.resolve(path.join(__dirname, '..'));
+    const jasmineAssetDir =
+      resolveJasmineBrowserAssetDir();
+    const assetDirs = [
+      path.resolve(outDir, 'assets'),
+      path.resolve(process.cwd(), 'assets'),
+      path.resolve(packageRoot, 'assets'),
+    ];
+
+    return createServer((req, res) => {
+      let { pathname } = parse(req.url === '/' ? '/index.html' : req.url!, true);
+      const filePath = decodeURIComponent(pathname!);
+
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      
+      if (req.method === 'OPTIONS') {
+        res.writeHead(200, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
+        res.end();
+        return;
+      }
+
+      const {
+        rootDir,
+        resolvedPath,
+      } = resolveStaticRequestPath(
+        filePath,
+        {
+          outDir,
+          workspaceNodeModulesDir,
+          vendorDir,
+          assetDirs,
+          jasmineAssetDir,
+        },
+      );
+
+      if (!isPathInside(rootDir, resolvedPath)) {
+        res.writeHead(403);
+        res.end('Forbidden');
+        return;
+      }
+
+      const stream = fs.createReadStream(resolvedPath);
+      stream.on('error', () => {
+        res.writeHead(404);
+        res.end('Not found');
+      });
+      stream.on('open', () => {
+        const ext = extname(resolvedPath);
+        res.writeHead(200, {
+          'Content-Type': this.getContentType(ext),
+          'Access-Control-Allow-Origin': '*'
+        });
+        stream.pipe(res);
+      });
+    });
+  }
+
+  async startServer(): Promise<http.Server> {
+    const port = this.config.port ?? 8888;
+    this.server = this.createHttpServer();
+
+    return new Promise((resolve, reject) => {
+      const tryListen = (attempt = 1) => {
+        this.server!.listen(port, () => {
+          logger.println(HttpServerMessages.serverRunning(port));
+          resolve(this.server!);
+        });
+
+        this.server!.on('error', (error: any) => {
+          if (error.code === 'EADDRINUSE' && attempt < 3) {
+            logger.println(HttpServerMessages.portBusyRetrying(port));
+
+            this.server!.close(() => {
+              setTimeout(() => {
+                const isWindows = process.platform === 'win32';
+                const killCommand = isWindows
+                  ? `powershell -command "Get-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess | Stop-Process -Force"`
+                  : `lsof -ti:${port} | xargs -r kill -9`;
+
+                // ✅ Fixed: pass empty options object as second argument
+                exec(killCommand, {}, (err, stdout, stderr) => {
+                  if (err) {
+                    logger.error(HttpServerMessages.failedToKillProcess(port, err.message, stderr));
+                  } else {
+                    logger.println(HttpServerMessages.portReclaimed(port));
+                  }
+                  this.server = this.createHttpServer();
+                  tryListen(attempt + 1);
+                });
+              }, 3000);
+            });
+          } else if (error.code === 'EADDRINUSE') {
+            logger.error(HttpServerMessages.portStillBusy(port));
+            reject(error);
+          } else {
+            logger.error(HttpServerMessages.serverError(error));
+            reject(error);
+          }
+        });
+      };
+      tryListen();
+    });
+  }
+
+  private getContentType(ext: string): string {
+    const types: Record<string, string> = {
+      '.html': 'text/html',
+      '.js': 'application/javascript',
+      '.mjs': 'application/javascript',
+      '.css': 'text/css',
+      '.json': 'application/json',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml',
+      '.ico': 'image/x-icon'
+    };
+    return types[ext] || 'application/octet-stream';
+  }
+
+  async waitForServerReady(url: string, timeout = 5000): Promise<void> {
+    const start = Date.now();
+    const { hostname, port } = new URL(url);
+
+    while (Date.now() - start < timeout) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const req = http.request({
+            hostname,
+            port,
+            path: '/',
+            method: 'HEAD',
+            timeout: 1000
+          }, (res) => {
+            res.resume();
+            resolve();
+          });
+
+          req.on("error", reject);
+          req.on("timeout", () => {
+            req.destroy();
+            reject(new Error('Timeout'));
+          });
+
+          req.end();
+        });
+        return;
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+    throw new Error(`Server not ready at ${url} after ${timeout}ms`);
+  }
+
+  async cleanup(): Promise<void> {
+    if (this.server) {
+      await new Promise<void>((resolve, reject) => {
+        this.server!.close(err => (err ? reject(err) : resolve()));
+      });
+      this.server = null;
+    }
+  }
+}
 ````
 
 ## File: src/node-runtime-host.ts
@@ -17409,6 +17188,197 @@ export type {
   TestCatalogSpec,
   TestCatalogSuite,
 } from './test-catalog';
+````
+
+## File: src/websocket-manager.ts
+````typescript
+import { EventEmitter } from 'events';
+import { WebSocketServer, WebSocket } from 'ws';
+import http from 'http';
+import JSONCleaner from './json-cleaner';
+import { Reporter } from './compound-reporter';
+import { HmrManager, HmrUpdate } from './hmr-manager';
+import { FileDiscoveryService } from './file-discovery-service';
+import { ViteJasmineConfig } from './vite-jasmine-config';
+import path from 'path';
+import { logger } from './logger';
+import { WebSocketMessages } from './log-messages';
+
+export class WebSocketManager extends EventEmitter {
+  private wss: WebSocketServer | null = null;
+  private wsClients: WebSocket[] = [];
+  private hmrManager: HmrManager | null = null;
+  private hmrEnabled: boolean = false;
+  private jsonCleaner = new JSONCleaner();
+  private failedSpecsCount: number = 0;
+  private pendingSpecsCount: number = 0;
+
+  constructor(private fileDiscovery: FileDiscoveryService, private config: ViteJasmineConfig, private server: http.Server, private reporter: Reporter) {
+    super();
+    this.createWebSocketServer();
+  }
+
+  private createWebSocketServer(): void {
+    this.wss = new WebSocketServer({ server: this.server });
+    
+    this.wss.on('connection', async (ws: WebSocket) => {
+      logger.println(WebSocketMessages.clientConnected());
+      this.wsClients.push(ws);
+      // Send HMR status on connection
+      if (this.hmrEnabled) {
+        const files = await this.fileDiscovery.scanDir(this.config.outDir, '/**/*.{js,mjs}');
+        this.sendToClient(ws, { 
+          type: 'hmr:connected',
+          specFiles: files
+            .filter(file => /\.spec\.(?:js|mjs)$/i.test(file))
+            .map(file => path.basename(file))
+            .sort(),
+          enabled: true 
+        });
+      }
+      
+      
+      ws.on('message', (data: Buffer) => {
+        try {
+          const message = this.jsonCleaner.parse(data.toString());
+          this.handleWebSocketMessage(message);
+        } catch (error) {
+          logger.error(WebSocketMessages.failedToParseMessage(error));
+        }
+      });
+      
+      ws.on('close', () => {
+        this.wsClients = this.wsClients.filter(client => client !== ws);
+      });
+      
+      ws.on('error', (error) => {
+        logger.error(WebSocketMessages.websocketError(error));
+        this.wsClients = this.wsClients.filter(client => client !== ws);
+      });
+    });
+  }
+
+  private handleWebSocketMessage(message: any): void {
+    try {
+      switch (message.type) {
+        case 'userAgent':
+          (this.reporter as any)?.userAgent?.(message.data, message.data.orderedSuites, message.data.orderedSpecs);
+          break;
+
+        case 'jasmineStarted':
+          this.failedSpecsCount = 0;
+          this.pendingSpecsCount = 0;
+          this.reporter?.jasmineStarted(message);
+          break;
+        
+        case 'suiteStarted':
+          this.reporter?.suiteStarted(message);
+          break;
+        
+        case 'specStarted':
+          this.reporter?.specStarted(message);
+          break;
+        
+        case 'specDone':
+          const specStatus = message.status ?? message.overallStatus;
+          if (specStatus === 'failed') this.failedSpecsCount++;
+          if (specStatus === 'pending') this.pendingSpecsCount++;
+          this.reporter?.specDone(message);
+          break;
+        
+        case 'suiteDone':
+          this.reporter?.suiteDone(message);
+          break;
+
+        case 'jasmineDone':
+          this.reporter?.jasmineDone(message);
+          
+          const coverage = message.coverage ? this.jsonCleaner.parse(message.coverage) : null;
+          const globalFailureCount =
+            Array.isArray(
+              message.failedExpectations,
+            )
+              ? message.failedExpectations.length
+              : 0;
+          const success = message.overallStatus === 'passed' && this.failedSpecsCount === 0 && globalFailureCount === 0;
+          const hasPending = message.overallStatus === 'incomplete' || this.pendingSpecsCount > 0;
+          this.emit('testsCompleted', { success, hasPending, coverage });
+          break;
+
+        case 'session:exit':
+          this.emit('sessionExitRequested');
+          break;
+
+        case 'hmr:ready':
+          logger.println(WebSocketMessages.hmrClientReady());
+          break;
+
+        case 'hmr:error':
+          logger.error(WebSocketMessages.hmrClientError(message.error));
+          break;
+          
+        default:
+          logger.warn(WebSocketMessages.unknownMessageType(message.type));
+      }
+    } catch (error) {
+      logger.error(WebSocketMessages.errorHandlingMessage(error));
+    }
+  }
+
+  // New method to enable HMR
+  enableHmr(hmrManager: HmrManager): void {
+    this.hmrManager = hmrManager;
+    this.hmrEnabled = true;
+
+    // Listen for HMR updates from the file watcher
+    this.hmrManager.on('hmr:update', (update: HmrUpdate) => {
+      this.broadcast({
+        type: 'hmr:update',
+        data: update,
+      });
+    });
+
+    logger.println(WebSocketMessages.hmrEnabled());
+  }
+
+  private broadcast(message: any): void {
+    const data = JSON.stringify(message);
+    this.wsClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(data);
+      }
+    });
+  }
+
+  private sendToClient(client: WebSocket, message: any): void {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(message));
+    }
+  }
+
+  async cleanup(): Promise<void> {
+    if (this.hmrManager) {
+      await this.hmrManager.stop();
+      this.hmrManager = null;
+    }
+
+    if (this.wsClients.length > 0) {
+      for (const client of this.wsClients) {
+        try {
+          if (client.readyState === WebSocket.OPEN) client.close();
+        } catch (err) {
+          logger.error(WebSocketMessages.errorClosingClient(err));
+        }
+      }
+      this.wsClients = [];
+    }
+
+    if (this.wss) {
+      await new Promise<void>(resolve => this.wss!.close(() => resolve()));
+      this.wss = null;
+    }
+  }
+}
 ````
 
 ## File: vite.cli.config.ts
@@ -18129,6 +18099,543 @@ describe('Browser Playground runtime', () => {
     ).not.toThrow();
   });
 });
+````
+
+## File: src/file-discovery-service.ts
+````typescript
+import { glob } from "glob";
+import { ViteJasmineConfig } from "./vite-jasmine-config";
+import { norm } from "./utils";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { builtinModules } from "module";
+import { createHash } from 'crypto';
+import { logger } from './logger';
+import { FileDiscoveryMessages } from './log-messages';
+
+const NODE_BUILTIN_SPECIFIERS = new Set(
+  builtinModules.map((specifier) => specifier.replace(/^node:/, '')),
+);
+
+const BROWSER_UNSUPPORTED_PACKAGES = new Set([
+  'glob',
+  'playwright',
+  'playwright-core',
+  'chromium-bidi',
+  'ws',
+  'istanbul-api',
+  'istanbul-lib-coverage',
+  'istanbul-lib-instrument',
+  'istanbul-lib-report',
+  'istanbul-lib-source-maps',
+  'istanbul-reports',
+]);
+
+const BROWSER_UNSUPPORTED_GLOBAL_PATTERNS = [
+  /\bprocess\s*(?:\.|\[)/,
+  /\bBuffer\s*(?:\.|\[|\()/,
+  /\b__dirname\b/,
+  /\b__filename\b/,
+];
+
+export class FileDiscoveryService {
+  constructor(private config: ViteJasmineConfig) {}
+
+  private getSrcDirConfigs(): string[] {
+    const srcDirs = Array.isArray(this.config.srcDirs) ? this.config.srcDirs : [this.config.srcDirs];
+    if (srcDirs.filter(Boolean).length === 0) return ['./src'];
+    return srcDirs.filter(Boolean) as string[];
+  }
+
+  private getTestDirConfigs(): string[] {
+    const testDirs = Array.isArray(this.config.testDirs) ? this.config.testDirs : [this.config.testDirs];
+    if (testDirs.filter(Boolean).length === 0) return ['./tests'];
+    return testDirs.filter(Boolean) as string[];
+  }
+
+  async scanDir(dir: string, pattern: string, exclude: string[] = []): Promise<string[]> {
+    const cleanPattern = pattern.startsWith('/') || pattern.startsWith('**') 
+      ? pattern 
+      : `/${pattern}`;
+    const basePath = norm(path.join(dir, cleanPattern)).replace(/^\//, '');
+    
+    try {
+      let files = await glob(basePath, { absolute: true, ignore: exclude });
+      return files.map((s) => norm(s));
+    } catch (error) {
+      logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
+      throw new Error("Failed to discover source and test files");
+    }
+  }
+
+  async filterExistingFiles(paths: string[]): Promise<string[]> {
+    const results = await Promise.all(
+      paths.map(async (filePath) => {
+        const normalizedPath = norm(filePath);
+        try {
+          await fs.access(normalizedPath);
+          return normalizedPath;
+        } catch (error) {
+          logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+          return null;
+        }
+      })
+    );
+    return results.filter((p): p is string => p !== null);
+  }
+
+  async discoverSources(): Promise<{ srcFiles: string[]; specFiles: string[] }> {
+    const { srcFiles, specFiles } = await this.discoverAllSources();
+
+    return await this.filterBrowserCompatibleFiles(
+      srcFiles,
+      specFiles,
+    );
+  }
+
+  async discoverAllSources(): Promise<{ srcFiles: string[]; specFiles: string[] }> {
+    try {
+      const defaultSrcExclude = ["**/node_modules/**", "**/*.spec.*"];
+      const defaultTestExclude = ["**/node_modules/**"];
+      const sharedExclude = this.config.exclude ?? [];
+
+      const srcDirs = this.getSrcDirConfigs();
+      const testDirs = this.getTestDirConfigs();
+
+      const srcFiles: string[] = [];
+      for (const inc of srcDirs) {
+        const exclude = [...defaultSrcExclude, ...sharedExclude];
+        const files = await this.scanDir(norm(inc), '/**/*.{ts,js,mjs}', exclude);
+        srcFiles.push(...files);
+      }
+
+      const specFiles: string[] = [];
+      for (const inc of testDirs) {
+        const exclude = [...defaultTestExclude, ...sharedExclude];
+        const files = await this.scanDir(norm(inc), '/**/*.spec.{ts,js,mjs}', exclude);
+        specFiles.push(...files);
+      }
+
+      const dedupedSrcFiles =
+        [...new Set(srcFiles)];
+
+      const dedupedSpecFiles =
+        [...new Set(specFiles)];
+
+      return {
+        srcFiles: dedupedSrcFiles,
+        specFiles: dedupedSpecFiles,
+      };
+    } catch (error) {
+      logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
+      throw new Error("Failed to discover source and test files");
+    }
+  }
+
+  private async filterBrowserCompatibleFiles(
+    srcFiles: string[],
+    specFiles: string[],
+  ): Promise<{
+    srcFiles: string[];
+    specFiles: string[];
+  }> {
+    if (this.config.browser === 'node') {
+      return {
+        srcFiles,
+        specFiles,
+      };
+    }
+
+    const compatibility =
+      new Map<string, boolean>();
+
+    const isCompatible = async (
+      filePath: string,
+      stack = new Set<string>(),
+    ): Promise<boolean> => {
+      const normalizedPath =
+        norm(path.resolve(filePath));
+
+      const cached =
+        compatibility.get(
+          normalizedPath,
+        );
+
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      if (stack.has(normalizedPath)) {
+        return true;
+      }
+
+      stack.add(normalizedPath);
+
+      const result =
+        await this.computeBrowserCompatibility(
+          normalizedPath,
+          isCompatible,
+          stack,
+        );
+
+      stack.delete(normalizedPath);
+      compatibility.set(
+        normalizedPath,
+        result,
+      );
+
+      return result;
+    };
+
+    const filterFiles = async (
+      files: string[],
+    ): Promise<string[]> => {
+      const matches =
+        await Promise.all(
+          files.map(
+            async (filePath) => ({
+              filePath,
+              isCompatible:
+                await isCompatible(
+                  filePath,
+                ),
+            }),
+          ),
+        );
+
+      return matches
+        .filter(
+          (entry) =>
+            entry.isCompatible,
+        )
+        .map(
+          (entry) =>
+            entry.filePath,
+        );
+    };
+
+    return {
+      srcFiles:
+        await filterFiles(srcFiles),
+      specFiles:
+        await filterFiles(specFiles),
+    };
+  }
+
+  private async computeBrowserCompatibility(
+    filePath: string,
+    isCompatible: (
+      filePath: string,
+      stack?: Set<string>,
+    ) => Promise<boolean>,
+    stack: Set<string>,
+  ): Promise<boolean> {
+    let source = '';
+
+    try {
+      source =
+        await fs.readFile(
+          filePath,
+          'utf8',
+        );
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      return true;
+    }
+
+    const importedSpecifiers =
+      this.collectImportedSpecifiers(
+        source,
+      );
+
+    if (
+      !this.usesEnvironmentSpecHelper(
+        source,
+      ) &&
+      this.usesBrowserUnsupportedGlobals(
+        source,
+      )
+    ) {
+      return false;
+    }
+
+    for (
+      const specifier of
+      importedSpecifiers
+    ) {
+      if (
+        this.isBrowserUnsupportedSpecifier(
+          specifier,
+        )
+      ) {
+        return false;
+      }
+
+      const resolvedImport =
+        await this.resolveLocalImport(
+          filePath,
+          specifier,
+        );
+
+      if (
+        resolvedImport &&
+        !(await isCompatible(
+          resolvedImport,
+          stack,
+        ))
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private usesEnvironmentSpecHelper(
+    source: string,
+  ): boolean {
+    return /from\s*['"][^'"]*env\.spec['"]/.test(
+      source,
+    ) || /require\s*\(\s*['"][^'"]*env\.spec['"]\s*\)/.test(
+      source,
+    );
+  }
+
+  private usesBrowserUnsupportedGlobals(
+    source: string,
+  ): boolean {
+    const code =
+      this.stripCommentsAndStrings(
+        source,
+      );
+
+    return BROWSER_UNSUPPORTED_GLOBAL_PATTERNS.some(
+      (pattern) => {
+        pattern.lastIndex = 0;
+        return pattern.test(code);
+      },
+    );
+  }
+
+  private stripCommentsAndStrings(
+    source: string,
+  ): string {
+    let output = source.replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    );
+
+    output = output.replace(
+      /\/\/.*$/gm,
+      '',
+    );
+
+    output = output.replace(
+      /'(?:\\.|[^'\\])*'/g,
+      "''",
+    );
+
+    output = output.replace(
+      /"(?:\\.|[^"\\])*"/g,
+      '""',
+    );
+
+    output = output.replace(
+      /`(?:\\.|[^`\\])*`/g,
+      '``',
+    );
+
+    return output;
+  }
+
+  private collectImportedSpecifiers(
+    source: string,
+  ): string[] {
+    const patterns = [
+      /\bimport\s+[\s\S]*?\s+from\s*['"]([^'"]+)['"]/g,
+      /\bexport\s+[\s\S]*?\s+from\s*['"]([^'"]+)['"]/g,
+      /\bimport\s*['"]([^'"]+)['"]/g,
+      /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+      /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+    ];
+
+    const specifiers: string[] = [];
+
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;
+
+      for (
+        const match of
+        source.matchAll(pattern)
+      ) {
+        const specifier = match[1]?.trim();
+        if (specifier) {
+          specifiers.push(specifier);
+        }
+      }
+    }
+
+    return [...new Set(specifiers)];
+  }
+
+  private isBrowserUnsupportedSpecifier(
+    specifier: string,
+  ): boolean {
+    if (
+      specifier.startsWith('.') ||
+      specifier.startsWith('/')
+    ) {
+      return false;
+    }
+
+    const normalizedSpecifier =
+      specifier.replace(/^node:/, '');
+
+    if (
+      NODE_BUILTIN_SPECIFIERS.has(
+        normalizedSpecifier,
+      ) ||
+      NODE_BUILTIN_SPECIFIERS.has(
+        normalizedSpecifier.split('/')[0]!,
+      )
+    ) {
+      return true;
+    }
+
+    const packageName =
+      normalizedSpecifier.startsWith('@')
+        ? normalizedSpecifier
+            .split('/')
+            .slice(0, 2)
+            .join('/')
+        : (normalizedSpecifier
+            .split('/')[0] ??
+          normalizedSpecifier);
+
+    return BROWSER_UNSUPPORTED_PACKAGES.has(
+      packageName,
+    );
+  }
+
+  private async resolveLocalImport(
+    importerPath: string,
+    specifier: string,
+  ): Promise<string | null> {
+    if (
+      !specifier.startsWith('.') &&
+      !specifier.startsWith('/')
+    ) {
+      return null;
+    }
+
+    const basePath =
+      specifier.startsWith('/')
+        ? path.resolve(specifier)
+        : path.resolve(
+            path.dirname(importerPath),
+            specifier,
+          );
+
+    const candidates = [
+      basePath,
+      `${basePath}.ts`,
+      `${basePath}.js`,
+      `${basePath}.mjs`,
+      path.join(basePath, 'index.ts'),
+      path.join(basePath, 'index.js'),
+      path.join(basePath, 'index.mjs'),
+    ];
+
+    let lastError: unknown = null;
+
+    for (const candidate of candidates) {
+      try {
+        const stats =
+          await fs.stat(candidate);
+
+        if (stats.isFile()) {
+          return norm(candidate);
+        }
+      } catch (error) {
+        lastError = error;
+        // Keep probing the local import candidates.
+      }
+    }
+
+    if (lastError) {
+      logger.error(`${lastError instanceof Error ? lastError.stack ?? lastError.message : String(lastError)}`);
+    }
+
+    return null;
+  }
+
+  getOutputName(filePath: string): string {
+    const srcDirs = this.getSrcDirConfigs();
+    const testDirs = this.getTestDirConfigs();
+    const normalizedPath = norm(path.resolve(filePath));
+
+    const resolveDirs = (dirs: string[]) =>
+      dirs.map((dir) => norm(path.resolve(dir)));
+
+    const normalizedSrcDirs = resolveDirs(srcDirs);
+    const normalizedTestDirs = resolveDirs(testDirs);
+    if (!normalizedSrcDirs.length) {
+      normalizedSrcDirs.push(norm(path.resolve('./src')));
+    }
+    if (!normalizedTestDirs.length) {
+      normalizedTestDirs.push(norm(path.resolve('./tests')));
+    }
+
+    const matchDir = (dirs: string[]): string | null => {
+      for (const candidate of dirs) {
+        if (
+          normalizedPath === candidate ||
+          normalizedPath.startsWith(`${candidate}/`)
+        ) {
+          return candidate;
+        }
+      }
+      return null;
+    };
+
+    const baseTest = matchDir(normalizedTestDirs);
+    const baseSrc = matchDir(normalizedSrcDirs) ?? normalizedSrcDirs[0];
+    const base = baseTest ?? baseSrc;
+
+    const relativePath = path.relative(base, normalizedPath);
+    const relativeNormalized = norm(relativePath);
+    const relativeWithoutExt = relativeNormalized.replace(/\.(ts|js|mjs)$/, '');
+    const isSpecFile = relativeWithoutExt.endsWith('.spec');
+    const stemPath = isSpecFile
+      ? relativeWithoutExt.slice(0, -'.spec'.length)
+      : relativeWithoutExt;
+
+    const sanitizeSegment = (segment: string) => {
+      if (segment === '..') return 'up';
+      if (segment === '.') return 'dot';
+      return segment;
+    };
+
+    const segments = stemPath.split('/').filter(Boolean).map(sanitizeSegment);
+    const fileName = segments.pop() ?? sanitizeSegment(path.basename(stemPath) || 'index');
+
+    const hash = createHash('sha1')
+      .update(normalizedPath)
+      .digest('hex')
+      .slice(0, 8);
+
+    if (isSpecFile) {
+      const prefix = segments.join('_');
+      const flattened = prefix ? `${prefix}__${fileName}` : fileName;
+      return `${flattened}__${hash}.spec.mjs`;
+    }
+
+    const sanitized =
+      segments.length > 0 ? `${segments.join('_')}__${fileName}` : fileName;
+    
+    return `${sanitized}__${hash}.mjs`;
+  }
+}
 ````
 
 ## File: src/test-selection.ts
@@ -19150,6 +19657,97 @@ export function getEmbeddedExecutionPlanSource():
 }
 ````
 
+## File: src/logger-prompt.spec.ts
+````typescript
+import fs from 'fs';
+import path from 'path';
+import { Logger } from './logger';
+
+describe('Logger prompt styling', () => {
+  const source = fs.readFileSync(
+    path.resolve(
+      process.cwd(),
+      'src/logger.ts',
+    ),
+    'utf8',
+  );
+
+  it('uses a thicker prompt marker for interactive output', () => {
+    expect(source).toContain(
+      '> ',
+    );
+    expect(source).toContain(
+      "plainPrompt = '> '",
+    );
+  });
+
+  it('uses the %error% prefix to drive error formatting', () => {
+    expect(source).toContain(
+      "const errorToken =",
+    );
+    expect(source).toContain(
+      "'%error% ';",
+    );
+    expect(source).toContain(
+      'this.errorPrefix() +',
+    );
+    expect(source).toContain(
+      '${colors.red}${colors.bgBlack}',
+    );
+  });
+
+  it('uses the %warn% prefix to drive warning badge formatting', () => {
+    expect(source).toContain(
+      "const warnToken =",
+    );
+    expect(source).toContain(
+      "'%warn% ';",
+    );
+    expect(source).toContain(
+      'this.warnPrefix() +',
+    );
+  });
+
+  it('exposes a dedicated warn logger method', () => {
+    expect(source).toContain(
+      'warn(msg: string)',
+    );
+    expect(source).toContain(
+      'forceWarnPrefix',
+    );
+  });
+
+  it('formats error output without throwing at runtime', () => {
+    const writes: string[] = [];
+    const originalWrite =
+      process.stdout.write;
+
+    process.stdout.write =
+      ((chunk: any) => {
+        writes.push(String(chunk));
+        return true;
+      }) as typeof process.stdout.write;
+
+    try {
+      expect(() => {
+        new Logger().error(
+          '%error% Example failure',
+        );
+      }).not.toThrow();
+
+      expect(
+        writes.join(''),
+      ).toContain(
+        'Example failure',
+      );
+    } finally {
+      process.stdout.write =
+        originalWrite;
+    }
+  });
+});
+````
+
 ## File: src/node-runner-module-source.spec.ts
 ````typescript
 import {
@@ -19939,6 +20537,964 @@ function installTestifyPlayground(
 }
 ````
 
+## File: build-package.js
+````javascript
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const buildFilePath =
+  fileURLToPath(
+    import.meta.url,
+  );
+
+const buildDirectory =
+  path.dirname(
+    buildFilePath,
+  );
+
+const mainPackage =
+  JSON.parse(
+    fs.readFileSync(
+      path.join(
+        buildDirectory,
+        'package.json',
+      ),
+      'utf8',
+    ),
+  );
+
+const distRoot =
+  path.join(
+    buildDirectory,
+    'dist/testify',
+  );
+
+function ensureDir(
+  dirPath,
+) {
+  fs.mkdirSync(
+    dirPath,
+    { recursive: true },
+  );
+}
+
+function copyFile(
+  from,
+  to,
+) {
+  ensureDir(
+    path.dirname(to),
+  );
+
+  fs.copyFileSync(
+    from,
+    to,
+  );
+}
+
+const distPackage = {
+  name:
+    mainPackage.name,
+  version:
+    mainPackage.version,
+  description:
+    mainPackage.description,
+  type:
+    'module',
+  types:
+    mainPackage.types,
+  exports:
+    mainPackage.exports,
+  bin:
+    mainPackage.bin,
+  files: [
+    'README.md',
+    'CHANGELOG.md',
+    'LICENSE',
+    'package.json',
+    'assets/',
+    'bin/',
+    'lib/',
+  ],
+  repository:
+    mainPackage.repository,
+  bugs:
+    mainPackage.bugs,
+  homepage:
+    mainPackage.homepage,
+  keywords:
+    mainPackage.keywords ?? [],
+  author:
+    mainPackage.author,
+  license:
+    mainPackage.license,
+  engines:
+    mainPackage.engines,
+  dependencies:
+    mainPackage.dependencies ?? {},
+  peerDependencies:
+    mainPackage.peerDependencies ?? {},
+  overrides:
+    mainPackage.overrides ?? {},
+  publishConfig:
+    mainPackage.publishConfig,
+  testifySetup: {
+    jasmineTypesVersion:
+      mainPackage.devDependencies?.[
+        '@types/jasmine'
+      ],
+  },
+};
+
+ensureDir(
+  distRoot,
+);
+
+fs.writeFileSync(
+  path.join(
+    distRoot,
+    'package.json',
+  ),
+  JSON.stringify(
+    distPackage,
+    null,
+    2,
+  ) + '\n',
+);
+
+copyFile(
+  path.join(
+    buildDirectory,
+    'assets/favicon.ico',
+  ),
+  path.join(
+    distRoot,
+    'assets/favicon.ico',
+  ),
+);
+````
+
+## File: src/logger.ts
+````typescript
+import { supportsColor } from './ansi-constants';
+import { LOG_MESSAGES, LogMessageTemplate } from './messages';
+import { replacePlaceholders } from './symbols';
+
+// ANSI color codes
+const colors = {
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  black: '\x1b[30m',
+  red: '\x1b[31m',
+  brightRed: '\x1b[91m',
+  bgBlack: '\x1b[40m',
+  bgRed: '\x1b[41m',
+  bgYellow: '\x1b[43m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
+  blue: '\x1b[34m',
+  brightGreen: '\x1b[92m',
+  gray: '\x1b[90m',
+};
+
+type LogMessageKey = keyof typeof LOG_MESSAGES;
+
+const LEGACY_LOG_TAG_PREFIX =
+  /^\[(?:ERROR|WARN|INFO|BROWSER|FILE|TREE|STOP|TIP|START|WAIT|READY|ADD|REM|DIR|BUILD|RETRY|CLEAN|LOCK|HMR|WS|CONN|OK|WATCH)\]\s*/;
+
+const LEADING_BADGE_PREFIX =
+  /^[^\p{L}\p{N}\s"'([{<]+\s+/u;
+
+function areTestLogsSuppressed(): boolean {
+  return (globalThis as any).__testifySuppressLogs === true;
+}
+
+interface LoggedLine {
+  text: string;
+  isRaw?: boolean;
+  hasPrompt?: boolean;
+}
+
+export class Logger {
+  private previousLines: LoggedLine[] = [];
+  private showPrompt = true;
+  private prompt: string;
+  private plainPrompt = '> ';
+
+  constructor() {
+    this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;
+  }
+
+  // ─── New API: structured log messages ────────────────────
+
+  public log<T extends LogMessageKey>(
+    key: T,
+    ...args: Parameters<(typeof LOG_MESSAGES)[T]['text']>
+  ) {
+    if (areTestLogsSuppressed()) return;
+
+    const template: LogMessageTemplate = LOG_MESSAGES[key];
+    const rawMessage = template.text(...args);
+    const { formattedMessage, stream } = this.formatStructured(rawMessage, template);
+    stream.write(formattedMessage + '\n');
+  }
+
+  private formatStructured(
+    rawMessage: string,
+    template: LogMessageTemplate
+  ): { formattedMessage: string; stream: NodeJS.WriteStream } {
+    const { type, icon } = template;
+    let color = colors.reset;
+    let stream: NodeJS.WriteStream = process.stdout;
+    let messageContent = rawMessage;
+
+    switch (type) {
+      case 'error':
+        color = colors.red;
+        stream = process.stderr;
+        break;
+      case 'warning':
+        color = colors.yellow;
+        break;
+      case 'info':
+        color = colors.cyan;
+        break;
+      case 'debug':
+        color = colors.blue;
+        break;
+    }
+
+    if (supportsColor()) {
+      const iconStr = icon ? `${icon} ` : '';
+      const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
+      messageContent = prefixMatch && prefixMatch[1] ? prefixMatch[1] : rawMessage;
+      return { formattedMessage: `${color}${iconStr}${messageContent}${colors.reset}`, stream };
+    }
+
+    const tag = `[${template.type.toUpperCase()}]`;
+    const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
+    messageContent = prefixMatch && prefixMatch[1] ? prefixMatch[1] : rawMessage;
+    return { formattedMessage: `${tag} ${messageContent}`, stream };
+  }
+
+  // ─── Legacy API: direct printing ─────────────────────────
+
+  print(msg: string) {
+    if (areTestLogsSuppressed()) return true;
+
+    const prompt =
+      supportsColor()
+        ? this.prompt
+        : this.plainPrompt;
+    const lines = msg.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const formatted =
+        this.formatLine(lines[i]);
+      const renderedLine =
+        i === 0 &&
+        this.showPrompt &&
+        !formatted.hasOwnPrompt
+          ? prompt + formatted.text
+          : formatted.text;
+
+      this.writeLine(
+        renderedLine,
+        formatted.color,
+      );
+      if (i < lines.length - 1) process.stdout.write('\n');
+      this.addLine(renderedLine);
+    }
+    this.showPrompt = false;
+    return true;
+  }
+
+  println(msg = '') {
+    if (areTestLogsSuppressed()) return true;
+
+    if (msg) this.print(msg);
+    process.stdout.write('\n');
+    this.addLine('');
+    this.showPrompt = true;
+    return true;
+  }
+
+  printRaw(line: string) {
+    if (areTestLogsSuppressed()) return true;
+
+    process.stdout.write(line);
+    this.addLine(line, { isRaw: true });
+    return true;
+  }
+
+  printlnRaw(line = '') {
+    if (areTestLogsSuppressed()) return true;
+
+    this.printRaw(line);
+    process.stdout.write('\n');
+    this.addLine('', { isRaw: true });
+    return true;
+  }
+
+  error(msg: string) {
+    if (areTestLogsSuppressed()) return true;
+
+    msg = this.stripLegacyPrefix(
+      msg,
+      'error',
+    );
+    const lines = msg.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const formatted =
+        this.formatLine(
+          lines[i],
+          {
+            forceErrorPrefix:
+              i === 0,
+            forceColor:
+              supportsColor()
+                ? colors.red
+                : '',
+          },
+        );
+
+      this.writeLine(
+        formatted.text,
+        formatted.color,
+      );
+      if (i < lines.length - 1) process.stdout.write('\n');
+      this.addLine(
+        formatted.text,
+      );
+    }
+    process.stdout.write('\n');
+    this.showPrompt = true;
+    return true;
+  }
+
+  warn(msg: string) {
+    if (areTestLogsSuppressed()) return true;
+
+    msg = this.stripLegacyPrefix(
+      msg,
+      'warn',
+    );
+    const lines = msg.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const formatted =
+        this.formatLine(
+          lines[i],
+          {
+            forceWarnPrefix:
+              i === 0,
+          },
+        );
+
+      this.writeLine(
+        formatted.text,
+        formatted.color,
+      );
+      if (i < lines.length - 1) process.stdout.write('\n');
+      this.addLine(
+        formatted.text,
+      );
+    }
+    process.stdout.write('\n');
+    this.showPrompt = true;
+    return true;
+  }
+
+  clearLine() {
+    if (!supportsColor()) return;
+    process.stdout.write('\r\x1b[K');
+  }
+
+  // ─── Utilities ───────────────────────────────────────────
+
+  normalize(text: string): string {
+    return text
+      .replace(/\s*\r?\n\s*/g, '')
+      .replace(/[\uFEFF\xA0\t]/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  visibleWidth(str: string): number {
+    const ANSI_FULL_REGEX =
+      /\x1B(?:[@-Z\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
+    return [...str.replace(ANSI_FULL_REGEX, '')].length;
+  }
+
+  // ─── Internal helpers ────────────────────────────────────
+
+  private writeLine(line: string, color = '') {
+    if (supportsColor()) {
+      this.clearLine();
+      process.stdout.write(color + line + colors.reset);
+    } else {
+      process.stdout.write(line);
+    }
+  }
+
+  private addLine(text: string, opts: Partial<LoggedLine> = {}) {
+    this.previousLines.push({
+      text,
+      isRaw: opts.isRaw,
+      hasPrompt: opts.hasPrompt ?? this.showPrompt,
+    });
+    if (this.previousLines.length > 200) {
+      this.previousLines.splice(0, 100);
+    }
+  }
+
+  private formatLine(
+    line: string,
+    options: {
+      forceErrorPrefix?: boolean;
+      forceWarnPrefix?: boolean;
+      forceColor?: string;
+    } = {},
+  ): {
+    text: string;
+    color: string;
+    hasOwnPrompt: boolean;
+  } {
+    const errorToken =
+      '%error% ';
+    const warnToken =
+      '%warn% ';
+    const shouldPrefixError =
+      options.forceErrorPrefix &&
+      !line.startsWith(errorToken);
+    const shouldPrefixWarn =
+      options.forceWarnPrefix &&
+      !line.startsWith(warnToken);
+    const sourceLine =
+      shouldPrefixError
+        ? errorToken + line
+        : shouldPrefixWarn
+          ? warnToken + line
+          : line;
+
+    if (
+      sourceLine.startsWith(
+        errorToken,
+      )
+    ) {
+      return {
+        text:
+          this.errorPrefix() +
+          replacePlaceholders(
+            sourceLine.slice(
+              errorToken.length,
+            ),
+          ),
+        color:
+          options.forceColor ??
+          (supportsColor()
+            ? colors.red
+            : ''),
+        hasOwnPrompt: true,
+      };
+    }
+
+    if (
+      sourceLine.startsWith(
+        warnToken,
+      )
+    ) {
+      return {
+        text:
+          this.warnPrefix() +
+          replacePlaceholders(
+            sourceLine.slice(
+              warnToken.length,
+            ),
+          ),
+        color: '',
+        hasOwnPrompt: true,
+      };
+    }
+
+    return {
+      text: replacePlaceholders(
+        sourceLine,
+      ),
+      color:
+        options.forceColor ?? '',
+      hasOwnPrompt: false,
+    };
+  }
+
+  private stripLegacyPrefix(
+    message: string,
+    type: 'error' | 'warn',
+  ): string {
+    const marker =
+      type === 'error'
+        ? '%error%'
+        : '%warn%';
+
+    return message
+      .split('\n')
+      .map((line) => {
+        if (
+          line.startsWith(
+            marker + ' ',
+          )
+        ) {
+          return line.slice(
+            marker.length + 1,
+          );
+        }
+
+        if (
+          LEGACY_LOG_TAG_PREFIX.test(
+            line,
+          )
+        ) {
+          return line.replace(
+            LEGACY_LOG_TAG_PREFIX,
+            '',
+          );
+        }
+
+        return line.replace(
+          LEADING_BADGE_PREFIX,
+          '',
+        );
+      })
+      .join('\n');
+  }
+
+  private errorPrefix(): string {
+    return supportsColor()
+      ? `${colors.bold}${colors.black}${colors.bgRed} ERROR ${colors.reset}${colors.red}${colors.bgBlack} `
+      : '[ERROR] ';
+  }
+
+  private warnPrefix(): string {
+    return supportsColor()
+      ? `${colors.bold}${colors.black}${colors.bgYellow} WARN ${colors.reset}`
+      : 'WARN ';
+  }
+
+}
+
+// Export a singleton instance for project-wide use
+export const logger = new Logger();
+````
+
+## File: src/ts-jasmine-cli.ts
+````typescript
+import fs from 'fs';
+import path from 'path';
+import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
+import util from 'util';
+import { registerTestifyRelativeResolver } from './node-relative-resolver';
+import { logger } from './logger';
+import { JasmineCLIMessages } from './log-messages';
+import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
+import { initializeNodeJasmineEnvironment } from './jasmine-node-runtime';
+import JSONCleaner from './json-cleaner';
+import { norm } from './utils';
+import { EXIT_CODES } from './exit-codes';
+import { ProjectSetup } from './project-setup';
+
+const packageRequire = createRequire(import.meta.url);
+
+// Keep runtime imports opaque to Vite. These paths are selected at runtime and
+// must be handled by Node/tsx rather than Vite's browser preload transform.
+const nativeImport = new Function(
+  'specifier',
+  'return import(specifier);',
+) as (specifier: string) => Promise<any>;
+
+interface RunnerArgs {
+  spec: string;
+  random: boolean;
+  stopOnFail: boolean;
+  seed?: number;
+  help: boolean;
+  initLaunchConfig: boolean;
+}
+
+const vscodeLaunchConfigName = 'Debug current spec (jasmine)';
+
+function getRuntimeEnv(): NodeJS.ProcessEnv {
+  const runtimeProcess = (globalThis as any).process as NodeJS.Process | undefined;
+  return runtimeProcess?.env ?? {};
+}
+
+function isRunningInVsCode(): boolean {
+  const env = getRuntimeEnv();
+  return (
+    env.TERM_PROGRAM === 'vscode' ||
+    typeof env.VSCODE_PID === 'string' ||
+    typeof env.VSCODE_CWD === 'string' ||
+    typeof env.VSCODE_INSPECTOR_OPTIONS === 'string'
+  );
+}
+
+function printHelp(): void {
+  logger.println('jasmine: run a single Jasmine spec in Node');
+  logger.println('');
+  logger.println('Usage:');
+  logger.println('  npx jasmine --spec <path-to-spec>');
+  logger.println('  npx jasmine init');
+  logger.println('');
+  logger.println('Commands:');
+  logger.println('  init                Configure Jasmine types and create/update .vscode/launch.json');
+  logger.println('');
+  logger.println('Options:');
+  logger.println('  --spec <path>        Path to a single spec file');
+  logger.println('  --random             Randomize spec order');
+  logger.println('  --seed <number>      Seed used for randomization');
+  logger.println('  --stop-on-fail       Stop on first expectation failure');
+  logger.println('  --help               Show this help');
+  logger.println('');
+  logger.println('TypeScript specs are loaded through tsx using the nearest tsconfig.json.');
+  logger.println('');
+  logger.println('VS Code debug config name:');
+  logger.println(`  ${vscodeLaunchConfigName}`);
+}
+
+function parseArgs(argv: string[]): RunnerArgs {
+  const args = argv.slice(2);
+  const get = (flag: string) => {
+    const index = args.indexOf(flag);
+    if (index === -1) return undefined;
+    return args[index + 1];
+  };
+
+  const help = args.includes('--help') || args.includes('-h');
+  const command = args[0];
+  const initLaunchConfig = args.includes('--init-launch-config') || command === 'init';
+  const specRaw = get('--spec');
+
+  if (help) {
+    return {
+      spec: specRaw ? norm(path.resolve(process.cwd(), specRaw)) : '',
+      random: args.includes('--random'),
+      stopOnFail: args.includes('--stop-on-fail'),
+      seed: get('--seed') ? Number(get('--seed')) : undefined,
+      help: true,
+      initLaunchConfig,
+    };
+  }
+
+  if (command && !command.startsWith('-') && command !== 'init') {
+    logger.error(JasmineCLIMessages.unknownCommand(command));
+    logger.println('');
+    printHelp();
+    process.exit(EXIT_CODES.INVALID_USAGE);
+  }
+
+  if (initLaunchConfig) {
+    return {
+      spec: specRaw ? norm(path.resolve(process.cwd(), specRaw)) : '',
+      random: args.includes('--random'),
+      stopOnFail: args.includes('--stop-on-fail'),
+      seed: get('--seed') ? Number(get('--seed')) : undefined,
+      help: false,
+      initLaunchConfig: true,
+    };
+  }
+
+  if (!specRaw) {
+    logger.error(JasmineCLIMessages.missingSpecArg());
+    logger.println('');
+    printHelp();
+    process.exit(EXIT_CODES.INVALID_USAGE);
+  }
+
+  const spec = norm(path.resolve(process.cwd(), specRaw));
+  if (!fs.existsSync(spec)) {
+    logger.error(JasmineCLIMessages.specFileNotFound(spec));
+    process.exit(EXIT_CODES.CONFIG_ERROR);
+  }
+
+  const seedRaw = get('--seed');
+  if (seedRaw !== undefined && !Number.isFinite(Number(seedRaw))) {
+    logger.error(JasmineCLIMessages.invalidSeedValue(seedRaw!));
+    process.exit(EXIT_CODES.INVALID_USAGE);
+  }
+
+  return {
+    spec,
+    random: args.includes('--random'),
+    stopOnFail: args.includes('--stop-on-fail'),
+    seed: seedRaw ? Number(seedRaw) : undefined,
+    help: false,
+    initLaunchConfig: false,
+  };
+}
+
+function safeStringify(value: unknown): string {
+  if (value instanceof Error) {
+    return value.stack ?? safeStringify(value.message);
+  }
+
+  try {
+    const str = String(value);
+    if (str !== '[object Object]') {
+      return str;
+    }
+  } catch (error) {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    // fall through to inspect/JSON fallback
+  }
+
+  if (value && typeof value === 'object') {
+    const constructor = (value as object).constructor?.name ?? 'Object';
+    try {
+      const inspected = util.inspect(value, { depth: 5, showHidden: true });
+      return constructor === 'Object' ? inspected : `${constructor} ${inspected}`;
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        // fall through
+      }
+    }
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    return '[object Object]';
+  }
+}
+
+
+
+function findNearestTsconfig(startDir: string): string | null {
+  let current = norm(path.resolve(startDir));
+  while (true) {
+    const candidate = norm(path.join(current, 'tsconfig.json'));
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function getDefaultVsCodeLaunchConfiguration(): Record<string, unknown> {
+  return {
+    type: 'node',
+    request: 'launch',
+    name: vscodeLaunchConfigName,
+    runtimeExecutable: 'node',
+    runtimeArgs: ['--enable-source-maps'],
+    program: '${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine',
+    args: ['--spec', '${file}'],
+    cwd: '${workspaceFolder}',
+    console: 'integratedTerminal',
+    skipFiles: ['<node_internals>/**'],
+  };
+}
+
+function initVsCodeLaunchConfig(): void {
+  const vscodeDir = norm(path.resolve(process.cwd(), '.vscode'));
+  const launchJsonPath = norm(path.join(vscodeDir, 'launch.json'));
+  const config = getDefaultVsCodeLaunchConfiguration();
+
+  fs.mkdirSync(vscodeDir, { recursive: true });
+
+  if (!fs.existsSync(launchJsonPath)) {
+    const launchJson = { version: '0.2.0', configurations: [config] };
+    fs.writeFileSync(launchJsonPath, `${JSON.stringify(launchJson, null, 2)}\n`);
+    logger.println(JasmineCLIMessages.createdVsCodeLaunchConfig(launchJsonPath));
+    logger.println(JasmineCLIMessages.addedVsCodeConfiguration(vscodeLaunchConfigName));
+    return;
+  }
+
+  const raw = fs.readFileSync(launchJsonPath, 'utf-8');
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    try {
+      parsed = new JSONCleaner().parse(raw);
+    } catch (error) {
+      logger.error(JasmineCLIMessages.failedToParseVsCodeConfig(launchJsonPath));
+      logger.error(String(error));
+      logger.println('');
+      logger.println(JasmineCLIMessages.addConfigManually());
+      logger.println(`${JSON.stringify(getDefaultVsCodeLaunchConfiguration(), null, 2)}`);
+      process.exit(EXIT_CODES.CONFIG_ERROR);
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object') parsed = {};
+  if (!Array.isArray(parsed.configurations)) parsed.configurations = [];
+
+  const programSuffix = '/bin/jasmine';
+  const existingIndex = parsed.configurations.findIndex((c: any) => {
+    if (!c || typeof c !== 'object') return false;
+    if (c.name === vscodeLaunchConfigName) return true;
+
+    const program = typeof c.program === 'string' ? c.program.replace(/\\/g, '/') : '';
+    const args = Array.isArray(c.args) ? c.args : [];
+    return program.endsWith(programSuffix) && args.includes('--spec');
+  });
+
+  parsed.version ??= '0.2.0';
+
+  if (existingIndex !== -1) {
+    parsed.configurations[existingIndex] = config;
+    fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
+    logger.println(JasmineCLIMessages.updatedVsCodeLaunchConfig(launchJsonPath));
+    return;
+  }
+
+  parsed.configurations.unshift(config);
+  fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
+  logger.println(JasmineCLIMessages.updatedVsCodeLaunchConfig(launchJsonPath));
+  logger.println(JasmineCLIMessages.addedVsCodeConfiguration(vscodeLaunchConfigName));
+}
+
+async function loadJasmine() {
+  const jasmineCorePath = norm(packageRequire.resolve('jasmine-core/lib/jasmine-core/jasmine.js'));
+  const jasmineCore = await nativeImport(pathToFileURL(jasmineCorePath).href);
+  const jasmineRequire = jasmineCore.default;
+  return initializeNodeJasmineEnvironment(jasmineRequire, { resetReporters: false });
+}
+
+async function registerSpecRuntime(
+  specPath: string,
+): Promise<() => Promise<void>> {
+  const tsconfig =
+    findNearestTsconfig(
+      path.dirname(
+        specPath,
+      ),
+    );
+
+  type TsxRegister = (
+    options: {
+      tsconfig: string | false;
+    },
+  ) =>
+    | (() => void)
+    | (() => Promise<void>);
+
+  const tsxApi =
+    await nativeImport(
+      'tsx/esm/api',
+    ) as {
+      register: TsxRegister;
+    };
+
+  // Register tsx first. It installs its own CommonJS resolver; Testify then
+  // wraps that resolver to add bundler-style relative path compatibility.
+  const unregisterTsx =
+    tsxApi.register({
+      tsconfig:
+        tsconfig ?? false,
+    });
+
+  const unregisterRelativeResolver =
+    registerTestifyRelativeResolver();
+
+  return async () => {
+    try {
+      unregisterRelativeResolver();
+    } finally {
+      await unregisterTsx();
+    }
+  };
+}
+
+async function loadSpec(specPath: string): Promise<void> {
+  await nativeImport(pathToFileURL(specPath).href);
+}
+
+async function main() {
+  const args = parseArgs(process.argv);
+  if (args.help) {
+    printHelp();
+    process.exit(EXIT_CODES.SUCCESS);
+  }
+
+  if (args.initLaunchConfig) {
+    ProjectSetup.configure(process.cwd());
+    initVsCodeLaunchConfig();
+
+    if (!isRunningInVsCode()) {
+      logger.println('VS Code was not detected, but .vscode/launch.json was configured successfully.');
+    }
+
+    process.exit(EXIT_CODES.SUCCESS);
+  }
+
+
+  const { jasmineEnv } = await loadJasmine();
+
+  process.on('unhandledRejection', (error) => {
+    logger.error(JasmineCLIMessages.unhandledRejection(safeStringify(error)));
+    process.exit(EXIT_CODES.INTERNAL_ERROR);
+  });
+  process.on('uncaughtException', (error) => {
+    logger.error(JasmineCLIMessages.uncaughtException(safeStringify(error)));
+    process.exit(EXIT_CODES.INTERNAL_ERROR);
+  });
+
+  jasmineEnv.configure({
+    random: args.random,
+    stopSpecOnExpectationFailure: args.stopOnFail,
+    seed: args.seed,
+  });
+
+  const reporter = new AwaitableJasmineConsoleReporter();
+  jasmineEnv.addReporter(reporter);
+
+  const unregisterRuntime =
+    await registerSpecRuntime(
+      args.spec,
+    );
+  let result: Awaited<typeof reporter.complete> | undefined;
+
+  try {
+    await loadSpec(args.spec);
+    await jasmineEnv.execute();
+    result = await reporter.complete;
+  } finally {
+    await unregisterRuntime();
+  }
+
+  let exitCode: number;
+  if (result?.overallStatus === 'failed') {
+    exitCode = EXIT_CODES.TEST_FAILURES;
+  } else if (result?.overallStatus === 'incomplete') {
+    exitCode = EXIT_CODES.SUCCESS_WITH_PENDING;
+  } else {
+    exitCode = EXIT_CODES.SUCCESS;
+  }
+  process.exit(exitCode);
+}
+
+main().catch((error) => {
+  if (error instanceof Error) {
+    logger.error(JasmineCLIMessages.failedToRunJasmine(safeStringify(error)));
+  } else {
+    const stack = new Error().stack ?? '';
+    const value = safeStringify(error);
+    logger.error(
+      JasmineCLIMessages.failedToRunJasmine(
+        `thrown non-Error value: ${value}\n${stack}`,
+      ),
+    );
+  }
+  process.exit(EXIT_CODES.INTERNAL_ERROR);
+});
+````
+
 ## File: src/vite-config-builder.ts
 ````typescript
 import * as fs from 'fs';
@@ -20045,7 +21601,8 @@ export class ViteConfigBuilder {
           }
         }
       }
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       // Dependency externalization is an optimization/isolation boundary.
       // A malformed package.json should still be reported by the normal
       // project/tooling path instead of making Testify config construction fail.
@@ -20239,7 +21796,8 @@ export class ViteConfigBuilder {
     let content = '';
     try {
       content = fs.readFileSync(filePath, 'utf8');
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return false;
     }
 
@@ -20609,7 +22167,8 @@ export class ViteConfigBuilder {
       projectPackage = cleaner.parse<PackageManifest>(
         fs.readFileSync(projectPackageJsonPath, 'utf8')
       );
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return {};
     }
 
@@ -20633,7 +22192,8 @@ export class ViteConfigBuilder {
         builtPackageRoot,
         builtPackage
       );
-    } catch {
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       return {};
     }
   }
@@ -20655,7 +22215,8 @@ export class ViteConfigBuilder {
         if (manifest.name === packageName) {
           return norm(path.dirname(candidate));
         }
-      } catch {
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         continue;
       }
     }
@@ -20894,12 +22455,14 @@ export class ViteConfigBuilder {
 
     try {
       return nodeRequire.resolve(extendsRef);
-    } catch {}
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);}
 
     for (const candidate of this.candidateTsconfigPaths(extendsRef)) {
       try {
         return nodeRequire.resolve(candidate);
-      } catch {}
+      } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);}
     }
 
     return null;
@@ -20915,1792 +22478,6 @@ export class ViteConfigBuilder {
     candidates.push(path.join(basePath, 'tsconfig.json'));
 
     return [...new Set(candidates.map((candidate) => path.resolve(candidate)))];
-  }
-}
-````
-
-## File: build-package.js
-````javascript
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const buildFilePath =
-  fileURLToPath(
-    import.meta.url,
-  );
-
-const buildDirectory =
-  path.dirname(
-    buildFilePath,
-  );
-
-const mainPackage =
-  JSON.parse(
-    fs.readFileSync(
-      path.join(
-        buildDirectory,
-        'package.json',
-      ),
-      'utf8',
-    ),
-  );
-
-const distRoot =
-  path.join(
-    buildDirectory,
-    'dist/testify',
-  );
-
-function ensureDir(
-  dirPath,
-) {
-  fs.mkdirSync(
-    dirPath,
-    { recursive: true },
-  );
-}
-
-function copyFile(
-  from,
-  to,
-) {
-  ensureDir(
-    path.dirname(to),
-  );
-
-  fs.copyFileSync(
-    from,
-    to,
-  );
-}
-
-const distPackage = {
-  name:
-    mainPackage.name,
-  version:
-    mainPackage.version,
-  description:
-    mainPackage.description,
-  type:
-    'module',
-  types:
-    mainPackage.types,
-  exports:
-    mainPackage.exports,
-  bin:
-    mainPackage.bin,
-  files: [
-    'README.md',
-    'CHANGELOG.md',
-    'LICENSE',
-    'package.json',
-    'assets/',
-    'bin/',
-    'lib/',
-  ],
-  repository:
-    mainPackage.repository,
-  bugs:
-    mainPackage.bugs,
-  homepage:
-    mainPackage.homepage,
-  keywords:
-    mainPackage.keywords ?? [],
-  author:
-    mainPackage.author,
-  license:
-    mainPackage.license,
-  engines:
-    mainPackage.engines,
-  dependencies:
-    mainPackage.dependencies ?? {},
-  peerDependencies:
-    mainPackage.peerDependencies ?? {},
-  overrides:
-    mainPackage.overrides ?? {},
-  publishConfig:
-    mainPackage.publishConfig,
-  testifySetup: {
-    jasmineTypesVersion:
-      mainPackage.devDependencies?.[
-        '@types/jasmine'
-      ],
-  },
-};
-
-ensureDir(
-  distRoot,
-);
-
-fs.writeFileSync(
-  path.join(
-    distRoot,
-    'package.json',
-  ),
-  JSON.stringify(
-    distPackage,
-    null,
-    2,
-  ) + '\n',
-);
-
-copyFile(
-  path.join(
-    buildDirectory,
-    'assets/favicon.ico',
-  ),
-  path.join(
-    distRoot,
-    'assets/favicon.ico',
-  ),
-);
-````
-
-## File: src/logger.ts
-````typescript
-import { supportsColor } from './ansi-constants';
-import { LOG_MESSAGES, LogMessageTemplate } from './messages';
-import { replacePlaceholders } from './symbols';
-
-// ANSI color codes
-const colors = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  black: '\x1b[30m',
-  red: '\x1b[31m',
-  brightRed: '\x1b[91m',
-  bgRed: '\x1b[41m',
-  bgYellow: '\x1b[43m',
-  yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
-  blue: '\x1b[34m',
-  brightGreen: '\x1b[92m',
-  gray: '\x1b[90m',
-};
-
-type LogMessageKey = keyof typeof LOG_MESSAGES;
-
-function areTestLogsSuppressed(): boolean {
-  return (globalThis as any).__testifySuppressLogs === true;
-}
-
-interface LoggedLine {
-  text: string;
-  isRaw?: boolean;
-  hasPrompt?: boolean;
-}
-
-export class Logger {
-  private previousLines: LoggedLine[] = [];
-  private showPrompt = true;
-  private prompt: string;
-  private plainPrompt = '> ';
-
-  constructor() {
-    this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;
-  }
-
-  // ─── New API: structured log messages ────────────────────
-
-  public log<T extends LogMessageKey>(
-    key: T,
-    ...args: Parameters<(typeof LOG_MESSAGES)[T]['text']>
-  ) {
-    if (areTestLogsSuppressed()) return;
-
-    const template: LogMessageTemplate = LOG_MESSAGES[key];
-    const rawMessage = template.text(...args);
-    const { formattedMessage, stream } = this.formatStructured(rawMessage, template);
-    stream.write(formattedMessage + '\n');
-  }
-
-  private formatStructured(
-    rawMessage: string,
-    template: LogMessageTemplate
-  ): { formattedMessage: string; stream: NodeJS.WriteStream } {
-    const { type, icon } = template;
-    let color = colors.reset;
-    let stream: NodeJS.WriteStream = process.stdout;
-    let messageContent = rawMessage;
-
-    switch (type) {
-      case 'error':
-        color = colors.red;
-        stream = process.stderr;
-        break;
-      case 'warning':
-        color = colors.yellow;
-        break;
-      case 'info':
-        color = colors.cyan;
-        break;
-      case 'debug':
-        color = colors.blue;
-        break;
-    }
-
-    if (supportsColor()) {
-      const iconStr = icon ? `${icon} ` : '';
-      const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
-      messageContent = prefixMatch && prefixMatch[1] ? prefixMatch[1] : rawMessage;
-      return { formattedMessage: `${color}${iconStr}${messageContent}${colors.reset}`, stream };
-    }
-
-    const tag = `[${template.type.toUpperCase()}]`;
-    const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
-    messageContent = prefixMatch && prefixMatch[1] ? prefixMatch[1] : rawMessage;
-    return { formattedMessage: `${tag} ${messageContent}`, stream };
-  }
-
-  // ─── Legacy API: direct printing ─────────────────────────
-
-  print(msg: string) {
-    if (areTestLogsSuppressed()) return true;
-
-    const prompt =
-      supportsColor()
-        ? this.prompt
-        : this.plainPrompt;
-    const lines = msg.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const formatted =
-        this.formatLine(lines[i]);
-      const renderedLine =
-        i === 0 &&
-        this.showPrompt &&
-        !formatted.hasOwnPrompt
-          ? prompt + formatted.text
-          : formatted.text;
-
-      this.writeLine(
-        renderedLine,
-        formatted.color,
-      );
-      if (i < lines.length - 1) process.stdout.write('\n');
-      this.addLine(renderedLine);
-    }
-    this.showPrompt = false;
-    return true;
-  }
-
-  println(msg = '') {
-    if (areTestLogsSuppressed()) return true;
-
-    if (msg) this.print(msg);
-    process.stdout.write('\n');
-    this.addLine('');
-    this.showPrompt = true;
-    return true;
-  }
-
-  printRaw(line: string) {
-    if (areTestLogsSuppressed()) return true;
-
-    process.stdout.write(line);
-    this.addLine(line, { isRaw: true });
-    return true;
-  }
-
-  printlnRaw(line = '') {
-    if (areTestLogsSuppressed()) return true;
-
-    this.printRaw(line);
-    process.stdout.write('\n');
-    this.addLine('', { isRaw: true });
-    return true;
-  }
-
-  error(msg: string) {
-    if (areTestLogsSuppressed()) return true;
-
-    msg = this.stripLegacyPrefix(
-      msg,
-      'error',
-    );
-    const lines = msg.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const formatted =
-        this.formatLine(
-          lines[i],
-          {
-            forceErrorPrefix:
-              i === 0,
-            forceColor:
-              supportsColor()
-                ? colors.red
-                : '',
-          },
-        );
-
-      this.writeLine(
-        formatted.text,
-        formatted.color,
-      );
-      if (i < lines.length - 1) process.stdout.write('\n');
-      this.addLine(
-        formatted.text,
-      );
-    }
-    process.stdout.write('\n');
-    this.showPrompt = true;
-    return true;
-  }
-
-  warn(msg: string) {
-    if (areTestLogsSuppressed()) return true;
-
-    msg = this.stripLegacyPrefix(
-      msg,
-      'warn',
-    );
-    const lines = msg.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const formatted =
-        this.formatLine(
-          lines[i],
-          {
-            forceWarnPrefix:
-              i === 0,
-          },
-        );
-
-      this.writeLine(
-        formatted.text,
-        formatted.color,
-      );
-      if (i < lines.length - 1) process.stdout.write('\n');
-      this.addLine(
-        formatted.text,
-      );
-    }
-    process.stdout.write('\n');
-    this.showPrompt = true;
-    return true;
-  }
-
-  clearLine() {
-    if (!supportsColor()) return;
-    process.stdout.write('\r\x1b[K');
-  }
-
-  // ─── Utilities ───────────────────────────────────────────
-
-  normalize(text: string): string {
-    return text
-      .replace(/\s*\r?\n\s*/g, '')
-      .replace(/[\uFEFF\xA0\t]/g, ' ')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-  }
-
-  visibleWidth(str: string): number {
-    const ANSI_FULL_REGEX =
-      /\x1B(?:[@-Z\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
-    return [...str.replace(ANSI_FULL_REGEX, '')].length;
-  }
-
-  // ─── Internal helpers ────────────────────────────────────
-
-  private writeLine(line: string, color = '') {
-    if (supportsColor()) {
-      this.clearLine();
-      process.stdout.write(color + line + colors.reset);
-    } else {
-      process.stdout.write(line);
-    }
-  }
-
-  private addLine(text: string, opts: Partial<LoggedLine> = {}) {
-    this.previousLines.push({
-      text,
-      isRaw: opts.isRaw,
-      hasPrompt: opts.hasPrompt ?? this.showPrompt,
-    });
-    if (this.previousLines.length > 200) {
-      this.previousLines.splice(0, 100);
-    }
-  }
-
-  private formatLine(
-    line: string,
-    options: {
-      forceErrorPrefix?: boolean;
-      forceWarnPrefix?: boolean;
-      forceColor?: string;
-    } = {},
-  ): {
-    text: string;
-    color: string;
-    hasOwnPrompt: boolean;
-  } {
-    const errorToken =
-      '%error% ';
-    const warnToken =
-      '%warn% ';
-    const shouldPrefixError =
-      options.forceErrorPrefix &&
-      !line.startsWith(errorToken);
-    const shouldPrefixWarn =
-      options.forceWarnPrefix &&
-      !line.startsWith(warnToken);
-    const sourceLine =
-      shouldPrefixError
-        ? errorToken + line
-        : shouldPrefixWarn
-          ? warnToken + line
-          : line;
-
-    if (
-      sourceLine.startsWith(
-        errorToken,
-      )
-    ) {
-      return {
-        text:
-          this.errorPrefix() +
-          replacePlaceholders(
-            sourceLine.slice(
-              errorToken.length,
-            ),
-          ),
-        color:
-          options.forceColor ??
-          (supportsColor()
-            ? colors.red
-            : ''),
-        hasOwnPrompt: true,
-      };
-    }
-
-    if (
-      sourceLine.startsWith(
-        warnToken,
-      )
-    ) {
-      return {
-        text:
-          this.warnPrefix() +
-          replacePlaceholders(
-            sourceLine.slice(
-              warnToken.length,
-            ),
-          ),
-        color: '',
-        hasOwnPrompt: true,
-      };
-    }
-
-    return {
-      text: replacePlaceholders(
-        sourceLine,
-      ),
-      color:
-        options.forceColor ?? '',
-      hasOwnPrompt: false,
-    };
-  }
-
-  private stripLegacyPrefix(
-    message: string,
-    type: 'error' | 'warn',
-  ): string {
-    const marker =
-      type === 'error'
-        ? '%error%'
-        : '%warn%';
-
-    return message
-      .split('\n')
-      .map((line) =>
-        line.replace(
-          new RegExp(
-            `^(?:${marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+|\\[(?:ERROR|WARN|INFO|BROWSER|FILE|TREE|STOP|TIP|START|WAIT|READY|ADD|REM|DIR|BUILD|RETRY|CLEAN|LOCK|HMR|WS|CONN|OK|WATCH)\\]|[^\\p{L}\\p{N}\\s"'\\\`([{<]+)\\s+`,
-            'u',
-          ),
-          '',
-        ),
-      )
-      .join('\n');
-  }
-
-  private errorPrefix(): string {
-    return supportsColor()
-      ? `${colors.bold}${colors.black}${colors.bgRed} ERROR ${colors.red}`
-      : '[ERROR] ';
-  }
-
-  private warnPrefix(): string {
-    return supportsColor()
-      ? `${colors.bold}${colors.black}${colors.bgYellow} WARN ${colors.reset}`
-      : 'WARN ';
-  }
-
-}
-
-// Export a singleton instance for project-wide use
-export const logger = new Logger();
-````
-
-## File: src/ts-jasmine-cli.ts
-````typescript
-import fs from 'fs';
-import path from 'path';
-import { createRequire } from 'module';
-import { pathToFileURL } from 'url';
-import util from 'util';
-import { registerTestifyRelativeResolver } from './node-relative-resolver';
-import { logger } from './logger';
-import { JasmineCLIMessages } from './log-messages';
-import { AwaitableJasmineConsoleReporter } from './jasmine-console-reporter';
-import { initializeNodeJasmineEnvironment } from './jasmine-node-runtime';
-import JSONCleaner from './json-cleaner';
-import { norm } from './utils';
-import { EXIT_CODES } from './exit-codes';
-import { ProjectSetup } from './project-setup';
-
-const packageRequire = createRequire(import.meta.url);
-
-// Keep runtime imports opaque to Vite. These paths are selected at runtime and
-// must be handled by Node/tsx rather than Vite's browser preload transform.
-const nativeImport = new Function(
-  'specifier',
-  'return import(specifier);',
-) as (specifier: string) => Promise<any>;
-
-interface RunnerArgs {
-  spec: string;
-  random: boolean;
-  stopOnFail: boolean;
-  seed?: number;
-  help: boolean;
-  initLaunchConfig: boolean;
-}
-
-const vscodeLaunchConfigName = 'Debug current spec (jasmine)';
-
-function getRuntimeEnv(): NodeJS.ProcessEnv {
-  const runtimeProcess = (globalThis as any).process as NodeJS.Process | undefined;
-  return runtimeProcess?.env ?? {};
-}
-
-function isRunningInVsCode(): boolean {
-  const env = getRuntimeEnv();
-  return (
-    env.TERM_PROGRAM === 'vscode' ||
-    typeof env.VSCODE_PID === 'string' ||
-    typeof env.VSCODE_CWD === 'string' ||
-    typeof env.VSCODE_INSPECTOR_OPTIONS === 'string'
-  );
-}
-
-function printHelp(): void {
-  logger.println('jasmine: run a single Jasmine spec in Node');
-  logger.println('');
-  logger.println('Usage:');
-  logger.println('  npx jasmine --spec <path-to-spec>');
-  logger.println('  npx jasmine init');
-  logger.println('');
-  logger.println('Commands:');
-  logger.println('  init                Configure Jasmine types and create/update .vscode/launch.json');
-  logger.println('');
-  logger.println('Options:');
-  logger.println('  --spec <path>        Path to a single spec file');
-  logger.println('  --random             Randomize spec order');
-  logger.println('  --seed <number>      Seed used for randomization');
-  logger.println('  --stop-on-fail       Stop on first expectation failure');
-  logger.println('  --help               Show this help');
-  logger.println('');
-  logger.println('TypeScript specs are loaded through tsx using the nearest tsconfig.json.');
-  logger.println('');
-  logger.println('VS Code debug config name:');
-  logger.println(`  ${vscodeLaunchConfigName}`);
-}
-
-function parseArgs(argv: string[]): RunnerArgs {
-  const args = argv.slice(2);
-  const get = (flag: string) => {
-    const index = args.indexOf(flag);
-    if (index === -1) return undefined;
-    return args[index + 1];
-  };
-
-  const help = args.includes('--help') || args.includes('-h');
-  const command = args[0];
-  const initLaunchConfig = args.includes('--init-launch-config') || command === 'init';
-  const specRaw = get('--spec');
-
-  if (help) {
-    return {
-      spec: specRaw ? norm(path.resolve(process.cwd(), specRaw)) : '',
-      random: args.includes('--random'),
-      stopOnFail: args.includes('--stop-on-fail'),
-      seed: get('--seed') ? Number(get('--seed')) : undefined,
-      help: true,
-      initLaunchConfig,
-    };
-  }
-
-  if (command && !command.startsWith('-') && command !== 'init') {
-    logger.error(JasmineCLIMessages.unknownCommand(command));
-    logger.println('');
-    printHelp();
-    process.exit(EXIT_CODES.INVALID_USAGE);
-  }
-
-  if (initLaunchConfig) {
-    return {
-      spec: specRaw ? norm(path.resolve(process.cwd(), specRaw)) : '',
-      random: args.includes('--random'),
-      stopOnFail: args.includes('--stop-on-fail'),
-      seed: get('--seed') ? Number(get('--seed')) : undefined,
-      help: false,
-      initLaunchConfig: true,
-    };
-  }
-
-  if (!specRaw) {
-    logger.error(JasmineCLIMessages.missingSpecArg());
-    logger.println('');
-    printHelp();
-    process.exit(EXIT_CODES.INVALID_USAGE);
-  }
-
-  const spec = norm(path.resolve(process.cwd(), specRaw));
-  if (!fs.existsSync(spec)) {
-    logger.error(JasmineCLIMessages.specFileNotFound(spec));
-    process.exit(EXIT_CODES.CONFIG_ERROR);
-  }
-
-  const seedRaw = get('--seed');
-  if (seedRaw !== undefined && !Number.isFinite(Number(seedRaw))) {
-    logger.error(JasmineCLIMessages.invalidSeedValue(seedRaw!));
-    process.exit(EXIT_CODES.INVALID_USAGE);
-  }
-
-  return {
-    spec,
-    random: args.includes('--random'),
-    stopOnFail: args.includes('--stop-on-fail'),
-    seed: seedRaw ? Number(seedRaw) : undefined,
-    help: false,
-    initLaunchConfig: false,
-  };
-}
-
-function safeStringify(value: unknown): string {
-  if (value instanceof Error) {
-    return value.stack ?? safeStringify(value.message);
-  }
-
-  try {
-    const str = String(value);
-    if (str !== '[object Object]') {
-      return str;
-    }
-  } catch {
-    // fall through to inspect/JSON fallback
-  }
-
-  if (value && typeof value === 'object') {
-    const constructor = (value as object).constructor?.name ?? 'Object';
-    try {
-      const inspected = util.inspect(value, { depth: 5, showHidden: true });
-      return constructor === 'Object' ? inspected : `${constructor} ${inspected}`;
-    } catch {
-      try {
-        return JSON.stringify(value, null, 2);
-      } catch {
-        // fall through
-      }
-    }
-  }
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '[object Object]';
-  }
-}
-
-
-
-function findNearestTsconfig(startDir: string): string | null {
-  let current = norm(path.resolve(startDir));
-  while (true) {
-    const candidate = norm(path.join(current, 'tsconfig.json'));
-    if (fs.existsSync(candidate)) return candidate;
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
-}
-
-function getDefaultVsCodeLaunchConfiguration(): Record<string, unknown> {
-  return {
-    type: 'node',
-    request: 'launch',
-    name: vscodeLaunchConfigName,
-    runtimeExecutable: 'node',
-    runtimeArgs: ['--enable-source-maps'],
-    program: '${workspaceFolder}/node_modules/@epikodelabs/testify/bin/jasmine',
-    args: ['--spec', '${file}'],
-    cwd: '${workspaceFolder}',
-    console: 'integratedTerminal',
-    skipFiles: ['<node_internals>/**'],
-  };
-}
-
-function initVsCodeLaunchConfig(): void {
-  const vscodeDir = norm(path.resolve(process.cwd(), '.vscode'));
-  const launchJsonPath = norm(path.join(vscodeDir, 'launch.json'));
-  const config = getDefaultVsCodeLaunchConfiguration();
-
-  fs.mkdirSync(vscodeDir, { recursive: true });
-
-  if (!fs.existsSync(launchJsonPath)) {
-    const launchJson = { version: '0.2.0', configurations: [config] };
-    fs.writeFileSync(launchJsonPath, `${JSON.stringify(launchJson, null, 2)}\n`);
-    logger.println(JasmineCLIMessages.createdVsCodeLaunchConfig(launchJsonPath));
-    logger.println(JasmineCLIMessages.addedVsCodeConfiguration(vscodeLaunchConfigName));
-    return;
-  }
-
-  const raw = fs.readFileSync(launchJsonPath, 'utf-8');
-  let parsed: any;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    try {
-      parsed = new JSONCleaner().parse(raw);
-    } catch (error) {
-      logger.error(JasmineCLIMessages.failedToParseVsCodeConfig(launchJsonPath));
-      logger.error(String(error));
-      logger.println('');
-      logger.println(JasmineCLIMessages.addConfigManually());
-      logger.println(`${JSON.stringify(getDefaultVsCodeLaunchConfiguration(), null, 2)}`);
-      process.exit(EXIT_CODES.CONFIG_ERROR);
-    }
-  }
-
-  if (!parsed || typeof parsed !== 'object') parsed = {};
-  if (!Array.isArray(parsed.configurations)) parsed.configurations = [];
-
-  const programSuffix = '/bin/jasmine';
-  const existingIndex = parsed.configurations.findIndex((c: any) => {
-    if (!c || typeof c !== 'object') return false;
-    if (c.name === vscodeLaunchConfigName) return true;
-
-    const program = typeof c.program === 'string' ? c.program.replace(/\\/g, '/') : '';
-    const args = Array.isArray(c.args) ? c.args : [];
-    return program.endsWith(programSuffix) && args.includes('--spec');
-  });
-
-  parsed.version ??= '0.2.0';
-
-  if (existingIndex !== -1) {
-    parsed.configurations[existingIndex] = config;
-    fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
-    logger.println(JasmineCLIMessages.updatedVsCodeLaunchConfig(launchJsonPath));
-    return;
-  }
-
-  parsed.configurations.unshift(config);
-  fs.writeFileSync(launchJsonPath, `${JSON.stringify(parsed, null, 2)}\n`);
-  logger.println(JasmineCLIMessages.updatedVsCodeLaunchConfig(launchJsonPath));
-  logger.println(JasmineCLIMessages.addedVsCodeConfiguration(vscodeLaunchConfigName));
-}
-
-async function loadJasmine() {
-  const jasmineCorePath = norm(packageRequire.resolve('jasmine-core/lib/jasmine-core/jasmine.js'));
-  const jasmineCore = await nativeImport(pathToFileURL(jasmineCorePath).href);
-  const jasmineRequire = jasmineCore.default;
-  return initializeNodeJasmineEnvironment(jasmineRequire, { resetReporters: false });
-}
-
-async function registerSpecRuntime(
-  specPath: string,
-): Promise<() => Promise<void>> {
-  const tsconfig =
-    findNearestTsconfig(
-      path.dirname(
-        specPath,
-      ),
-    );
-
-  type TsxRegister = (
-    options: {
-      tsconfig: string | false;
-    },
-  ) =>
-    | (() => void)
-    | (() => Promise<void>);
-
-  const tsxApi =
-    await nativeImport(
-      'tsx/esm/api',
-    ) as {
-      register: TsxRegister;
-    };
-
-  // Register tsx first. It installs its own CommonJS resolver; Testify then
-  // wraps that resolver to add bundler-style relative path compatibility.
-  const unregisterTsx =
-    tsxApi.register({
-      tsconfig:
-        tsconfig ?? false,
-    });
-
-  const unregisterRelativeResolver =
-    registerTestifyRelativeResolver();
-
-  return async () => {
-    try {
-      unregisterRelativeResolver();
-    } finally {
-      await unregisterTsx();
-    }
-  };
-}
-
-async function loadSpec(specPath: string): Promise<void> {
-  await nativeImport(pathToFileURL(specPath).href);
-}
-
-async function main() {
-  const args = parseArgs(process.argv);
-  if (args.help) {
-    printHelp();
-    process.exit(EXIT_CODES.SUCCESS);
-  }
-
-  if (args.initLaunchConfig) {
-    ProjectSetup.configure(process.cwd());
-    initVsCodeLaunchConfig();
-
-    if (!isRunningInVsCode()) {
-      logger.println('VS Code was not detected, but .vscode/launch.json was configured successfully.');
-    }
-
-    process.exit(EXIT_CODES.SUCCESS);
-  }
-
-
-  const { jasmineEnv } = await loadJasmine();
-
-  process.on('unhandledRejection', (error) => {
-    logger.error(JasmineCLIMessages.unhandledRejection(safeStringify(error)));
-    process.exit(EXIT_CODES.INTERNAL_ERROR);
-  });
-  process.on('uncaughtException', (error) => {
-    logger.error(JasmineCLIMessages.uncaughtException(safeStringify(error)));
-    process.exit(EXIT_CODES.INTERNAL_ERROR);
-  });
-
-  jasmineEnv.configure({
-    random: args.random,
-    stopSpecOnExpectationFailure: args.stopOnFail,
-    seed: args.seed,
-  });
-
-  const reporter = new AwaitableJasmineConsoleReporter();
-  jasmineEnv.addReporter(reporter);
-
-  const unregisterRuntime =
-    await registerSpecRuntime(
-      args.spec,
-    );
-  let result: Awaited<typeof reporter.complete> | undefined;
-
-  try {
-    await loadSpec(args.spec);
-    await jasmineEnv.execute();
-    result = await reporter.complete;
-  } finally {
-    await unregisterRuntime();
-  }
-
-  let exitCode: number;
-  if (result?.overallStatus === 'failed') {
-    exitCode = EXIT_CODES.TEST_FAILURES;
-  } else if (result?.overallStatus === 'incomplete') {
-    exitCode = EXIT_CODES.SUCCESS_WITH_PENDING;
-  } else {
-    exitCode = EXIT_CODES.SUCCESS;
-  }
-  process.exit(exitCode);
-}
-
-main().catch((error) => {
-  if (error instanceof Error) {
-    logger.error(JasmineCLIMessages.failedToRunJasmine(safeStringify(error)));
-  } else {
-    const stack = new Error().stack ?? '';
-    const value = safeStringify(error);
-    logger.error(
-      JasmineCLIMessages.failedToRunJasmine(
-        `thrown non-Error value: ${value}\n${stack}`,
-      ),
-    );
-  }
-  process.exit(EXIT_CODES.INTERNAL_ERROR);
-});
-````
-
-## File: src/runner-session.spec.ts
-````typescript
-import {
-  RunnerSession,
-} from './runner-session';
-import type {
-  TestCatalog,
-} from './test-catalog';
-
-describe('RunnerSession', () => {
-  const catalog: TestCatalog = {
-    suites: [
-      {
-        id: 'suite1',
-        description: 'Forms',
-        fullName: 'Forms',
-      },
-    ],
-    specs: [
-      {
-        id: 'spec1',
-        description: 'works',
-        fullName: 'Forms works',
-        suiteId: 'suite1',
-        file: 'forms.spec.mjs',
-      },
-    ],
-  };
-
-  it('plans and executes through one adapter', async () => {
-    let executedIds:
-      string[] = [];
-
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute(plan) {
-            executedIds =
-              plan.specIds;
-
-            return plan.specIds.length;
-          },
-        },
-      );
-
-    const result =
-      await session.runSuite(
-        'suite1',
-      );
-
-    expect(result).toBe(1);
-    expect(executedIds).toEqual([
-      'spec1',
-    ]);
-  });
-
-  it('exposes reusable plans', () => {
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-        () => ({
-          random: true,
-          seed: 42,
-        }),
-      );
-
-    const plan =
-      session.planFile(
-        'forms.spec.mjs',
-      );
-
-    expect(plan.specIds).toEqual([
-      'spec1',
-    ]);
-    expect(plan.random).toBeTrue();
-    expect(plan.seed).toBe(42);
-  });
-
-  it('exposes concise Playground discovery methods', () => {
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-      );
-
-    expect(
-      session.tests(),
-    ).toHaveSize(1);
-
-    expect(
-      session.tests('works')[0]?.id,
-    ).toBe('spec1');
-
-    expect(
-      session.suites('Forms')[0]?.id,
-    ).toBe('suite1');
-
-    expect(
-      session.files(/forms/)[0]?.file,
-    ).toBe('forms.spec.mjs');
-  });
-
-  it('reports session stats', () => {
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-      );
-
-    expect(
-      session.stats(),
-    ).toEqual({
-      specs: 1,
-      suites: 1,
-      files: 1,
-    });
-  });
-
-  it('keeps the same revision across equivalent catalog snapshots', () => {
-    let currentCatalog =
-      catalog;
-
-    const session =
-      new RunnerSession(
-        () => currentCatalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-      );
-
-    session.plan();
-
-    currentCatalog = {
-      ...catalog,
-      suites:
-        catalog.suites.map(
-          (suite) => ({
-            ...suite,
-          }),
-        ),
-      specs:
-        catalog.specs.map(
-          (spec) => ({
-            ...spec,
-          }),
-        ),
-    };
-
-    session.plan();
-
-    expect(
-      session.revision(),
-    ).toBe(1);
-
-  });
-  it('exposes explicit refresh results', () => {
-    let currentCatalog = catalog;
-
-    const session =
-      new RunnerSession(
-        () => currentCatalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-      );
-
-    expect(
-      session.refresh(),
-    ).toEqual({
-      changed: false,
-      previousRevision: 1,
-      revision: 1,
-      changes: jasmine.objectContaining({
-        version: 1,
-        changed: false,
-      }),
-    });
-
-    currentCatalog = {
-      ...catalog,
-      specs: [
-        ...catalog.specs,
-        {
-          id: 'spec2',
-          description: 'also works',
-          fullName: 'Forms also works',
-          suiteId: 'suite1',
-          file: 'forms.spec.mjs',
-        },
-      ],
-    };
-
-    const refresh =
-      session.refresh();
-
-    expect(refresh.changed).toBeTrue();
-    expect(refresh.previousRevision).toBe(1);
-    expect(refresh.revision).toBe(2);
-    expect(
-      refresh.changes.addedSpecIds,
-    ).toEqual(['spec2']);
-    expect(session.changes())
-      .toBe(refresh.changes);
-  });
-
-  it('allows per-plan options to override session defaults', () => {
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-        () => ({
-          random: false,
-          seed: 1,
-          stopOnFailure: false,
-        }),
-      );
-
-    const plan =
-      session.planSuite(
-        'suite1',
-        {
-          random: true,
-          seed: 42,
-        },
-      );
-
-    expect(plan.random).toBeTrue();
-    expect(plan.seed).toBe(42);
-    expect(plan.stopOnFailure).toBeFalse();
-  });
-
-  it('keeps plans executable across unrelated catalog additions', async () => {
-    let currentCatalog = catalog;
-    let executions = 0;
-
-    const session =
-      new RunnerSession(
-        () => currentCatalog,
-        {
-          async execute(plan) {
-            executions++;
-            return plan.specIds;
-          },
-        },
-      );
-
-    const plan =
-      session.planSpec('spec1');
-
-    currentCatalog = {
-      ...catalog,
-      specs: [
-        ...catalog.specs,
-        {
-          id: 'spec2',
-          description: 'new',
-          fullName: 'Forms new',
-          suiteId: 'suite1',
-          file: 'forms.spec.mjs',
-        },
-      ],
-    };
-
-    const result =
-      await session.execute(plan);
-
-    expect(result).toEqual(['spec1']);
-    expect(executions).toBe(1);
-  });
-
-  it('rejects a stale plan when selected specs disappear', async () => {
-    let currentCatalog = catalog;
-
-    const session =
-      new RunnerSession(
-        () => currentCatalog,
-        {
-          async execute() {
-            return undefined;
-          },
-        },
-      );
-
-    const plan =
-      session.planSpec('spec1');
-
-    currentCatalog = {
-      ...catalog,
-      specs: [],
-    };
-
-    await expectAsync(
-      session.execute(plan),
-    ).toBeRejectedWithError(
-      /Execution plan is stale; missing spec ids: spec1/,
-    );
-  });
-
-  it('closes once and rejects later operations', async () => {
-    let closes = 0;
-
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          async execute() {
-            return undefined;
-          },
-          async close() {
-            closes++;
-          },
-        },
-      );
-
-    expect(session.state).toBe('ready');
-
-    const first = session.close();
-    const second = session.close();
-
-    expect(session.state).toBe('closing');
-
-    await Promise.all([
-      first,
-      second,
-    ]);
-
-    expect(closes).toBe(1);
-    expect(session.state).toBe('closed');
-
-    await session.close();
-    expect(closes).toBe(1);
-
-    expect(() => session.plan())
-      .toThrowError(
-        /Testify session is closed/,
-      );
-  });
-
-
-  it('marks execution results with the plan catalog revision without changing serialization', async () => {
-    const result: any = {
-      specResults: [],
-      total: 0,
-      passed: 0,
-      failed: 0,
-      pending: 0,
-    };
-
-    const session =
-      new RunnerSession(
-        () => catalog,
-        {
-          execute: async () => result,
-        },
-      );
-
-    const plan = session.plan();
-    const executed =
-      await session.execute(plan);
-
-    expect(
-      (executed as any).__testifyCatalogVersion,
-    ).toBe(plan.catalogVersion);
-    expect(
-      JSON.stringify(executed),
-    ).not.toContain(
-      '__testifyCatalogVersion',
-    );
-  });
-
-});
-````
-
-## File: src/cli-handler.ts
-````typescript
-import * as fs from "fs";
-import * as path from "path";
-import { parseArgs } from "node:util";
-import { ConfigManager } from "./config-manager";
-import { logger } from './logger';
-import { PackageResolver } from "./package-resolver";
-import { ProcessLock } from "./process-lock";
-import { ViteJasmineConfig } from "./vite-jasmine-config";
-import { ViteJasmineRunner } from "./vite-jasmine-runner";
-import { EXIT_CODES, ExitCodeError, getExitCode } from "./exit-codes";
-import { CLIMessages } from "./log-messages";
-import { setAnsiMode } from "./symbols";
-import { ProjectSetup } from "./project-setup";
-
-export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineRunner {
-  return new ViteJasmineRunner(config);
-}
-
-// Keep runtime construction replaceable for tests. ESM namespace exports are
-// read-only, so Jasmine cannot safely spy on `createViteJasmineRunner` itself.
-export const cliDependencies = {
-  createViteJasmineRunner,
-};
-
-// ─── argv parsing ───────────────────────────────────────────────────────────
-// Declarative flag definitions consumed by node:util's built-in parseArgs.
-// Adding a new boolean/string flag means adding one entry here instead of
-// hand-scanning `process.argv` with indexOf/includes.
-
-const CLI_OPTIONS = {
-  help: { type: 'boolean', short: 'h' },
-  version: { type: 'boolean', short: 'v' },
-  watch: { type: 'boolean', short: 'w' },
-  headless: { type: 'boolean' },
-  coverage: { type: 'boolean', short: 'c' },
-  exclusive: { type: 'boolean' },
-  browser: { type: 'string', short: 'b' },
-  ansi: { type: 'boolean' },
-  seed: { type: 'string' },
-  project: { type: 'string', short: 'p' },
-  port: { type: 'string' },
-  silent: { type: 'boolean' },
-  quiet: { type: 'boolean', short: 'q' },
-  preserve: { type: 'boolean' },
-  config: { type: 'string' },
-  bail: { type: 'boolean' },
-  random: { type: 'boolean' },
-  'no-random': { type: 'boolean' },
-  timeout: { type: 'string' },
-  file: { type: 'string', short: 'f' },
-  suite: { type: 'string', short: 's' },
-} as const;
-
-interface ParsedValues {
-  help?: boolean;
-  version?: boolean;
-  watch?: boolean;
-  headless?: boolean;
-  coverage?: boolean;
-  exclusive?: boolean;
-  browser?: string | boolean;
-  ansi?: boolean;
-  seed?: string | boolean;
-  project?: string | boolean;
-  port?: string | boolean;
-  silent?: boolean;
-  quiet?: boolean;
-  preserve?: boolean;
-  config?: string | boolean;
-  bail?: boolean;
-  random?: boolean;
-  'no-random'?: boolean;
-  timeout?: string | boolean;
-  file?: string | boolean;
-  suite?: string | boolean;
-}
-
-interface ParsedCli {
-  helpRequested: boolean;
-  versionRequested: boolean;
-  initOnly: boolean;
-  watch: boolean;
-  headless: boolean;
-  coverage: boolean;
-  exclusive: boolean;
-  ansiFlag: boolean;
-  silentLogs: boolean;
-  preserveOutputsFlag: boolean;
-  hasBrowserArg: boolean;
-  hasProjectArg: boolean;
-  browserName: string;
-  seedValue?: number;
-  projectValue?: string;
-  portValue?: number;
-  configFileName: string;
-  bail: boolean;
-  randomValue?: boolean;
-  timeoutValue?: number;
-  fileValue?: string;
-  suiteValue?: string;
-}
-
-/**
- * Reads a flag that requires a string value (e.g. `--browser chrome`).
- * Returns `undefined` when the flag was not passed at all, and throws an
- * ExitCodeError (with the supplied message) when the flag was passed but no
- * usable value followed it -- either because it was the last token, or
- * because the next token was itself another flag.
- */
-function requireStringValue(value: string | boolean | undefined, missingMessage: () => string): string | undefined {
-  if (value === undefined) return undefined;
-  const normalized = typeof value === 'string' ? value.trim() : '';
-  if (normalized.length === 0 || normalized.startsWith('-')) {
-    logger.error(missingMessage());
-    throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, missingMessage());
-  }
-  return normalized;
-}
-
-export class CLIHandler {
-  private static runner: ViteJasmineRunner | null = null;
-
-  static async cleanup(): Promise<void> {
-    if (this.runner) {
-      await this.runner.cleanup();
-      this.runner = null;
-    }
-  }
-
-  private static parseCliArgs(argv: string[]): ParsedCli {
-    let parsedArgs;
-    try {
-      parsedArgs = parseArgs({
-      args: argv,
-      strict: true,
-      allowPositionals: true,
-      options: CLI_OPTIONS as any,
-      });
-    } catch (error) {
-      logger.error(CLIMessages.invalidArguments(error));
-      throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid command line arguments');
-    }
-
-    const { values, positionals } = parsedArgs;
-    const v = values as ParsedValues;
-
-    const hasBrowserArg = v.browser !== undefined;
-    const browserRaw = requireStringValue(v.browser, CLIMessages.browserArgMissing);
-    const browserName = browserRaw ?? 'chrome';
-
-    const hasProjectArg = v.project !== undefined;
-    const projectValue = requireStringValue(v.project, CLIMessages.projectArgMissing);
-
-    const configFileName = requireStringValue(v.config, CLIMessages.configArgMissing) ?? 'testify.json';
-    const fileValue = requireStringValue(v.file, CLIMessages.fileArgMissing);
-    const suiteValue = requireStringValue(v.suite, CLIMessages.suiteArgMissing);
-
-    const unknownPositionals = positionals.filter((value) => value !== 'init');
-    if (unknownPositionals.length > 0 || positionals.filter((value) => value === 'init').length > 1) {
-      logger.error(CLIMessages.unknownCommand(unknownPositionals[0] ?? 'init'));
-      throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Unknown command');
-    }
-
-    const seedRaw = requireStringValue(v.seed, CLIMessages.invalidSeed);
-    let seedValue: number | undefined;
-    if (seedRaw !== undefined) {
-      const parsed = Number(seedRaw);
-      if (!Number.isFinite(parsed)) {
-        logger.error(CLIMessages.invalidSeed());
-        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid seed value');
-      }
-      seedValue = parsed;
-    }
-
-    const portRaw = requireStringValue(v.port, CLIMessages.portArgMissing);
-    let portValue: number | undefined;
-    if (portRaw !== undefined) {
-      const parsed = Number(portRaw);
-      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535 || !Number.isInteger(parsed)) {
-        logger.error(CLIMessages.invalidPort());
-        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid port value');
-      }
-      portValue = parsed;
-    }
-
-    const timeoutRaw = requireStringValue(v.timeout, CLIMessages.timeoutArgMissing);
-    let timeoutValue: number | undefined;
-    if (timeoutRaw !== undefined) {
-      const parsed = Number(timeoutRaw);
-      if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
-        logger.error(CLIMessages.invalidTimeout());
-        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid timeout value');
-      }
-      timeoutValue = parsed;
-    }
-
-    const randomValue = v['no-random'] === true ? false : v.random === true ? true : undefined;
-
-    return {
-      helpRequested: v.help === true,
-      versionRequested: v.version === true,
-      initOnly: positionals.includes('init'),
-      watch: v.watch === true,
-      headless: v.headless === true,
-      coverage: v.coverage === true,
-      exclusive: v.exclusive === true,
-      ansiFlag: v.ansi === true,
-      silentLogs: v.silent === true || v.quiet === true,
-      preserveOutputsFlag: v.preserve === true,
-      hasBrowserArg,
-      hasProjectArg,
-      browserName,
-      seedValue,
-      projectValue,
-      portValue,
-      configFileName,
-      bail: v.bail === true,
-      randomValue,
-      timeoutValue,
-      fileValue,
-      suiteValue,
-    };
-  }
-
-  private static printVersion(): void {
-    try {
-      const pkgUrl = new URL('../package.json', import.meta.url);
-      const pkg = JSON.parse(fs.readFileSync(pkgUrl, 'utf8'));
-      logger.printlnRaw(`testify ${pkg.version}`);
-    } catch {
-      logger.printlnRaw('testify (version unknown)');
-    }
-  }
-
-  static async run(): Promise<number> {
-    let shuttingDown = false;
-    let sigintCount = 0;
-    process.on('SIGINT', async () => {
-      sigintCount += 1;
-      if (sigintCount > 1) {
-        // Second Ctrl+C: cleanup is hung or too slow, force exit now.
-        process.exit(EXIT_CODES.SIGINT);
-        return;
-      }
-      if (shuttingDown) return;
-      shuttingDown = true;
-
-      const exitCode = this.runner?.abort('SIGINT') ?? EXIT_CODES.SIGINT;
-      try {
-        await Promise.race([
-          this.cleanup(),
-          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('cleanup timeout')), 5000))
-        ]);
-      } catch {
-        // Cleanup timed out or failed; force exit anyway.
-      }
-      process.exit(exitCode);
-    });
-
-    const rawArgs = process.argv.slice(2);
-
-    let parsed: ParsedCli;
-    try {
-      parsed = this.parseCliArgs(rawArgs);
-    } catch (error) {
-      return getExitCode(error);
-    }
-
-    if (parsed.helpRequested) {
-      this.printHelp();
-      return EXIT_CODES.SUCCESS;
-    }
-
-    if (parsed.versionRequested) {
-      this.printVersion();
-      return EXIT_CODES.SUCCESS;
-    }
-
-    const {
-      initOnly,
-      watch,
-      headless,
-      coverage,
-      exclusive,
-      browserName,
-      ansiFlag,
-      seedValue,
-      projectValue: initialProjectValue,
-      portValue,
-      configFileName,
-      bail,
-      randomValue,
-      timeoutValue,
-      fileValue,
-      suiteValue,
-    } = parsed;
-    let projectValue = initialProjectValue;
-
-    const preserveOutputsArg = parsed.preserveOutputsFlag ? true : undefined;
-
-    if (initOnly) {
-      try {
-        ConfigManager.initViteJasmineConfig(configFileName);
-        ProjectSetup.configure(process.cwd());
-        return EXIT_CODES.SUCCESS;
-      } catch (error) {
-        logger.error(CLIMessages.failedToInitializeProject(error));
-        return getExitCode(error);
-      }
-    }
-
-    if (watch) {
-      const invalidFlags: string[] = [];
-      if (headless) invalidFlags.push('--headless');
-      if (coverage) invalidFlags.push('--coverage');
-      if (browserName === 'node') invalidFlags.push('--browser node');
-
-      if (invalidFlags.length > 0) {
-        logger.error(CLIMessages.watchIncompatibleFlags(invalidFlags));
-        return EXIT_CODES.INVALID_USAGE;
-      }
-    }
-
-    try {
-      const normalizeDirConfig = (
-        dirConfig: string | string[] | undefined,
-        fallback: string,
-      ): string[] => {
-        if (!dirConfig) return [fallback];
-        if (Array.isArray(dirConfig)) {
-          return dirConfig.length > 0 ? dirConfig : [fallback];
-        }
-        return [dirConfig];
-      };
-
-      let config = ConfigManager.loadViteJasmineBrowserConfig(configFileName);
-
-      if (projectValue) {
-        const resolver = new PackageResolver();
-        const resolved = await resolver.resolve(projectValue, config.tsconfig);
-        if (resolved) {
-          projectValue = resolved;
-          if (!config.tsconfig) {
-            const projectTsconfig = this.findProjectTsconfig(projectValue);
-            if (projectTsconfig) {
-              config = {
-                ...config,
-                tsconfig: projectTsconfig,
-              };
-            }
-          }
-        } else {
-          logger.error(CLIMessages.couldNotResolveProject(projectValue));
-          return EXIT_CODES.INVALID_USAGE;
-        }
-      }
-
-      if (ansiFlag) {
-        setAnsiMode();
-      }
-
-      config = {
-        ...config,
-        headless:
-          headless ||
-          browserName === 'node'
-            ? true
-            : watch
-              ? false
-              : (config.headless || false),
-        coverage: coverage ? true : (config.coverage || false),
-        browser: parsed.hasBrowserArg ? browserName : (config.browser || 'chrome'),
-        // CLI contract: plain `testify` always performs a one-shot run.
-        // Watch/HMR is opt-in through `--watch`; a stale `watch` value in
-        // testify.json must not change the default CLI behavior.
-        watch,
-        suppressConsoleLogs: parsed.silentLogs ? true : config.suppressConsoleLogs,
-        srcDirs: normalizeDirConfig(config.srcDirs, './src'),
-        testDirs: normalizeDirConfig(config.testDirs, './tests'),
-        preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,
-        project: projectValue ?? config.project,
-        port: portValue ?? config.port,
-        ansi: ansiFlag ? true : config.ansi,
-        fileFilter: fileValue ?? config.fileFilter,
-        selector:
-          suiteValue
-            ? { suite: suiteValue }
-            : config.selector,
-      };
-
-      if (config.ansi) {
-        setAnsiMode();
-      }
-
-      if (seedValue !== undefined || randomValue !== undefined || bail || timeoutValue !== undefined) {
-        const env = config.jasmineConfig?.env ?? {};
-        config.jasmineConfig = {
-          ...config.jasmineConfig,
-          env: {
-            ...env,
-            ...(seedValue !== undefined ? { seed: seedValue } : {}),
-            ...(randomValue !== undefined ? { random: randomValue } : {}),
-            ...(bail ? { stopSpecOnExpectationFailure: true } : {}),
-            ...(timeoutValue !== undefined ? { timeout: timeoutValue } : {}),
-          },
-        };
-      }
-
-      if (config.preserveOutputs) {
-        logger.println(CLIMessages.preserveOutputsEnabled());
-      }
-
-      const resolvedOutDir = path.resolve(config.outDir ?? path.join(process.cwd(), 'dist/.vite-jasmine-build/'));
-      const lock = new ProcessLock(config.project, config.port ?? 8888, resolvedOutDir);
-      await lock.acquire(exclusive);
-      process.on('exit', () => lock.releaseSync());
-
-      const runner = cliDependencies.createViteJasmineRunner({
-        ...config,
-        lockFilePath: lock.getPidFilePath(),
-      });
-      this.runner = runner;
-
-      const exitCode = watch ? await runner.watch() : await runner.start();
-
-      lock.releaseSync();
-      return exitCode;
-    } catch (error) {
-      logger.error(CLIMessages.failedToStartTestRunner(error));
-      return getExitCode(error);
-    }
-  }
-
-  private static printHelp(): void {
-    for (const line of CLIMessages.helpLines()) {
-      logger.println(line);
-    }
-  }
-
-  private static findProjectTsconfig(projectDir: string): string | undefined {
-    const candidates = [
-      'tsconfig.spec.json',
-      'tsconfig.test.json',
-      'tsconfig.jasmine.json',
-      'tsconfig.json',
-      'tsconfig.lib.json',
-      'tsconfig.app.json',
-    ];
-
-    for (const candidate of candidates) {
-      const candidatePath = path.join(projectDir, candidate);
-      if (fs.existsSync(candidatePath)) {
-        return candidatePath;
-      }
-    }
-
-    return undefined;
   }
 }
 ````
@@ -24141,6 +23918,866 @@ export class ConsoleReporter {
 }
 ````
 
+## File: src/cli-handler.ts
+````typescript
+import * as fs from "fs";
+import * as path from "path";
+import { parseArgs } from "node:util";
+import { ConfigManager } from "./config-manager";
+import { logger } from './logger';
+import { PackageResolver } from "./package-resolver";
+import { ProcessLock } from "./process-lock";
+import { ViteJasmineConfig } from "./vite-jasmine-config";
+import { ViteJasmineRunner } from "./vite-jasmine-runner";
+import { EXIT_CODES, ExitCodeError, getExitCode } from "./exit-codes";
+import { CLIMessages } from "./log-messages";
+import { setAnsiMode } from "./symbols";
+import { ProjectSetup } from "./project-setup";
+
+export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineRunner {
+  return new ViteJasmineRunner(config);
+}
+
+// Keep runtime construction replaceable for tests. ESM namespace exports are
+// read-only, so Jasmine cannot safely spy on `createViteJasmineRunner` itself.
+export const cliDependencies = {
+  createViteJasmineRunner,
+};
+
+// ─── argv parsing ───────────────────────────────────────────────────────────
+// Declarative flag definitions consumed by node:util's built-in parseArgs.
+// Adding a new boolean/string flag means adding one entry here instead of
+// hand-scanning `process.argv` with indexOf/includes.
+
+const CLI_OPTIONS = {
+  help: { type: 'boolean', short: 'h' },
+  version: { type: 'boolean', short: 'v' },
+  watch: { type: 'boolean', short: 'w' },
+  headless: { type: 'boolean' },
+  coverage: { type: 'boolean', short: 'c' },
+  exclusive: { type: 'boolean' },
+  browser: { type: 'string', short: 'b' },
+  ansi: { type: 'boolean' },
+  seed: { type: 'string' },
+  project: { type: 'string', short: 'p' },
+  port: { type: 'string' },
+  silent: { type: 'boolean' },
+  quiet: { type: 'boolean', short: 'q' },
+  preserve: { type: 'boolean' },
+  config: { type: 'string' },
+  bail: { type: 'boolean' },
+  random: { type: 'boolean' },
+  'no-random': { type: 'boolean' },
+  timeout: { type: 'string' },
+  file: { type: 'string', short: 'f' },
+  suite: { type: 'string', short: 's' },
+} as const;
+
+interface ParsedValues {
+  help?: boolean;
+  version?: boolean;
+  watch?: boolean;
+  headless?: boolean;
+  coverage?: boolean;
+  exclusive?: boolean;
+  browser?: string | boolean;
+  ansi?: boolean;
+  seed?: string | boolean;
+  project?: string | boolean;
+  port?: string | boolean;
+  silent?: boolean;
+  quiet?: boolean;
+  preserve?: boolean;
+  config?: string | boolean;
+  bail?: boolean;
+  random?: boolean;
+  'no-random'?: boolean;
+  timeout?: string | boolean;
+  file?: string | boolean;
+  suite?: string | boolean;
+}
+
+interface ParsedCli {
+  helpRequested: boolean;
+  versionRequested: boolean;
+  initOnly: boolean;
+  watch: boolean;
+  headless: boolean;
+  coverage: boolean;
+  exclusive: boolean;
+  ansiFlag: boolean;
+  silentLogs: boolean;
+  preserveOutputsFlag: boolean;
+  hasBrowserArg: boolean;
+  hasProjectArg: boolean;
+  browserName: string;
+  seedValue?: number;
+  projectValue?: string;
+  portValue?: number;
+  configFileName: string;
+  bail: boolean;
+  randomValue?: boolean;
+  timeoutValue?: number;
+  fileValue?: string;
+  suiteValue?: string;
+}
+
+/**
+ * Reads a flag that requires a string value (e.g. `--browser chrome`).
+ * Returns `undefined` when the flag was not passed at all, and throws an
+ * ExitCodeError (with the supplied message) when the flag was passed but no
+ * usable value followed it -- either because it was the last token, or
+ * because the next token was itself another flag.
+ */
+function requireStringValue(value: string | boolean | undefined, missingMessage: () => string): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (normalized.length === 0 || normalized.startsWith('-')) {
+    logger.error(missingMessage());
+    throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, missingMessage());
+  }
+  return normalized;
+}
+
+export class CLIHandler {
+  private static runner: ViteJasmineRunner | null = null;
+
+  static async cleanup(): Promise<void> {
+    if (this.runner) {
+      await this.runner.cleanup();
+      this.runner = null;
+    }
+  }
+
+  private static parseCliArgs(argv: string[]): ParsedCli {
+    let parsedArgs;
+    try {
+      parsedArgs = parseArgs({
+      args: argv,
+      strict: true,
+      allowPositionals: true,
+      options: CLI_OPTIONS as any,
+      });
+    } catch (error) {
+      logger.error(CLIMessages.invalidArguments(error));
+      throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid command line arguments');
+    }
+
+    const { values, positionals } = parsedArgs;
+    const v = values as ParsedValues;
+
+    const hasBrowserArg = v.browser !== undefined;
+    const browserRaw = requireStringValue(v.browser, CLIMessages.browserArgMissing);
+    const browserName = browserRaw ?? 'chrome';
+
+    const hasProjectArg = v.project !== undefined;
+    const projectValue = requireStringValue(v.project, CLIMessages.projectArgMissing);
+
+    const configFileName = requireStringValue(v.config, CLIMessages.configArgMissing) ?? 'testify.json';
+    const fileValue = requireStringValue(v.file, CLIMessages.fileArgMissing);
+    const suiteValue = requireStringValue(v.suite, CLIMessages.suiteArgMissing);
+
+    const unknownPositionals = positionals.filter((value) => value !== 'init');
+    if (unknownPositionals.length > 0 || positionals.filter((value) => value === 'init').length > 1) {
+      logger.error(CLIMessages.unknownCommand(unknownPositionals[0] ?? 'init'));
+      throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Unknown command');
+    }
+
+    const seedRaw = requireStringValue(v.seed, CLIMessages.invalidSeed);
+    let seedValue: number | undefined;
+    if (seedRaw !== undefined) {
+      const parsed = Number(seedRaw);
+      if (!Number.isFinite(parsed)) {
+        logger.error(CLIMessages.invalidSeed());
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid seed value');
+      }
+      seedValue = parsed;
+    }
+
+    const portRaw = requireStringValue(v.port, CLIMessages.portArgMissing);
+    let portValue: number | undefined;
+    if (portRaw !== undefined) {
+      const parsed = Number(portRaw);
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535 || !Number.isInteger(parsed)) {
+        logger.error(CLIMessages.invalidPort());
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid port value');
+      }
+      portValue = parsed;
+    }
+
+    const timeoutRaw = requireStringValue(v.timeout, CLIMessages.timeoutArgMissing);
+    let timeoutValue: number | undefined;
+    if (timeoutRaw !== undefined) {
+      const parsed = Number(timeoutRaw);
+      if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
+        logger.error(CLIMessages.invalidTimeout());
+        throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid timeout value');
+      }
+      timeoutValue = parsed;
+    }
+
+    const randomValue = v['no-random'] === true ? false : v.random === true ? true : undefined;
+
+    return {
+      helpRequested: v.help === true,
+      versionRequested: v.version === true,
+      initOnly: positionals.includes('init'),
+      watch: v.watch === true,
+      headless: v.headless === true,
+      coverage: v.coverage === true,
+      exclusive: v.exclusive === true,
+      ansiFlag: v.ansi === true,
+      silentLogs: v.silent === true || v.quiet === true,
+      preserveOutputsFlag: v.preserve === true,
+      hasBrowserArg,
+      hasProjectArg,
+      browserName,
+      seedValue,
+      projectValue,
+      portValue,
+      configFileName,
+      bail: v.bail === true,
+      randomValue,
+      timeoutValue,
+      fileValue,
+      suiteValue,
+    };
+  }
+
+  private static printVersion(): void {
+    try {
+      const pkgUrl = new URL('../package.json', import.meta.url);
+      const pkg = JSON.parse(fs.readFileSync(pkgUrl, 'utf8'));
+      logger.printlnRaw(`testify ${pkg.version}`);
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      logger.printlnRaw('testify (version unknown)');
+    }
+  }
+
+  static async run(): Promise<number> {
+    let shuttingDown = false;
+    let sigintCount = 0;
+    process.on('SIGINT', async () => {
+      sigintCount += 1;
+      if (sigintCount > 1) {
+        // Second Ctrl+C: cleanup is hung or too slow, force exit now.
+        process.exit(EXIT_CODES.SIGINT);
+        return;
+      }
+      if (shuttingDown) return;
+      shuttingDown = true;
+
+      const exitCode = this.runner?.abort('SIGINT') ?? EXIT_CODES.SIGINT;
+      try {
+        await Promise.race([
+          this.cleanup(),
+          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('cleanup timeout')), 5000))
+        ]);
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        // Cleanup timed out or failed; force exit anyway.
+      }
+      process.exit(exitCode);
+    });
+
+    const rawArgs = process.argv.slice(2);
+
+    let parsed: ParsedCli;
+    try {
+      parsed = this.parseCliArgs(rawArgs);
+    } catch (error) {
+      return getExitCode(error);
+    }
+
+    if (parsed.helpRequested) {
+      this.printHelp();
+      return EXIT_CODES.SUCCESS;
+    }
+
+    if (parsed.versionRequested) {
+      this.printVersion();
+      return EXIT_CODES.SUCCESS;
+    }
+
+    const {
+      initOnly,
+      watch,
+      headless,
+      coverage,
+      exclusive,
+      browserName,
+      ansiFlag,
+      seedValue,
+      projectValue: initialProjectValue,
+      portValue,
+      configFileName,
+      bail,
+      randomValue,
+      timeoutValue,
+      fileValue,
+      suiteValue,
+    } = parsed;
+    let projectValue = initialProjectValue;
+
+    const preserveOutputsArg = parsed.preserveOutputsFlag ? true : undefined;
+
+    if (initOnly) {
+      try {
+        ConfigManager.initViteJasmineConfig(configFileName);
+        ProjectSetup.configure(process.cwd());
+        return EXIT_CODES.SUCCESS;
+      } catch (error) {
+        logger.error(CLIMessages.failedToInitializeProject(error));
+        return getExitCode(error);
+      }
+    }
+
+    if (watch) {
+      const invalidFlags: string[] = [];
+      if (headless) invalidFlags.push('--headless');
+      if (coverage) invalidFlags.push('--coverage');
+      if (browserName === 'node') invalidFlags.push('--browser node');
+
+      if (invalidFlags.length > 0) {
+        logger.error(CLIMessages.watchIncompatibleFlags(invalidFlags));
+        return EXIT_CODES.INVALID_USAGE;
+      }
+    }
+
+    try {
+      const normalizeDirConfig = (
+        dirConfig: string | string[] | undefined,
+        fallback: string,
+      ): string[] => {
+        if (!dirConfig) return [fallback];
+        if (Array.isArray(dirConfig)) {
+          return dirConfig.length > 0 ? dirConfig : [fallback];
+        }
+        return [dirConfig];
+      };
+
+      let config = ConfigManager.loadViteJasmineBrowserConfig(configFileName);
+
+      if (projectValue) {
+        const resolver = new PackageResolver();
+        const resolved = await resolver.resolve(projectValue, config.tsconfig);
+        if (resolved) {
+          projectValue = resolved;
+          if (!config.tsconfig) {
+            const projectTsconfig = this.findProjectTsconfig(projectValue);
+            if (projectTsconfig) {
+              config = {
+                ...config,
+                tsconfig: projectTsconfig,
+              };
+            }
+          }
+        } else {
+          logger.error(CLIMessages.couldNotResolveProject(projectValue));
+          return EXIT_CODES.INVALID_USAGE;
+        }
+      }
+
+      if (ansiFlag) {
+        setAnsiMode();
+      }
+
+      config = {
+        ...config,
+        headless:
+          headless ||
+          browserName === 'node'
+            ? true
+            : watch
+              ? false
+              : (config.headless || false),
+        coverage: coverage ? true : (config.coverage || false),
+        browser: parsed.hasBrowserArg ? browserName : (config.browser || 'chrome'),
+        // CLI contract: plain `testify` always performs a one-shot run.
+        // Watch/HMR is opt-in through `--watch`; a stale `watch` value in
+        // testify.json must not change the default CLI behavior.
+        watch,
+        suppressConsoleLogs: parsed.silentLogs ? true : config.suppressConsoleLogs,
+        srcDirs: normalizeDirConfig(config.srcDirs, './src'),
+        testDirs: normalizeDirConfig(config.testDirs, './tests'),
+        preserveOutputs: preserveOutputsArg ?? !!config.preserveOutputs,
+        project: projectValue ?? config.project,
+        port: portValue ?? config.port,
+        ansi: ansiFlag ? true : config.ansi,
+        fileFilter: fileValue ?? config.fileFilter,
+        selector:
+          suiteValue
+            ? { suite: suiteValue }
+            : config.selector,
+      };
+
+      if (config.ansi) {
+        setAnsiMode();
+      }
+
+      if (seedValue !== undefined || randomValue !== undefined || bail || timeoutValue !== undefined) {
+        const env = config.jasmineConfig?.env ?? {};
+        config.jasmineConfig = {
+          ...config.jasmineConfig,
+          env: {
+            ...env,
+            ...(seedValue !== undefined ? { seed: seedValue } : {}),
+            ...(randomValue !== undefined ? { random: randomValue } : {}),
+            ...(bail ? { stopSpecOnExpectationFailure: true } : {}),
+            ...(timeoutValue !== undefined ? { timeout: timeoutValue } : {}),
+          },
+        };
+      }
+
+      if (config.preserveOutputs) {
+        logger.println(CLIMessages.preserveOutputsEnabled());
+      }
+
+      const resolvedOutDir = path.resolve(config.outDir ?? path.join(process.cwd(), 'dist/.vite-jasmine-build/'));
+      const lock = new ProcessLock(config.project, config.port ?? 8888, resolvedOutDir);
+      await lock.acquire(exclusive);
+      process.on('exit', () => lock.releaseSync());
+
+      const runner = cliDependencies.createViteJasmineRunner({
+        ...config,
+        lockFilePath: lock.getPidFilePath(),
+      });
+      this.runner = runner;
+
+      const exitCode = watch ? await runner.watch() : await runner.start();
+
+      lock.releaseSync();
+      return exitCode;
+    } catch (error) {
+      logger.error(CLIMessages.failedToStartTestRunner(error));
+      return getExitCode(error);
+    }
+  }
+
+  private static printHelp(): void {
+    for (const line of CLIMessages.helpLines()) {
+      logger.println(line);
+    }
+  }
+
+  private static findProjectTsconfig(projectDir: string): string | undefined {
+    const candidates = [
+      'tsconfig.spec.json',
+      'tsconfig.test.json',
+      'tsconfig.jasmine.json',
+      'tsconfig.json',
+      'tsconfig.lib.json',
+      'tsconfig.app.json',
+    ];
+
+    for (const candidate of candidates) {
+      const candidatePath = path.join(projectDir, candidate);
+      if (fs.existsSync(candidatePath)) {
+        return candidatePath;
+      }
+    }
+
+    return undefined;
+  }
+}
+````
+
+## File: src/runner-session.spec.ts
+````typescript
+import {
+  RunnerSession,
+} from './runner-session';
+import type {
+  TestCatalog,
+} from './test-catalog';
+
+describe('RunnerSession', () => {
+  const catalog: TestCatalog = {
+    suites: [
+      {
+        id: 'suite1',
+        description: 'Forms',
+        fullName: 'Forms',
+      },
+    ],
+    specs: [
+      {
+        id: 'spec1',
+        description: 'works',
+        fullName: 'Forms works',
+        suiteId: 'suite1',
+        file: 'forms.spec.mjs',
+      },
+    ],
+  };
+
+  it('plans and executes through one adapter', async () => {
+    let executedIds:
+      string[] = [];
+
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute(plan) {
+            executedIds =
+              plan.specIds;
+
+            return plan.specIds.length;
+          },
+        },
+      );
+
+    const result =
+      await session.runSuite(
+        'suite1',
+      );
+
+    expect(result).toBe(1);
+    expect(executedIds).toEqual([
+      'spec1',
+    ]);
+  });
+
+  it('exposes reusable plans', () => {
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+        () => ({
+          random: true,
+          seed: 42,
+        }),
+      );
+
+    const plan =
+      session.planFile(
+        'forms.spec.mjs',
+      );
+
+    expect(plan.specIds).toEqual([
+      'spec1',
+    ]);
+    expect(plan.random).toBeTrue();
+    expect(plan.seed).toBe(42);
+  });
+
+  it('exposes concise Playground discovery methods', () => {
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    expect(
+      session.tests(),
+    ).toHaveSize(1);
+
+    expect(
+      session.tests('works')[0]?.id,
+    ).toBe('spec1');
+
+    expect(
+      session.suites('Forms')[0]?.id,
+    ).toBe('suite1');
+
+    expect(
+      session.files(/forms/)[0]?.file,
+    ).toBe('forms.spec.mjs');
+  });
+
+  it('reports session stats', () => {
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    expect(
+      session.stats(),
+    ).toEqual({
+      specs: 1,
+      suites: 1,
+      files: 1,
+    });
+  });
+
+  it('keeps the same revision across equivalent catalog snapshots', () => {
+    let currentCatalog =
+      catalog;
+
+    const session =
+      new RunnerSession(
+        () => currentCatalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    session.plan();
+
+    currentCatalog = {
+      ...catalog,
+      suites:
+        catalog.suites.map(
+          (suite) => ({
+            ...suite,
+          }),
+        ),
+      specs:
+        catalog.specs.map(
+          (spec) => ({
+            ...spec,
+          }),
+        ),
+    };
+
+    session.plan();
+
+    expect(
+      session.revision(),
+    ).toBe(1);
+
+  });
+  it('exposes explicit refresh results', () => {
+    let currentCatalog = catalog;
+
+    const session =
+      new RunnerSession(
+        () => currentCatalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    expect(
+      session.refresh(),
+    ).toEqual({
+      changed: false,
+      previousRevision: 1,
+      revision: 1,
+      changes: jasmine.objectContaining({
+        version: 1,
+        changed: false,
+      }),
+    });
+
+    currentCatalog = {
+      ...catalog,
+      specs: [
+        ...catalog.specs,
+        {
+          id: 'spec2',
+          description: 'also works',
+          fullName: 'Forms also works',
+          suiteId: 'suite1',
+          file: 'forms.spec.mjs',
+        },
+      ],
+    };
+
+    const refresh =
+      session.refresh();
+
+    expect(refresh.changed).toBeTrue();
+    expect(refresh.previousRevision).toBe(1);
+    expect(refresh.revision).toBe(2);
+    expect(
+      refresh.changes.addedSpecIds,
+    ).toEqual(['spec2']);
+    expect(session.changes())
+      .toBe(refresh.changes);
+  });
+
+  it('allows per-plan options to override session defaults', () => {
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+        () => ({
+          random: false,
+          seed: 1,
+          stopOnFailure: false,
+        }),
+      );
+
+    const plan =
+      session.planSuite(
+        'suite1',
+        {
+          random: true,
+          seed: 42,
+        },
+      );
+
+    expect(plan.random).toBeTrue();
+    expect(plan.seed).toBe(42);
+    expect(plan.stopOnFailure).toBeFalse();
+  });
+
+  it('keeps plans executable across unrelated catalog additions', async () => {
+    let currentCatalog = catalog;
+    let executions = 0;
+
+    const session =
+      new RunnerSession(
+        () => currentCatalog,
+        {
+          async execute(plan) {
+            executions++;
+            return plan.specIds;
+          },
+        },
+      );
+
+    const plan =
+      session.planSpec('spec1');
+
+    currentCatalog = {
+      ...catalog,
+      specs: [
+        ...catalog.specs,
+        {
+          id: 'spec2',
+          description: 'new',
+          fullName: 'Forms new',
+          suiteId: 'suite1',
+          file: 'forms.spec.mjs',
+        },
+      ],
+    };
+
+    const result =
+      await session.execute(plan);
+
+    expect(result).toEqual(['spec1']);
+    expect(executions).toBe(1);
+  });
+
+  it('rejects a stale plan when selected specs disappear', async () => {
+    let currentCatalog = catalog;
+
+    const session =
+      new RunnerSession(
+        () => currentCatalog,
+        {
+          async execute() {
+            return undefined;
+          },
+        },
+      );
+
+    const plan =
+      session.planSpec('spec1');
+
+    currentCatalog = {
+      ...catalog,
+      specs: [],
+    };
+
+    await expectAsync(
+      session.execute(plan),
+    ).toBeRejectedWithError(
+      /Execution plan is stale; missing spec ids: spec1/,
+    );
+  });
+
+  it('closes once and rejects later operations', async () => {
+    let closes = 0;
+
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          async execute() {
+            return undefined;
+          },
+          async close() {
+            closes++;
+          },
+        },
+      );
+
+    expect(session.state).toBe('ready');
+
+    const first = session.close();
+    const second = session.close();
+
+    expect(session.state).toBe('closing');
+
+    await Promise.all([
+      first,
+      second,
+    ]);
+
+    expect(closes).toBe(1);
+    expect(session.state).toBe('closed');
+
+    await session.close();
+    expect(closes).toBe(1);
+
+    expect(() => session.plan())
+      .toThrowError(
+        /Testify session is closed/,
+      );
+  });
+
+
+  it('marks execution results with the plan catalog revision without changing serialization', async () => {
+    const result: any = {
+      specResults: [],
+      total: 0,
+      passed: 0,
+      failed: 0,
+      pending: 0,
+    };
+
+    const session =
+      new RunnerSession(
+        () => catalog,
+        {
+          execute: async () => result,
+        },
+      );
+
+    const plan = session.plan();
+    const executed =
+      await session.execute(plan);
+
+    expect(
+      (executed as any).__testifyCatalogVersion,
+    ).toBe(plan.catalogVersion);
+    expect(
+      JSON.stringify(executed),
+    ).not.toContain(
+      '__testifyCatalogVersion',
+    );
+  });
+
+});
+````
+
 ## File: src/runner-session.ts
 ````typescript
 import {
@@ -25201,7 +25838,7 @@ export class HtmlGenerator {
       );
 
     if (artifacts.files.length === 0) {
-      logger.println(
+      logger.warn(
         HtmlMessages.noJsFilesForHtml(),
       );
       return;
@@ -25271,806 +25908,6 @@ export class HtmlGenerator {
         ),
       ),
     );
-  }
-}
-````
-
-## File: src/node-runner-module-source.ts
-````typescript
-import type { ViteJasmineConfig } from './vite-jasmine-config';
-import {
-  getEmbeddedNodeJasmineRuntimeSource,
-} from './jasmine-node-runtime';
-import {
-  getEmbeddedExecutionPlanSource,
-} from './execution-plan';
-import {
-  getEmbeddedTestSelectionSource,
-} from './test-selection';
-import {
-  getEmbeddedTestCatalogIndexSource,
-} from './test-catalog-index';
-import {
-  getEmbeddedNodeExecutionAdapterSource,
-} from './node-execution-adapter';
-import {
-  getEmbeddedRunnerSessionSource,
-} from './runner-session';
-import {
-  getEmbeddedCatalogStateSource,
-} from './catalog-state';
-import {
-  getEmbeddedPlanningEngineSource,
-} from './planning-engine';
-import {
-  getEmbeddedCatalogQuerySource,
-} from './catalog-query';
-import {
-  getEmbeddedNameHelperSource,
-} from './embedded-source';
-
-export interface NodeRunnerModuleSourceOptions {
-  jasmineCoreUrl: string;
-  imports: string;
-  config: ViteJasmineConfig;
-}
-
-export function createNodeRunnerModuleSource(
-  options: NodeRunnerModuleSourceOptions,
-): string {
-  const {
-    jasmineCoreUrl,
-    imports,
-    config,
-  } = options;
-
-  const jasmineRuntimeSource =
-    getEmbeddedNodeJasmineRuntimeSource();
-
-  const nameHelperSource =
-    getEmbeddedNameHelperSource();
-
-  const catalogIndexSource =
-    getEmbeddedTestCatalogIndexSource();
-
-  const testSelectionSource =
-    getEmbeddedTestSelectionSource();
-
-  const executionPlanSource =
-    getEmbeddedExecutionPlanSource();
-
-  const nodeExecutionAdapterSource =
-    getEmbeddedNodeExecutionAdapterSource();
-
-  const catalogQuerySource =
-    getEmbeddedCatalogQuerySource();
-
-  const catalogStateSource =
-    getEmbeddedCatalogStateSource();
-
-  const planningEngineSource =
-    getEmbeddedPlanningEngineSource();
-
-  const runnerSessionSource =
-    getEmbeddedRunnerSessionSource();
-
-  return `// Auto-generated in-process Jasmine test runner
-${nameHelperSource}
-
-${jasmineRuntimeSource}
-
-${catalogIndexSource}
-
-${testSelectionSource}
-
-${executionPlanSource}
-
-${nodeExecutionAdapterSource}
-
-${catalogQuerySource}
-
-${catalogStateSource}
-
-${planningEngineSource}
-
-${runnerSessionSource}
-
-export async function run(reporter, selector) {
-  const jasmineCore =
-    await import(
-      ${JSON.stringify("JASMINE_CORE_URL_PLACEHOLDER")}
-    );
-
-  const jasmineRequire =
-    jasmineCore.default;
-
-  const jasmineRuntime =
-    initializeNodeJasmineEnvironment(
-      jasmineRequire,
-      { reporter },
-    );
-
-  const {
-    jasmineEnv,
-    utils,
-  } = jasmineRuntime;
-
-${imports}
-
-  const catalog =
-    utils.getCatalog();
-
-  if (
-    typeof reporter?.setCatalog ===
-    'function'
-  ) {
-    reporter.setCatalog(catalog);
-  } else if (
-    typeof reporter?.userAgent ===
-    'function'
-  ) {
-    reporter.userAgent(
-      undefined,
-      catalog,
-    );
-  }
-
-  const session =
-    new RunnerSession(
-      () => catalog,
-      {
-        execute: (plan) =>
-          executeNodePlan(
-            jasmineEnv,
-            plan,
-          ),
-      },
-      () => ({
-        random:
-          ${config.jasmineConfig?.env?.random ?? false},
-        seed:
-          ${(config.jasmineConfig?.env as any)?.seed ?? 0},
-        stopOnFailure:
-          ${config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false}
-      }),
-    );
-
-  try {
-    return await session.run(
-      selector,
-    );
-  } finally {
-    await session.close();
-  }
-}
-`
-    .replace(
-      'JASMINE_CORE_URL_PLACEHOLDER',
-      jasmineCoreUrl,
-    );
-}
-````
-
-## File: src/vite-jasmine-runner.ts
-````typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import { norm } from './utils';
-import { glob } from 'glob';
-import { EventEmitter } from 'events';
-import { BrowserManager } from './browser-manager';
-import { FileDiscoveryService } from './file-discovery-service';
-import { HtmlGenerator } from './html-generator';
-import { HttpServerManager } from './http-server-manager';
-import { NodeTestRunner } from './node-test-runner';
-import { ViteConfigBuilder } from './vite-config-builder';
-import { ViteJasmineConfig } from './vite-jasmine-config';
-import { ConsoleReporter } from './console-reporter';
-import { IstanbulInstrumenter } from './istanbul-instrumenter';
-import { WebSocketManager } from './websocket-manager';
-import { CoverageHost } from './coverage-host';
-import { HmrManager } from './hmr-manager';
-import { logger } from './logger';
-import { setAnsiMode } from './symbols';
-import { RunnerMessages } from './log-messages';
-import { ExitCodeError, EXIT_CODES } from './exit-codes';
-import { getExecutionExitCode } from './cli-result-adapter';
-
-const { build: viteBuild } = await import('vite');
-
-type PreprocessResult = 'built' | 'no-specs';
-
-export class ViteJasmineRunner extends EventEmitter {
-  private viteCache: any = null;
-  private config: ViteJasmineConfig;
-  private fileDiscovery: FileDiscoveryService;
-  private viteConfigBuilder: ViteConfigBuilder;
-  private htmlGenerator: HtmlGenerator;
-  private browserManager: BrowserManager;
-  private httpServerManager: HttpServerManager;
-  private nodeTestRunner: NodeTestRunner;
-  private webSocketManager: WebSocketManager | null = null;
-  private consoleReporter: ConsoleReporter;
-  private instrumenter: IstanbulInstrumenter;
-  private coverageHost: CoverageHost;
-  private hmrManager: HmrManager | null = null;
-  private completePromiseResolve: (() => void) | null = null;
-  private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
-  private primarySrcDir: string;
-  private primaryTestDir: string;
-  private shouldPreserve(): boolean {
-    return !!this.config.preserveOutputs;
-  }
-
-  private cleanOutputDirectory(): void {
-    const outDir = path.resolve(this.config.outDir);
-    const lockFilePath =
-      this.config.lockFilePath
-        ? path.resolve(this.config.lockFilePath)
-        : null;
-
-    if (!lockFilePath || path.dirname(lockFilePath) !== outDir) {
-      fs.rmSync(outDir, { recursive: true, force: true });
-      return;
-    }
-
-    const lockFileName = path.basename(lockFilePath);
-    for (const entry of fs.readdirSync(outDir)) {
-      if (entry === lockFileName) {
-        continue;
-      }
-
-      fs.rmSync(path.join(outDir, entry), { recursive: true, force: true });
-    }
-  }
-  
-  constructor(config: ViteJasmineConfig) {
-    super();
-
-    const cwd = norm(process.cwd());
-    let normalizedSrcDirs = (Array.isArray(config.srcDirs) ? config.srcDirs : [config.srcDirs ?? './src'])
-      .filter(Boolean)
-      .map(norm);
-    let normalizedTestDirs = (Array.isArray(config.testDirs) ? config.testDirs : [config.testDirs ?? './tests'])
-      .filter(Boolean)
-      .map(norm);
-
-    if (config.project) {
-      const projectPath = norm(path.resolve(config.project));
-      const scopeToProject = (dirs: string[]): string[] => {
-        return dirs.map((dir) => {
-          const resolved = norm(path.resolve(dir));
-          if (resolved.startsWith(projectPath + '/')) {
-            return resolved;
-          }
-          return norm(path.join(projectPath, dir));
-        });
-      };
-      normalizedSrcDirs = scopeToProject(normalizedSrcDirs);
-      normalizedTestDirs = scopeToProject(normalizedTestDirs);
-    }
-
-    this.primarySrcDir = normalizedSrcDirs[0] ?? cwd;
-    this.primaryTestDir = normalizedTestDirs[0] ?? cwd;
-    
-    this.config = {
-      ...config,
-      browser: config.browser ?? 'chrome',
-      port: config.port ?? 8888,
-      headless: config.headless ?? false,
-      watch: config.watch ?? false,
-      srcDirs: normalizedSrcDirs,
-      testDirs: normalizedTestDirs,
-      outDir: norm(config.outDir ?? path.join(cwd, 'dist/.vite-jasmine-build/')),
-    };
-
-    if (this.config.ansi) {
-      setAnsiMode();
-    }
-
-    this.fileDiscovery = new FileDiscoveryService(this.config);
-    this.viteConfigBuilder = new ViteConfigBuilder(this.config);
-    this.htmlGenerator = new HtmlGenerator(this.fileDiscovery, this.config);
-    this.browserManager = new BrowserManager(this.config);
-    this.httpServerManager = new HttpServerManager(this.config);
-    this.instrumenter = new IstanbulInstrumenter(this.config);
-    this.coverageHost = new CoverageHost(
-      !!this.config.coverage,
-    );
-    this.consoleReporter = new ConsoleReporter();
-    this.nodeTestRunner = new NodeTestRunner(this.config, {
-      reporter: this.consoleReporter,
-      cwd: this.config.outDir,
-      file: 'test-runner.mjs',
-      coverage: this.config.coverage,
-      suppressConsoleLogs: this.config.suppressConsoleLogs
-    });
-  }
-
-
-
-  private describeConfiguredTestDirs(): string {
-    const configured =
-      Array.isArray(this.config.testDirs)
-        ? this.config.testDirs
-        : [this.config.testDirs];
-
-    const relativeDirs =
-      configured
-        .filter((dir): dir is string => !!dir)
-        .map((dir) => {
-          const relative =
-            norm(
-              path.relative(
-                process.cwd(),
-                dir,
-              ),
-            );
-
-          return relative.length > 0
-            ? relative
-            : '.';
-        });
-
-    return relativeDirs.length > 0
-      ? relativeDirs.join(', ')
-      : norm(
-          path.relative(
-            process.cwd(),
-            this.primaryTestDir,
-          ),
-        ) || '.';
-  }
-
-  async preprocess(): Promise<PreprocessResult> {
-    try {
-      let { srcFiles, specFiles: discoveredSpecFiles } = await this.fileDiscovery.discoverSources();
-      const normalizeSpecFile = (value: string) =>
-        norm(value)
-          .replace(/^\.\//, '')
-          .replace(/\.(?:[cm]?[jt]sx?)$/i, '');
-      const selectedFile = this.config.fileFilter
-        ? normalizeSpecFile(this.config.fileFilter)
-        : undefined;
-      const selector = selectedFile ?? '';
-      const matchesSelector = (file: string) => {
-            const candidate = normalizeSpecFile(
-              norm(path.relative(process.cwd(), file)),
-            );
-            return (
-              candidate === selector ||
-              candidate.endsWith('/' + selector) ||
-              path.posix.basename(candidate) === path.posix.basename(selector)
-            );
-          };
-
-      let specFiles = selectedFile
-        ? discoveredSpecFiles.filter(matchesSelector)
-        : discoveredSpecFiles;
-
-      if (selectedFile && specFiles.length === 0 && this.config.browser !== 'node') {
-        const { specFiles: allSpecFiles } = await this.fileDiscovery.discoverAllSources();
-        const nodeOnlyMatches = allSpecFiles.filter(matchesSelector);
-
-        if (nodeOnlyMatches.length > 0) {
-          // The requested spec belongs to the Node host graph. Switch the
-          // isolated run to the Node pipeline instead of handing its imports
-          // to Vite's browser resolver.
-          this.config.browser = 'node';
-          this.config.headless = true;
-          ({ srcFiles, specFiles: discoveredSpecFiles } = await this.fileDiscovery.discoverSources());
-          specFiles = discoveredSpecFiles.filter(matchesSelector);
-        }
-      }
-
-      if (specFiles.length === 0) {
-        logger.println(
-          RunnerMessages.noTestFilesFound(
-            this.describeConfiguredTestDirs(),
-          ),
-        );
-        return 'no-specs';
-      }
-
-      const entryFiles = [...srcFiles, ...specFiles];
-      const selectedSpecArtifacts = specFiles.map((file) =>
-        this.fileDiscovery.getOutputName(file),
-      );
-      const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
-      const input: Record<string, string> = {};
- 
-      const entryKeyFromOutput = (
-        file: string,
-      ) =>
-        this.fileDiscovery
-          .getOutputName(
-            file,
-          )
-          .replace(
-            /\.mjs$/,
-            '',
-          );
-
-      for (const file of entryFiles) {
-        input[entryKeyFromOutput(file)] = file;
-      }
-
-      if (fs.existsSync(this.config.outDir) && !this.shouldPreserve()) {
-        logger.println(RunnerMessages.cleaningOutputDirectory());
-        this.cleanOutputDirectory();
-      }
-
-      if (!fs.existsSync(this.config.outDir)) {
-        fs.mkdirSync(this.config.outDir, { recursive: true });
-      }
-
-      viteConfig.build!.rolldownOptions!.input = input;
-
-      logger.println(RunnerMessages.buildingFiles(Object.keys(input).length));
-      this.viteCache = await viteBuild(viteConfig);
-
-      const moduleFiles =
-        (
-          await glob(
-            path
-              .join(
-                this.config.outDir,
-                '**/*.mjs',
-              )
-              .replace(
-                /\\/g,
-                '/',
-              ),
-          )
-        ).filter(
-          (file) =>
-            !/\.spec\.mjs$/i.test(
-              file,
-            ),
-        );
-
-      for (
-        const moduleFile of
-        moduleFiles
-      ) {
-        const result =
-          await this.instrumenter
-            .instrumentFile(
-              moduleFile,
-            );
-
-        const outFile =
-          path.join(
-            this.config.outDir,
-            path.relative(
-              this.config.outDir,
-              moduleFile,
-            ),
-          );
-        fs.mkdirSync(path.dirname(outFile), { recursive: true });
-        fs.writeFileSync(outFile, result.code, 'utf-8');
-        
-        // Update source map if it was modified during instrumentation
-        if (result.sourceMap) {
-          const mapFile = outFile + '.map';
-          fs.writeFileSync(mapFile, JSON.stringify(result.sourceMap, null, 2), 'utf-8');
-        }
-      }
-
-      const htmlPath = path.join(this.config.outDir, 'index.html');
-      const preserveHtml = this.shouldPreserve() && fs.existsSync(htmlPath);
-      if (!(this.config.headless && this.config.browser === 'node') && !preserveHtml) {
-        if (this.config.watch) {
-          await this.htmlGenerator.generateHtmlFileWithHmr();
-        } else {
-          await this.htmlGenerator.generateHtmlFile(selectedSpecArtifacts);
-        }
-      } else if (preserveHtml) {
-        logger.println(RunnerMessages.preservingExistingHtml());
-      }
-
-      const runnerPath = path.join(this.config.outDir, 'test-runner.mjs');
-      const preserveRunner = this.shouldPreserve() && fs.existsSync(runnerPath);
-      if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
-        this.nodeTestRunner.generateTestRunner();
-      } else if (this.config.headless && this.config.browser === 'node' && preserveRunner) {
-        logger.println(RunnerMessages.preservingExistingRunner());
-      }
-
-      return 'built';
-    } catch (error) {
-      logger.error(RunnerMessages.preprocessFailed(error));
-      throw error;
-    }
-  }
-
-  async cleanup(): Promise<void> {
-    if (this.hmrManager) {
-      await this.hmrManager.stop();
-      this.hmrManager = null;
-    }
-    if (this.webSocketManager) {
-      await this.webSocketManager.cleanup();
-      this.webSocketManager = null;
-    }
-    await this.httpServerManager.cleanup();
-  }
-
-  abort(message?: string): number {
-    // Signal the browser manager to stop any running browser immediately.
-    // Node-runner mode has no cooperative cancel; it will exit via the
-    // CLI's process.exit() after cleanup.
-    this.browserManager.abort((message ?? 'SIGINT') as NodeJS.Signals);
-    return this.consoleReporter.testsAborted(message);
-  }
-
-  async start(): Promise<number> {
-    // `start()` is intentionally one-shot. Watch/HMR has its own explicit
-    // entrypoint (`watch()`), used by the CLI only when --watch is present.
-    this.config.watch = false;
-
-    logger.println(this.config.headless ? RunnerMessages.startingHeadless() : RunnerMessages.startingServer());
-
-    try {
-      const preprocessResult = await this.preprocess();
-      if (preprocessResult === 'no-specs') {
-        return EXIT_CODES.SUCCESS;
-      }
-    } catch (error) {
-      logger.error(RunnerMessages.buildFailed(error));
-      throw error instanceof ExitCodeError ? error : new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, String(error));
-    }
-
-    if (this.config.headless && this.config.browser !== 'node') {
-      return await this.runHeadlessBrowserMode();
-    } else if (this.config.headless && this.config.browser === 'node') {
-      return await this.runHeadlessNodeMode();
-    } else if (!this.config.headless && this.config.browser === 'node') {
-      logger.error(RunnerMessages.invalidNodeHeadedMode());
-      return EXIT_CODES.CONFIG_ERROR;
-    } else {
-      return await this.runHeadedBrowserMode();
-    }
-  }
-
-  async watch(): Promise<number> {
-    if (this.config.headless || this.config.browser === 'node') {
-      logger.error(RunnerMessages.watchOnlyHeaded());
-      return EXIT_CODES.CONFIG_ERROR;
-    }
-
-    this.config.watch = true;
-    logger.println(RunnerMessages.startingWatchMode());
-    const preprocessResult = await this.preprocess();
-    if (preprocessResult === 'no-specs') {
-      return EXIT_CODES.SUCCESS;
-    }
-    return await this.runWatchMode();
-  }
-
-  private async runWatchMode(): Promise<number> {
-    logger.println(RunnerMessages.startingHmrWatcher());
-
-    const server = await this.httpServerManager.startServer();
-    
-    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
-    this.hmrManager = new HmrManager(this.fileDiscovery, this.config, this.viteConfigBuilder, this.viteCache);
-
-    this.webSocketManager.enableHmr(this.hmrManager);
-    await this.hmrManager.start();
-
-    logger.println(RunnerMessages.webSocketReady());
-    logger.println(RunnerMessages.pressCtrlCToStop());
-
-    let shuttingDown = false;
-    let watchFinishedResolve: ((code: number) => void) | null = null;
-    const watchFinishedPromise = new Promise<number>((resolve) => {
-      watchFinishedResolve = resolve;
-    });
-
-    const shutdown = async (source: 'browser' | 'session') => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-
-      if (source === 'session') {
-        logger.println(RunnerMessages.sessionExitRequested());
-        await this.browserManager.closeBrowser();
-      } else {
-        logger.println(RunnerMessages.browserWindowClosed());
-      }
-
-      await this.cleanup();
-      watchFinishedResolve?.(EXIT_CODES.SUCCESS);
-    };
-
-    this.webSocketManager.on(
-      'sessionExitRequested',
-      () => {
-        void shutdown('session');
-      },
-    );
-
-    const onBrowserClose = async () => {
-      await shutdown('browser');
-    };
-
-    try {
-      await this.browserManager.openBrowser(
-        this.config.port!,
-        onBrowserClose,
-        { exitOnClose: false },
-      );
-    } catch {
-      await this.cleanup();
-      return EXIT_CODES.INTERNAL_ERROR;
-    }
-
-    // Keep the runner alive until an explicit shutdown signal or browser close.
-    return watchFinishedPromise;
-  }
-
-  private async runHeadlessBrowserMode(): Promise<number> {
-    const server = await this.httpServerManager.startServer();
-    await this.httpServerManager.waitForServerReady(`http://localhost:${this.config.port}/index.html`, 10000);
-    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
-
-    let testSuccess = false;
-    let testHasPending = false;
-    let coveragePromise: Promise<void> | undefined;
-    let testsCompletedResolve: (() => void) | null = null;
-    const testsCompletedPromise = new Promise<void>((resolve) => {
-      testsCompletedResolve = resolve;
-    });
-    this.webSocketManager.on('testsCompleted', ({ success, hasPending, coverage }) => {
-      testSuccess = success;
-      testHasPending = hasPending;
-      coveragePromise =
-        this.coverageHost.generate(
-          coverage,
-        );
-      testsCompletedResolve?.();
-    });
-
-    const browserType = await this.browserManager.checkBrowser(this.config.browser!);
-
-    if (!browserType) {
-      logger.println(RunnerMessages.headlessBrowserUnavailable());
-      this.nodeTestRunner.generateTestRunner();
-      const result =
-        await this.nodeTestRunner.start();
-
-      await this.cleanup();
-
-      return getExecutionExitCode(
-        result,
-      );
-    }
-
-    try {
-      await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
-      // Wait for the jasmineDone WebSocket message to be processed so the final
-      // summary is printed before we tear down the WebSocket server and exit.
-      const testsCompletedTimeout = new Promise<void>((_, reject) => {
-        setTimeout(() => reject(new Error('Timed out waiting for test completion message')), 5000);
-      });
-      await Promise.race([testsCompletedPromise, testsCompletedTimeout]).catch((error) => {
-        logger.error(RunnerMessages.testsCompletedTimeout(error.message));
-      });
-      if (coveragePromise) await coveragePromise;
-      await this.cleanup();
-      if (!testSuccess) {
-        return EXIT_CODES.TEST_FAILURES;
-      }
-      return testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS;
-    } catch (error) {
-      if (error instanceof ExitCodeError) {
-        if (coveragePromise) await coveragePromise.catch(() => {});
-        await this.cleanup();
-        return error.exitCode;
-      }
-      logger.error(RunnerMessages.browserTestExecutionFailed());
-      if (coveragePromise) await coveragePromise.catch(() => {});
-      await this.cleanup();
-      return EXIT_CODES.INTERNAL_ERROR;
-    }
-  }
-
-  private async runHeadlessNodeMode(): Promise<number> {
-    try {
-      const result =
-        await this.nodeTestRunner.start();
-
-      return getExecutionExitCode(
-        result,
-      );
-    } catch (_error: any) {
-      return EXIT_CODES.INTERNAL_ERROR;
-    }
-  }
-
-  private async runHeadedBrowserMode(): Promise<number> {
-    const server = await this.httpServerManager.startServer();
-    let testsCompleted = false;
-    let testSuccess = false;
-    let testHasPending = false;
-    let finishHeadedRunPromise: Promise<void> | undefined;
-    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
-
-    logger.println(RunnerMessages.webSocketReadyWithReporting());
-    logger.println(RunnerMessages.pressCtrlCToStop());
-
-    const finishHeadedRun = async (coverage: Record<string, any> | undefined): Promise<void> => {
-      await this.coverageHost.generate(
-        coverage,
-      );
-      await this.browserManager.closeBrowser();
-    };
-
-    this.webSocketManager.on('testsCompleted', ({ success, hasPending, coverage }) => {
-      if (testsCompleted) {
-        return;
-      }
-      testsCompleted = true;
-      testSuccess = success;
-      testHasPending = hasPending;
-      finishHeadedRunPromise = finishHeadedRun(coverage);
-      finishHeadedRunPromise.catch((error) => {
-        logger.error(RunnerMessages.finishHeadedRunFailed(error));
-      });
-    });
-
-    let runFinishedResolve: ((code: number) => void) | null = null;
-    const runFinishedPromise = new Promise<number>((resolve) => {
-      runFinishedResolve = resolve;
-    });
-
-    const onBrowserClose = async () => {
-      const promise = new Promise<void>((resolve) => {
-        if (!testsCompleted) {
-          setImmediate(() => {
-            logger.clearLine();
-            logger.printRaw('\n');
-            logger.clearLine();
-            this.consoleReporter.testsAborted();
-            logger.clearLine();
-            logger.printRaw('\n');
-            logger.println(RunnerMessages.browserWindowClosedPrematurely());
-            resolve();
-          });
-        } else {
-          resolve();
-        }
-      });
-
-      await promise;
-      // Wait for finishHeadedRun to complete before cleanup and exit
-      if (finishHeadedRunPromise) {
-        await finishHeadedRunPromise.catch(() => {});
-      }
-      await this.cleanup();
-      if (!testsCompleted) {
-        runFinishedResolve?.(EXIT_CODES.SIGINT);
-        return;
-      }
-      if (!testSuccess) {
-        runFinishedResolve?.(EXIT_CODES.TEST_FAILURES);
-        return;
-      }
-      runFinishedResolve?.(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
-    };
-
-    try {
-      await this.browserManager.openBrowser(
-        this.config.port!,
-        onBrowserClose,
-      );
-    } catch {
-      await this.cleanup();
-      return EXIT_CODES.INTERNAL_ERROR;
-    }
-
-    // Keep the runner alive until the browser closes or an explicit shutdown signal.
-    return runFinishedPromise;
   }
 }
 ````
@@ -26704,6 +26541,811 @@ export const WebSocketMessages = {
 };
 ````
 
+## File: src/node-runner-module-source.ts
+````typescript
+import type { ViteJasmineConfig } from './vite-jasmine-config';
+import {
+  getEmbeddedNodeJasmineRuntimeSource,
+} from './jasmine-node-runtime';
+import {
+  getEmbeddedExecutionPlanSource,
+} from './execution-plan';
+import {
+  getEmbeddedTestSelectionSource,
+} from './test-selection';
+import {
+  getEmbeddedTestCatalogIndexSource,
+} from './test-catalog-index';
+import {
+  getEmbeddedNodeExecutionAdapterSource,
+} from './node-execution-adapter';
+import {
+  getEmbeddedRunnerSessionSource,
+} from './runner-session';
+import {
+  getEmbeddedCatalogStateSource,
+} from './catalog-state';
+import {
+  getEmbeddedPlanningEngineSource,
+} from './planning-engine';
+import {
+  getEmbeddedCatalogQuerySource,
+} from './catalog-query';
+import {
+  getEmbeddedNameHelperSource,
+} from './embedded-source';
+
+export interface NodeRunnerModuleSourceOptions {
+  jasmineCoreUrl: string;
+  imports: string;
+  config: ViteJasmineConfig;
+}
+
+export function createNodeRunnerModuleSource(
+  options: NodeRunnerModuleSourceOptions,
+): string {
+  const {
+    jasmineCoreUrl,
+    imports,
+    config,
+  } = options;
+
+  const jasmineRuntimeSource =
+    getEmbeddedNodeJasmineRuntimeSource();
+
+  const nameHelperSource =
+    getEmbeddedNameHelperSource();
+
+  const catalogIndexSource =
+    getEmbeddedTestCatalogIndexSource();
+
+  const testSelectionSource =
+    getEmbeddedTestSelectionSource();
+
+  const executionPlanSource =
+    getEmbeddedExecutionPlanSource();
+
+  const nodeExecutionAdapterSource =
+    getEmbeddedNodeExecutionAdapterSource();
+
+  const catalogQuerySource =
+    getEmbeddedCatalogQuerySource();
+
+  const catalogStateSource =
+    getEmbeddedCatalogStateSource();
+
+  const planningEngineSource =
+    getEmbeddedPlanningEngineSource();
+
+  const runnerSessionSource =
+    getEmbeddedRunnerSessionSource();
+
+  return `// Auto-generated in-process Jasmine test runner
+${nameHelperSource}
+
+${jasmineRuntimeSource}
+
+${catalogIndexSource}
+
+${testSelectionSource}
+
+${executionPlanSource}
+
+${nodeExecutionAdapterSource}
+
+${catalogQuerySource}
+
+${catalogStateSource}
+
+${planningEngineSource}
+
+${runnerSessionSource}
+
+export async function run(reporter, selector) {
+  const jasmineCore =
+    await import(
+      ${JSON.stringify("JASMINE_CORE_URL_PLACEHOLDER")}
+    );
+
+  const jasmineRequire =
+    jasmineCore.default;
+
+  const jasmineRuntime =
+    initializeNodeJasmineEnvironment(
+      jasmineRequire,
+      { reporter },
+    );
+
+  const {
+    jasmineEnv,
+    utils,
+  } = jasmineRuntime;
+
+${imports}
+
+  const catalog =
+    utils.getCatalog();
+
+  if (
+    typeof reporter?.setCatalog ===
+    'function'
+  ) {
+    reporter.setCatalog(catalog);
+  } else if (
+    typeof reporter?.userAgent ===
+    'function'
+  ) {
+    reporter.userAgent(
+      undefined,
+      catalog,
+    );
+  }
+
+  const session =
+    new RunnerSession(
+      () => catalog,
+      {
+        execute: (plan) =>
+          executeNodePlan(
+            jasmineEnv,
+            plan,
+          ),
+      },
+      () => ({
+        random:
+          ${config.jasmineConfig?.env?.random ?? false},
+        seed:
+          ${(config.jasmineConfig?.env as any)?.seed ?? 0},
+        stopOnFailure:
+          ${config.jasmineConfig?.env?.stopSpecOnExpectationFailure ?? false}
+      }),
+    );
+
+  try {
+    return await session.run(
+      selector,
+    );
+  } finally {
+    await session.close();
+  }
+}
+`
+    .replace(
+      'JASMINE_CORE_URL_PLACEHOLDER',
+      jasmineCoreUrl,
+    );
+}
+````
+
+## File: src/vite-jasmine-runner.ts
+````typescript
+import * as fs from 'fs';
+import * as path from 'path';
+import { norm } from './utils';
+import { glob } from 'glob';
+import { EventEmitter } from 'events';
+import { BrowserManager } from './browser-manager';
+import { FileDiscoveryService } from './file-discovery-service';
+import { HtmlGenerator } from './html-generator';
+import { HttpServerManager } from './http-server-manager';
+import { NodeTestRunner } from './node-test-runner';
+import { ViteConfigBuilder } from './vite-config-builder';
+import { ViteJasmineConfig } from './vite-jasmine-config';
+import { ConsoleReporter } from './console-reporter';
+import { IstanbulInstrumenter } from './istanbul-instrumenter';
+import { WebSocketManager } from './websocket-manager';
+import { CoverageHost } from './coverage-host';
+import { HmrManager } from './hmr-manager';
+import { logger } from './logger';
+import { setAnsiMode } from './symbols';
+import { RunnerMessages } from './log-messages';
+import { ExitCodeError, EXIT_CODES } from './exit-codes';
+import { getExecutionExitCode } from './cli-result-adapter';
+
+const { build: viteBuild } = await import('vite');
+
+type PreprocessResult = 'built' | 'no-specs';
+
+export class ViteJasmineRunner extends EventEmitter {
+  private viteCache: any = null;
+  private config: ViteJasmineConfig;
+  private fileDiscovery: FileDiscoveryService;
+  private viteConfigBuilder: ViteConfigBuilder;
+  private htmlGenerator: HtmlGenerator;
+  private browserManager: BrowserManager;
+  private httpServerManager: HttpServerManager;
+  private nodeTestRunner: NodeTestRunner;
+  private webSocketManager: WebSocketManager | null = null;
+  private consoleReporter: ConsoleReporter;
+  private instrumenter: IstanbulInstrumenter;
+  private coverageHost: CoverageHost;
+  private hmrManager: HmrManager | null = null;
+  private completePromiseResolve: (() => void) | null = null;
+  private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
+  private primarySrcDir: string;
+  private primaryTestDir: string;
+  private shouldPreserve(): boolean {
+    return !!this.config.preserveOutputs;
+  }
+
+  private cleanOutputDirectory(): void {
+    const outDir = path.resolve(this.config.outDir);
+    const lockFilePath =
+      this.config.lockFilePath
+        ? path.resolve(this.config.lockFilePath)
+        : null;
+
+    if (!lockFilePath || path.dirname(lockFilePath) !== outDir) {
+      fs.rmSync(outDir, { recursive: true, force: true });
+      return;
+    }
+
+    const lockFileName = path.basename(lockFilePath);
+    for (const entry of fs.readdirSync(outDir)) {
+      if (entry === lockFileName) {
+        continue;
+      }
+
+      fs.rmSync(path.join(outDir, entry), { recursive: true, force: true });
+    }
+  }
+  
+  constructor(config: ViteJasmineConfig) {
+    super();
+
+    const cwd = norm(process.cwd());
+    let normalizedSrcDirs = (Array.isArray(config.srcDirs) ? config.srcDirs : [config.srcDirs ?? './src'])
+      .filter(Boolean)
+      .map(norm);
+    let normalizedTestDirs = (Array.isArray(config.testDirs) ? config.testDirs : [config.testDirs ?? './tests'])
+      .filter(Boolean)
+      .map(norm);
+
+    if (config.project) {
+      const projectPath = norm(path.resolve(config.project));
+      const scopeToProject = (dirs: string[]): string[] => {
+        return dirs.map((dir) => {
+          const resolved = norm(path.resolve(dir));
+          if (resolved.startsWith(projectPath + '/')) {
+            return resolved;
+          }
+          return norm(path.join(projectPath, dir));
+        });
+      };
+      normalizedSrcDirs = scopeToProject(normalizedSrcDirs);
+      normalizedTestDirs = scopeToProject(normalizedTestDirs);
+    }
+
+    this.primarySrcDir = normalizedSrcDirs[0] ?? cwd;
+    this.primaryTestDir = normalizedTestDirs[0] ?? cwd;
+    
+    this.config = {
+      ...config,
+      browser: config.browser ?? 'chrome',
+      port: config.port ?? 8888,
+      headless: config.headless ?? false,
+      watch: config.watch ?? false,
+      srcDirs: normalizedSrcDirs,
+      testDirs: normalizedTestDirs,
+      outDir: norm(config.outDir ?? path.join(cwd, 'dist/.vite-jasmine-build/')),
+    };
+
+    if (this.config.ansi) {
+      setAnsiMode();
+    }
+
+    this.fileDiscovery = new FileDiscoveryService(this.config);
+    this.viteConfigBuilder = new ViteConfigBuilder(this.config);
+    this.htmlGenerator = new HtmlGenerator(this.fileDiscovery, this.config);
+    this.browserManager = new BrowserManager(this.config);
+    this.httpServerManager = new HttpServerManager(this.config);
+    this.instrumenter = new IstanbulInstrumenter(this.config);
+    this.coverageHost = new CoverageHost(
+      !!this.config.coverage,
+    );
+    this.consoleReporter = new ConsoleReporter();
+    this.nodeTestRunner = new NodeTestRunner(this.config, {
+      reporter: this.consoleReporter,
+      cwd: this.config.outDir,
+      file: 'test-runner.mjs',
+      coverage: this.config.coverage,
+      suppressConsoleLogs: this.config.suppressConsoleLogs
+    });
+  }
+
+
+
+  private describeConfiguredTestDirs(): string {
+    const configured =
+      Array.isArray(this.config.testDirs)
+        ? this.config.testDirs
+        : [this.config.testDirs];
+
+    const relativeDirs =
+      configured
+        .filter((dir): dir is string => !!dir)
+        .map((dir) => {
+          const relative =
+            norm(
+              path.relative(
+                process.cwd(),
+                dir,
+              ),
+            );
+
+          return relative.length > 0
+            ? relative
+            : '.';
+        });
+
+    return relativeDirs.length > 0
+      ? relativeDirs.join(', ')
+      : norm(
+          path.relative(
+            process.cwd(),
+            this.primaryTestDir,
+          ),
+        ) || '.';
+  }
+
+  async preprocess(): Promise<PreprocessResult> {
+    try {
+      let { srcFiles, specFiles: discoveredSpecFiles } = await this.fileDiscovery.discoverSources();
+      const normalizeSpecFile = (value: string) =>
+        norm(value)
+          .replace(/^\.\//, '')
+          .replace(/\.(?:[cm]?[jt]sx?)$/i, '');
+      const selectedFile = this.config.fileFilter
+        ? normalizeSpecFile(this.config.fileFilter)
+        : undefined;
+      const selector = selectedFile ?? '';
+      const matchesSelector = (file: string) => {
+            const candidate = normalizeSpecFile(
+              norm(path.relative(process.cwd(), file)),
+            );
+            return (
+              candidate === selector ||
+              candidate.endsWith('/' + selector) ||
+              path.posix.basename(candidate) === path.posix.basename(selector)
+            );
+          };
+
+      let specFiles = selectedFile
+        ? discoveredSpecFiles.filter(matchesSelector)
+        : discoveredSpecFiles;
+
+      if (selectedFile && specFiles.length === 0 && this.config.browser !== 'node') {
+        const { specFiles: allSpecFiles } = await this.fileDiscovery.discoverAllSources();
+        const nodeOnlyMatches = allSpecFiles.filter(matchesSelector);
+
+        if (nodeOnlyMatches.length > 0) {
+          // The requested spec belongs to the Node host graph. Switch the
+          // isolated run to the Node pipeline instead of handing its imports
+          // to Vite's browser resolver.
+          this.config.browser = 'node';
+          this.config.headless = true;
+          ({ srcFiles, specFiles: discoveredSpecFiles } = await this.fileDiscovery.discoverSources());
+          specFiles = discoveredSpecFiles.filter(matchesSelector);
+        }
+      }
+
+      if (specFiles.length === 0) {
+        logger.println(
+          RunnerMessages.noTestFilesFound(
+            this.describeConfiguredTestDirs(),
+          ),
+        );
+        return 'no-specs';
+      }
+
+      const entryFiles = [...srcFiles, ...specFiles];
+      const selectedSpecArtifacts = specFiles.map((file) =>
+        this.fileDiscovery.getOutputName(file),
+      );
+      const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
+      const input: Record<string, string> = {};
+ 
+      const entryKeyFromOutput = (
+        file: string,
+      ) =>
+        this.fileDiscovery
+          .getOutputName(
+            file,
+          )
+          .replace(
+            /\.mjs$/,
+            '',
+          );
+
+      for (const file of entryFiles) {
+        input[entryKeyFromOutput(file)] = file;
+      }
+
+      if (fs.existsSync(this.config.outDir) && !this.shouldPreserve()) {
+        logger.println(RunnerMessages.cleaningOutputDirectory());
+        this.cleanOutputDirectory();
+      }
+
+      if (!fs.existsSync(this.config.outDir)) {
+        fs.mkdirSync(this.config.outDir, { recursive: true });
+      }
+
+      viteConfig.build!.rolldownOptions!.input = input;
+
+      logger.println(RunnerMessages.buildingFiles(Object.keys(input).length));
+      this.viteCache = await viteBuild(viteConfig);
+
+      const moduleFiles =
+        (
+          await glob(
+            path
+              .join(
+                this.config.outDir,
+                '**/*.mjs',
+              )
+              .replace(
+                /\\/g,
+                '/',
+              ),
+          )
+        ).filter(
+          (file) =>
+            !/\.spec\.mjs$/i.test(
+              file,
+            ),
+        );
+
+      for (
+        const moduleFile of
+        moduleFiles
+      ) {
+        const result =
+          await this.instrumenter
+            .instrumentFile(
+              moduleFile,
+            );
+
+        const outFile =
+          path.join(
+            this.config.outDir,
+            path.relative(
+              this.config.outDir,
+              moduleFile,
+            ),
+          );
+        fs.mkdirSync(path.dirname(outFile), { recursive: true });
+        fs.writeFileSync(outFile, result.code, 'utf-8');
+        
+        // Update source map if it was modified during instrumentation
+        if (result.sourceMap) {
+          const mapFile = outFile + '.map';
+          fs.writeFileSync(mapFile, JSON.stringify(result.sourceMap, null, 2), 'utf-8');
+        }
+      }
+
+      const htmlPath = path.join(this.config.outDir, 'index.html');
+      const preserveHtml = this.shouldPreserve() && fs.existsSync(htmlPath);
+      if (!(this.config.headless && this.config.browser === 'node') && !preserveHtml) {
+        if (this.config.watch) {
+          await this.htmlGenerator.generateHtmlFileWithHmr();
+        } else {
+          await this.htmlGenerator.generateHtmlFile(selectedSpecArtifacts);
+        }
+      } else if (preserveHtml) {
+        logger.println(RunnerMessages.preservingExistingHtml());
+      }
+
+      const runnerPath = path.join(this.config.outDir, 'test-runner.mjs');
+      const preserveRunner = this.shouldPreserve() && fs.existsSync(runnerPath);
+      if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
+        this.nodeTestRunner.generateTestRunner();
+      } else if (this.config.headless && this.config.browser === 'node' && preserveRunner) {
+        logger.println(RunnerMessages.preservingExistingRunner());
+      }
+
+      return 'built';
+    } catch (error) {
+      logger.error(RunnerMessages.preprocessFailed(error));
+      throw error;
+    }
+  }
+
+  async cleanup(): Promise<void> {
+    if (this.hmrManager) {
+      await this.hmrManager.stop();
+      this.hmrManager = null;
+    }
+    if (this.webSocketManager) {
+      await this.webSocketManager.cleanup();
+      this.webSocketManager = null;
+    }
+    await this.httpServerManager.cleanup();
+  }
+
+  abort(message?: string): number {
+    // Signal the browser manager to stop any running browser immediately.
+    // Node-runner mode has no cooperative cancel; it will exit via the
+    // CLI's process.exit() after cleanup.
+    this.browserManager.abort((message ?? 'SIGINT') as NodeJS.Signals);
+    return this.consoleReporter.testsAborted(message);
+  }
+
+  async start(): Promise<number> {
+    // `start()` is intentionally one-shot. Watch/HMR has its own explicit
+    // entrypoint (`watch()`), used by the CLI only when --watch is present.
+    this.config.watch = false;
+
+    logger.println(this.config.headless ? RunnerMessages.startingHeadless() : RunnerMessages.startingServer());
+
+    try {
+      const preprocessResult = await this.preprocess();
+      if (preprocessResult === 'no-specs') {
+        return EXIT_CODES.SUCCESS;
+      }
+    } catch (error) {
+      logger.error(RunnerMessages.buildFailed(error));
+      throw error instanceof ExitCodeError ? error : new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, String(error));
+    }
+
+    if (this.config.headless && this.config.browser !== 'node') {
+      return await this.runHeadlessBrowserMode();
+    } else if (this.config.headless && this.config.browser === 'node') {
+      return await this.runHeadlessNodeMode();
+    } else if (!this.config.headless && this.config.browser === 'node') {
+      logger.error(RunnerMessages.invalidNodeHeadedMode());
+      return EXIT_CODES.CONFIG_ERROR;
+    } else {
+      return await this.runHeadedBrowserMode();
+    }
+  }
+
+  async watch(): Promise<number> {
+    if (this.config.headless || this.config.browser === 'node') {
+      logger.error(RunnerMessages.watchOnlyHeaded());
+      return EXIT_CODES.CONFIG_ERROR;
+    }
+
+    this.config.watch = true;
+    logger.println(RunnerMessages.startingWatchMode());
+    const preprocessResult = await this.preprocess();
+    if (preprocessResult === 'no-specs') {
+      return EXIT_CODES.SUCCESS;
+    }
+    return await this.runWatchMode();
+  }
+
+  private async runWatchMode(): Promise<number> {
+    logger.println(RunnerMessages.startingHmrWatcher());
+
+    const server = await this.httpServerManager.startServer();
+    
+    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
+    this.hmrManager = new HmrManager(this.fileDiscovery, this.config, this.viteConfigBuilder, this.viteCache);
+
+    this.webSocketManager.enableHmr(this.hmrManager);
+    await this.hmrManager.start();
+
+    logger.println(RunnerMessages.webSocketReady());
+    logger.println(RunnerMessages.pressCtrlCToStop());
+
+    let shuttingDown = false;
+    let watchFinishedResolve: ((code: number) => void) | null = null;
+    const watchFinishedPromise = new Promise<number>((resolve) => {
+      watchFinishedResolve = resolve;
+    });
+
+    const shutdown = async (source: 'browser' | 'session') => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+
+      if (source === 'session') {
+        logger.println(RunnerMessages.sessionExitRequested());
+        await this.browserManager.closeBrowser();
+      } else {
+        logger.println(RunnerMessages.browserWindowClosed());
+      }
+
+      await this.cleanup();
+      watchFinishedResolve?.(EXIT_CODES.SUCCESS);
+    };
+
+    this.webSocketManager.on(
+      'sessionExitRequested',
+      () => {
+        void shutdown('session');
+      },
+    );
+
+    const onBrowserClose = async () => {
+      await shutdown('browser');
+    };
+
+    try {
+      await this.browserManager.openBrowser(
+        this.config.port!,
+        onBrowserClose,
+        { exitOnClose: false },
+      );
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      await this.cleanup();
+      return EXIT_CODES.INTERNAL_ERROR;
+    }
+
+    // Keep the runner alive until an explicit shutdown signal or browser close.
+    return watchFinishedPromise;
+  }
+
+  private async runHeadlessBrowserMode(): Promise<number> {
+    const server = await this.httpServerManager.startServer();
+    await this.httpServerManager.waitForServerReady(`http://localhost:${this.config.port}/index.html`, 10000);
+    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
+
+    let testSuccess = false;
+    let testHasPending = false;
+    let coveragePromise: Promise<void> | undefined;
+    let testsCompletedResolve: (() => void) | null = null;
+    const testsCompletedPromise = new Promise<void>((resolve) => {
+      testsCompletedResolve = resolve;
+    });
+    this.webSocketManager.on('testsCompleted', ({ success, hasPending, coverage }) => {
+      testSuccess = success;
+      testHasPending = hasPending;
+      coveragePromise =
+        this.coverageHost.generate(
+          coverage,
+        );
+      testsCompletedResolve?.();
+    });
+
+    const browserType = await this.browserManager.checkBrowser(this.config.browser!);
+
+    if (!browserType) {
+      logger.warn(RunnerMessages.headlessBrowserUnavailable());
+      this.nodeTestRunner.generateTestRunner();
+
+      try {
+        const result =
+          await this.nodeTestRunner.start();
+
+        return getExecutionExitCode(
+          result,
+        );
+      } finally {
+        await this.cleanup();
+      }
+    }
+
+    try {
+      await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
+      // Wait for the jasmineDone WebSocket message to be processed so the final
+      // summary is printed before we tear down the WebSocket server and exit.
+      const testsCompletedTimeout = new Promise<void>((_, reject) => {
+        setTimeout(() => reject(new Error('Timed out waiting for test completion message')), 5000);
+      });
+      await Promise.race([testsCompletedPromise, testsCompletedTimeout]).catch((error) => {
+        logger.error(RunnerMessages.testsCompletedTimeout(error.message));
+      });
+      if (coveragePromise) await coveragePromise;
+      await this.cleanup();
+      if (!testSuccess) {
+        return EXIT_CODES.TEST_FAILURES;
+      }
+      return testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS;
+    } catch (error) {
+      if (error instanceof ExitCodeError) {
+        if (coveragePromise) await coveragePromise.catch((error) => { logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`); });
+        await this.cleanup();
+        return error.exitCode;
+      }
+      logger.error(RunnerMessages.browserTestExecutionFailed());
+      if (coveragePromise) await coveragePromise.catch((error) => { logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`); });
+      await this.cleanup();
+      return EXIT_CODES.INTERNAL_ERROR;
+    }
+  }
+
+  private async runHeadlessNodeMode(): Promise<number> {
+    try {
+      const result =
+        await this.nodeTestRunner.start();
+
+      return getExecutionExitCode(
+        result,
+      );
+    } catch (_error: any) {
+      return EXIT_CODES.INTERNAL_ERROR;
+    }
+  }
+
+  private async runHeadedBrowserMode(): Promise<number> {
+    const server = await this.httpServerManager.startServer();
+    let testsCompleted = false;
+    let testSuccess = false;
+    let testHasPending = false;
+    let finishHeadedRunPromise: Promise<void> | undefined;
+    this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
+
+    logger.println(RunnerMessages.webSocketReadyWithReporting());
+    logger.println(RunnerMessages.pressCtrlCToStop());
+
+    const finishHeadedRun = async (coverage: Record<string, any> | undefined): Promise<void> => {
+      await this.coverageHost.generate(
+        coverage,
+      );
+      await this.browserManager.closeBrowser();
+    };
+
+    this.webSocketManager.on('testsCompleted', ({ success, hasPending, coverage }) => {
+      if (testsCompleted) {
+        return;
+      }
+      testsCompleted = true;
+      testSuccess = success;
+      testHasPending = hasPending;
+      finishHeadedRunPromise = finishHeadedRun(coverage);
+      finishHeadedRunPromise.catch((error) => {
+        logger.error(RunnerMessages.finishHeadedRunFailed(error));
+      });
+    });
+
+    let runFinishedResolve: ((code: number) => void) | null = null;
+    const runFinishedPromise = new Promise<number>((resolve) => {
+      runFinishedResolve = resolve;
+    });
+
+    const onBrowserClose = async () => {
+      const promise = new Promise<void>((resolve) => {
+        if (!testsCompleted) {
+          setImmediate(() => {
+            logger.clearLine();
+            logger.printRaw('\n');
+            logger.clearLine();
+            this.consoleReporter.testsAborted();
+            logger.clearLine();
+            logger.printRaw('\n');
+            logger.println(RunnerMessages.browserWindowClosedPrematurely());
+            resolve();
+          });
+        } else {
+          resolve();
+        }
+      });
+
+      await promise;
+      // Wait for finishHeadedRun to complete before cleanup and exit
+      if (finishHeadedRunPromise) {
+        await finishHeadedRunPromise.catch((error) => { logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`); });
+      }
+      await this.cleanup();
+      if (!testsCompleted) {
+        runFinishedResolve?.(EXIT_CODES.SIGINT);
+        return;
+      }
+      if (!testSuccess) {
+        runFinishedResolve?.(EXIT_CODES.TEST_FAILURES);
+        return;
+      }
+      runFinishedResolve?.(testHasPending ? EXIT_CODES.SUCCESS_WITH_PENDING : EXIT_CODES.SUCCESS);
+    };
+
+    try {
+      await this.browserManager.openBrowser(
+        this.config.port!,
+        onBrowserClose,
+      );
+    } catch (error) {
+      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      await this.cleanup();
+      return EXIT_CODES.INTERNAL_ERROR;
+    }
+
+    // Keep the runner alive until the browser closes or an explicit shutdown signal.
+    return runFinishedPromise;
+  }
+}
+````
+
 ## File: src/browser-runtime.ts
 ````typescript
 import {
@@ -26909,7 +27551,8 @@ export function getBrowserRuntimeScript(
           });
 
         return order.sort?.(items) ?? items;
-      } catch {
+      } catch (error) {
+        console.error('Testify runtime error:', error);
         return items;
       }
     }
@@ -27016,7 +27659,8 @@ export function getBrowserRuntimeScript(
                   return JSON.stringify(
                     value,
                   );
-                } catch {
+                } catch (error) {
+                  console.error('Testify runtime error:', error);
                   return String(value);
                 }
               })();
@@ -27468,6 +28112,23 @@ export function getBrowserRuntimeScript(
 ````markdown
 # Changelog
 
+## 1.0.50 - 2026-08-29
+
+### Fixed
+
+* Ensured caught errors are always logged instead of being silently swallowed.
+* Added error logging to cleanup, fallback, file discovery, package resolution, configuration, browser, and process-management paths.
+* Replaced empty `catch` and promise rejection handlers with explicit error logging while preserving existing recovery behavior.
+* Added regression coverage to prevent silent error handling from being reintroduced.
+
+## 1.0.42 - 2026-08-29
+
+### Fixed
+
+* Routed warning output through `logger.warn()` and error output through `logger.error()` consistently across browser, HMR, HTTP/WebSocket, process-lock, host-adapter, and runner paths.
+* Added regression coverage to enforce logger severity routing for `%warn%` and `%error%` messages.
+
+
 ## 1.0.41 - 2026-08-21
 
 ### Fixed
@@ -27631,11 +28292,20 @@ Single `Ctrl+C` now aborts the current run and exits cleanly, double `Ctrl+C` ha
 Initial public release of `testify` with browser-based Jasmine runner, CLI binaries with shebang support, watch mode with hot module reloading, WebSocket-based event forwarding, Istanbul coverage support, and VS Code debug integration.
 ````
 
+## File: src/lib.ts
+````typescript
+/**
+ * Stable Testify 2 public API.
+ */
+
+export * from './public-api';
+````
+
 ## File: package.json
 ````json
 {
   "name": "@epikodelabs/testify",
-  "version": "1.0.42",
+  "version": "1.0.50",
   "description": "A programmable test engine for Node and real browsers, with Jasmine as its first hosted test language.",
   "bin": {
     "jasmine": "bin/jasmine",
@@ -27704,7 +28374,7 @@ Initial public release of `testify` with browser-based Jasmine runner, CLI binar
     "ws": "^8.21.1"
   },
   "devDependencies": {
-    "@epikodelabs/testify": "^1.0.40",
+    "@epikodelabs/testify": "file:epikodelabs-testify-1.0.50.tgz",
     "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
@@ -27754,13 +28424,4 @@ Initial public release of `testify` with browser-based Jasmine runner, CLI binar
     "access": "public"
   }
 }
-````
-
-## File: src/lib.ts
-````typescript
-/**
- * Stable Testify 2 public API.
- */
-
-export * from './public-api';
 ````

@@ -294,6 +294,10 @@ export class ViteConfigBuilder {
     if (!['.ts', '.mts', '.cts'].includes(ext)) return false;
     if (filePath.endsWith('.d.ts')) return true;
 
+    if (!fs.existsSync(filePath)) {
+      return false;
+    }
+
     let content = '';
     try {
       content = fs.readFileSync(filePath, 'utf8');
@@ -848,7 +852,8 @@ export class ViteConfigBuilder {
     }
 
     const resolvedPath = path.resolve(builtPackageRoot, relativeTarget);
-    if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) {
+    const stats = fs.statSync(resolvedPath, { throwIfNoEntry: false });
+    if (!stats?.isFile()) {
       return null;
     }
 

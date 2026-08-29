@@ -166,15 +166,21 @@ export class ProjectSetup {
   }
 
   private static hasJasmineTypes(projectRoot: string): boolean {
-    try {
-      const projectRequire = createRequire(
-        path.join(projectRoot, '__testify_setup__.cjs'),
-      );
-      projectRequire.resolve('@types/jasmine/package.json');
-      return true;
-    } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-      return false;
-    }
+    const projectRequire = createRequire(
+      path.join(projectRoot, '__testify_setup__.cjs'),
+    );
+    const lookupPaths =
+      projectRequire.resolve.paths('@types/jasmine/package.json') ?? [];
+
+    return lookupPaths.some((lookupPath) =>
+      fs.existsSync(
+        path.join(
+          lookupPath,
+          '@types',
+          'jasmine',
+          'package.json',
+        ),
+      ),
+    );
   }
 }

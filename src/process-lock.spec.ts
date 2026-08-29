@@ -21,4 +21,13 @@ describe('ProcessLock', () => {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it('ignores missing pid files during sync release', () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'testify-lock-'));
+    const lock = new ProcessLock(undefined, 4321, tempRoot);
+
+    expect(() => lock.releaseSync()).not.toThrow();
+
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  });
 });

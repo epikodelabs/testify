@@ -130,7 +130,9 @@ export class BrowserManager {
       process.removeListener('SIGINT', sigintHandler);
       process.removeListener('SIGTERM', sigtermHandler);
       if (browser) {
-        await browser.close().catch(() => {});
+        await browser.close().catch((error) => {
+          logger.error(BrowserMessages.browserCloseFailed(error));
+        });
       }
       this.currentBrowser = null;
     }
@@ -141,7 +143,9 @@ export class BrowserManager {
     // Also close any browser (headed, watch, or headless) immediately so the
     // process does not hang on long-running navigation/test execution.
     if (this.currentBrowser) {
-      this.closeBrowser().catch(() => {});
+      this.closeBrowser().catch((error) => {
+        logger.error(BrowserMessages.browserCloseFailed(error));
+      });
     }
   }
 
@@ -180,14 +184,18 @@ export class BrowserManager {
       page.on('close', () => {
         Promise.resolve(onBrowserClose?.()).then(() => {
           // The caller is responsible for process exit; do not kill the process here.
-        }).catch(() => {}).finally(() => {
+        }).catch((error) => {
+          logger.error(BrowserMessages.browserCloseCallbackFailed(error));
+        }).finally(() => {
           this.clearBrowserState();
         });
       });
 
     } catch (error: any) {
       if (browser && browser.isConnected()) {
-        await browser.close().catch(() => {});
+        await browser.close().catch((closeError) => {
+          logger.error(BrowserMessages.browserCloseFailed(closeError));
+        });
       }
 
       this.clearBrowserState();

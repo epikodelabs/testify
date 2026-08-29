@@ -1,6 +1,7 @@
 export interface BrowserPage {
   title: string;
   faviconTag: string;
+  headStyles?: string[];
   headScripts?: string[];
   bodyHtml?: string;
   inlineScripts?: string[];
@@ -9,6 +10,10 @@ export interface BrowserPage {
 export function createBrowserPage(
   page: BrowserPage,
 ): string {
+  const headStyles = (page.headStyles ?? [])
+    .filter(Boolean)
+    .join('\n');
+
   const headScripts = (page.headScripts ?? [])
     .filter(Boolean)
     .join('\n');
@@ -24,9 +29,7 @@ export function createBrowserPage(
   <meta charset="UTF-8">
   ${page.faviconTag}
   <title>${page.title}</title>
-  <link rel="stylesheet" href="/node_modules/jasmine-core/lib/jasmine-core/jasmine.css">
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine.js"></script>
-  <script src="/node_modules/jasmine-core/lib/jasmine-core/jasmine-html.js"></script>
+  ${headStyles}
   ${headScripts}
 </head>
 <body>
