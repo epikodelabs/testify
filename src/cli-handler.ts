@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { parseArgs } from "node:util";
+import { Command, CommanderError } from 'commander';
 import { ConfigManager } from "./config-manager";
 import { logger } from './logger';
 import { PackageResolver } from "./package-resolver";
@@ -23,57 +23,8 @@ export const cliDependencies = {
 };
 
 // ─── argv parsing ───────────────────────────────────────────────────────────
-// Declarative flag definitions consumed by node:util's built-in parseArgs.
-// Adding a new boolean/string flag means adding one entry here instead of
-// hand-scanning `process.argv` with indexOf/includes.
-
-const CLI_OPTIONS = {
-  help: { type: 'boolean', short: 'h' },
-  version: { type: 'boolean', short: 'v' },
-  watch: { type: 'boolean', short: 'w' },
-  headless: { type: 'boolean' },
-  coverage: { type: 'boolean', short: 'c' },
-  exclusive: { type: 'boolean' },
-  browser: { type: 'string', short: 'b' },
-  ansi: { type: 'boolean' },
-  seed: { type: 'string' },
-  project: { type: 'string', short: 'p' },
-  port: { type: 'string' },
-  silent: { type: 'boolean' },
-  quiet: { type: 'boolean', short: 'q' },
-  preserve: { type: 'boolean' },
-  config: { type: 'string' },
-  bail: { type: 'boolean' },
-  random: { type: 'boolean' },
-  'no-random': { type: 'boolean' },
-  timeout: { type: 'string' },
-  file: { type: 'string', short: 'f' },
-  suite: { type: 'string', short: 's' },
-} as const;
-
-interface ParsedValues {
-  help?: boolean;
-  version?: boolean;
-  watch?: boolean;
-  headless?: boolean;
-  coverage?: boolean;
-  exclusive?: boolean;
-  browser?: string | boolean;
-  ansi?: boolean;
-  seed?: string | boolean;
-  project?: string | boolean;
-  port?: string | boolean;
-  silent?: boolean;
-  quiet?: boolean;
-  preserve?: boolean;
-  config?: string | boolean;
-  bail?: boolean;
-  random?: boolean;
-  'no-random'?: boolean;
-  timeout?: string | boolean;
-  file?: string | boolean;
-  suite?: string | boolean;
-}
+// Commander defines the public command contract in one place. Validation that
+// depends on multiple flags remains below, close to the runner configuration.
 
 interface ParsedCli {
   helpRequested: boolean;
@@ -128,21 +79,49 @@ export class CLIHandler {
   }
 
   private static parseCliArgs(argv: string[]): ParsedCli {
-    let parsedArgs;
-    try {
-      parsedArgs = parseArgs({
-      args: argv,
-      strict: true,
-      allowPositionals: true,
-      options: CLI_OPTIONS as any,
+    const program = new Command()
+      .name('testify')
+      .helpOption(false)
+      .allowUnknownOption(false)
+      .allowExcessArguments(false)
+      .option('-h, --help')
+      .option('-v, --version')
+      .option('-w, --watch')
+      .option('--headless')
+      .option('-c, --coverage')
+      .option('--exclusive')
+      .option('-b, --browser <name>')
+      .option('--ansi')
+      .option('--seed <number>')
+      .option('-p, --project <name>')
+      .option('--port <number>')
+      .option('--silent')
+      .option('-q, --quiet')
+      .option('--preserve')
+      .option('--config <path>')
+      .option('--bail')
+      .option('--random')
+      .option('--no-random')
+      .option('--timeout <ms>')
+      .option('-f, --file <file>')
+      .option('-s, --suite <name>')
+      .exitOverride()
+      .configureOutput({
+        // CLIHandler owns diagnostics so its error format stays consistent.
+        writeOut: () => undefined,
+        writeErr: () => undefined,
       });
+
+    try {
+      program.parse(argv, { from: 'user' });
     } catch (error) {
-      logger.error(CLIMessages.invalidArguments(error));
+      const detail = error instanceof CommanderError ? error.message : String(error);
+      logger.error(CLIMessages.invalidArguments(detail));
       throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'Invalid command line arguments');
     }
 
-    const { values, positionals } = parsedArgs;
-    const v = values as ParsedValues;
+    const v = program.opts<Record<string, string | boolean | undefined>>();
+    const positionals = program.args as string[];
 
     const hasBrowserArg = v.browser !== undefined;
     const browserRaw = requireStringValue(v.browser, CLIMessages.browserArgMissing);
@@ -194,7 +173,8 @@ export class CLIHandler {
       timeoutValue = parsed;
     }
 
-    const randomValue = v['no-random'] === true ? false : v.random === true ? true : undefined;
+    const randomSource = program.getOptionValueSource('random');
+    const randomValue = randomSource === 'cli' ? v.random === true : undefined;
 
     return {
       helpRequested: v.help === true,
