@@ -21,6 +21,19 @@ export function normalize(text: string): string {
     .trim();
 }
 
+/**
+ * Like normalize(), but preserves the line structure: stack traces read as one
+ * frame per line, so collapsing newlines would merge "at ..." frames into an
+ * unreadable run-on line.
+ */
+export function normalizeStackTrace(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map(line => line.replace(/[\uFEFF\xA0\t]/g, ' ').replace(/\s{2,}/g, ' ').trim())
+    .filter(line => line !== '')
+    .join('\n');
+}
+
 interface DisplayUnit {
   value: string;
   visible: number;

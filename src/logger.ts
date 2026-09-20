@@ -1,23 +1,12 @@
 import { supportsColor } from './ansi-constants';
 import { LOG_MESSAGES, LogMessageTemplate } from './messages';
 import { replacePlaceholders } from './symbols';
-
-// ANSI color codes
-const colors = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  black: '\x1b[30m',
-  red: '\x1b[31m',
-  brightRed: '\x1b[91m',
-  bgBlack: '\x1b[40m',
-  bgRed: '\x1b[41m',
-  bgYellow: '\x1b[43m',
-  yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
-  blue: '\x1b[34m',
-  brightGreen: '\x1b[92m',
-  gray: '\x1b[90m',
-};
+import {
+  InkTextStyle,
+  renderTerminalPanel,
+  renderTerminalStage,
+  renderTerminalText,
+} from './ink-output';
 
 type LogMessageKey = keyof typeof LOG_MESSAGES;
 
@@ -40,12 +29,7 @@ interface LoggedLine {
 export class Logger {
   private previousLines: LoggedLine[] = [];
   private showPrompt = true;
-  private prompt: string;
   private plainPrompt = '> ';
-
-  constructor() {
-    this.prompt = `${colors.bold}${colors.brightGreen}> ${colors.reset}`;
-  }
 
   // ─── New API: structured log messages ────────────────────
 
@@ -57,32 +41,32 @@ export class Logger {
 
     const template: LogMessageTemplate = LOG_MESSAGES[key];
     const rawMessage = template.text(...args);
-    const { formattedMessage, stream } = this.formatStructured(rawMessage, template);
-    stream.write(formattedMessage + '\n');
+    const { formattedMessage, style, stream } = this.formatStructured(rawMessage, template);
+    stream.write(renderTerminalText(formattedMessage, style) + '\n');
   }
 
   private formatStructured(
     rawMessage: string,
     template: LogMessageTemplate
-  ): { formattedMessage: string; stream: NodeJS.WriteStream } {
+  ): { formattedMessage: string; style: InkTextStyle; stream: NodeJS.WriteStream } {
     const { type, icon } = template;
-    let color = colors.reset;
+    let style: InkTextStyle = {};
     let stream: NodeJS.WriteStream = process.stdout;
     let messageContent = rawMessage;
 
     switch (type) {
       case 'error':
-        color = colors.red;
+        style = { color: 'red' };
         stream = process.stderr;
         break;
       case 'warning':
-        color = colors.yellow;
+        style = { color: 'yellow' };
         break;
       case 'info':
-        color = colors.cyan;
+        style = { color: 'cyan' };
         break;
       case 'debug':
-        color = colors.blue;
+        style = { color: 'blue' };
         break;
     }
 
@@ -90,13 +74,13 @@ export class Logger {
       const iconStr = icon ? `${icon} ` : '';
       const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
       messageContent = prefixMatch && prefixMatch[1] ? prefixMatch[1] : rawMessage;
-      return { formattedMessage: `${color}${iconStr}${messageContent}${colors.reset}`, stream };
+      return { formattedMessage: `${iconStr}${messageContent}`, style, stream };
     }
 
     const tag = `[${template.type.toUpperCase()}]`;
     const prefixMatch = rawMessage.match(/^\[.*?\]\s*(.*)/);
     messageContent = prefixMatch && prefixMatch[1] ? prefixMatch[1] : rawMessage;
-    return { formattedMessage: `${tag} ${messageContent}`, stream };
+    return { formattedMessage: `${tag} ${messageContent}`, style, stream };
   }
 
   // ─── Legacy API: direct printing ─────────────────────────
@@ -106,7 +90,7 @@ export class Logger {
 
     const prompt =
       supportsColor()
-        ? this.prompt
+        ? renderTerminalText('> ', { bold: true, color: 'green' })
         : this.plainPrompt;
     const lines = msg.split('\n');
     for (let i = 0; i < lines.length; i++) {
@@ -157,6 +141,25 @@ export class Logger {
     return true;
   }
 
+  /** Render the setup phase as a concise, append-only Ink sequence. */
+  preparationStart(message: string) {
+    if (areTestLogsSuppressed()) return true;
+    if (!supportsColor()) return this.println(message);
+    this.printRaw(
+      renderTerminalPanel('PREPARING TEST RUN', [this.cleanPreparationMessage(message)]) + '\n',
+    );
+    return true;
+  }
+
+  preparationStep(label: string, message: string, complete = false) {
+    if (areTestLogsSuppressed()) return true;
+    if (!supportsColor()) return this.println(message);
+    this.printRaw(
+      renderTerminalStage(label, this.cleanPreparationMessage(message), complete ? 'green' : 'cyan') + '\n',
+    );
+    return true;
+  }
+
   error(msg: string) {
     if (areTestLogsSuppressed()) return true;
 
@@ -174,7 +177,7 @@ export class Logger {
               i === 0,
             forceColor:
               supportsColor()
-                ? colors.red
+                ? 'red'
                 : '',
           },
         );
@@ -251,7 +254,7 @@ export class Logger {
   private writeLine(line: string, color = '') {
     if (supportsColor()) {
       this.clearLine();
-      process.stdout.write(color + line + colors.reset);
+      process.stdout.write(renderTerminalText(line, color ? { color } : {}));
     } else {
       process.stdout.write(line);
     }
@@ -313,7 +316,7 @@ export class Logger {
         color:
           options.forceColor ??
           (supportsColor()
-            ? colors.red
+            ? 'red'
             : ''),
         hasOwnPrompt: true,
       };
@@ -388,15 +391,22 @@ export class Logger {
       .join('\n');
   }
 
+  private cleanPreparationMessage(message: string): string {
+    return replacePlaceholders(message)
+      .replace(/^%[a-z_]+%\s*/i, '')
+      .replace(LEGACY_LOG_TAG_PREFIX, '')
+      .replace(LEADING_BADGE_PREFIX, '');
+  }
+
   private errorPrefix(): string {
     return supportsColor()
-      ? `${colors.bold}${colors.black}${colors.bgRed} ERROR ${colors.reset}${colors.red}${colors.bgBlack} `
+      ? renderTerminalText(' ERROR ', { bold: true, color: 'black', backgroundColor: 'red' }) + ' '
       : '[ERROR] ';
   }
 
   private warnPrefix(): string {
     return supportsColor()
-      ? `${colors.bold}${colors.black}${colors.bgYellow} WARN ${colors.reset}`
+      ? renderTerminalText(' WARN ', { bold: true, color: 'black', backgroundColor: 'yellow' })
       : 'WARN ';
   }
 

@@ -1,3 +1,6 @@
+import { renderTerminalPanel, renderTerminalText } from './ink-output';
+import { supportsColor } from './ansi-constants';
+
 export interface ConsoleReporterOptions {
   print?: (message: string) => void;
   showColors?: boolean;
@@ -20,7 +23,8 @@ type FailureResult = {
  * A ConsoleReporter is installed by default.
  */
 export class JasmineConsoleReporter implements jasmine.CustomReporter {
-  private print: (message: string) => void = (message) => process.stdout.write(message);
+  private output: (message: string) => void = (message) => process.stdout.write(message);
+  private buffer = '';
   private showColors = true;
   private specCount = 0;
   private executableSpecCount = 0;
@@ -28,14 +32,9 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   private failedSpecs: jasmine.SpecResult[] = [];
   private pendingSpecs: jasmine.SpecResult[] = [];
   private alwaysListPendingSpecs = true;
-  private readonly ansi = {
-    green: '\x1B[32m',
-    red: '\x1B[31m',
-    yellow: '\x1B[33m',
-    none: '\x1B[0m',
-  };
   private failedSuites: jasmine.SuiteResult[] = [];
   private stackFilter: (stack: string) => string = (stack) => stack;
+  private slowSpecs: Array<{ fullName: string; duration: number }> = [];
 
   randomSeedReproductionCmd(seed: number | string) {
     return 'jasmine --random=true --seed=' + seed;
@@ -46,7 +45,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
    */
   setOptions(options: ConsoleReporterOptions) {
     if (options.print) {
-      this.print = options.print;
+      this.output = options.print;
     }
 
     this.showColors = options.showColors ?? this.showColors;
@@ -69,6 +68,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     this.failedSpecs = [];
     this.pendingSpecs = [];
     this.failedSuites = [];
+    this.slowSpecs = [];
     if (options?.order?.random) {
       this.print('Randomized with seed ' + options.order.seed);
       this.printNewline();
@@ -82,9 +82,10 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
       this.failureCount += result.failedExpectations.length;
     }
 
+    this.flush(true);
     this.printNewline();
     this.printNewline();
-    if (this.failedSpecs.length > 0) {
+    if (this.failedSpecs.length > 0 && !this.useRichUi()) {
       this.print('Failures:');
     }
     for (let i = 0; i < this.failedSpecs.length; i++) {
@@ -109,6 +110,12 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
       for (let i = 0; i < this.pendingSpecs.length; i++) {
         this.pendingSpecDetails(this.pendingSpecs[i], i + 1);
       }
+    }
+
+    if (this.useRichUi()) {
+      this.printRichSummary(result);
+      this.flush(true);
+      return;
     }
 
     if (this.specCount > 0) {
@@ -167,6 +174,10 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   specDone(result: jasmine.SpecResult) {
     this.specCount++;
 
+    if (typeof result.duration === 'number' && result.duration >= 500) {
+      this.slowSpecs.push({ fullName: result.fullName, duration: result.duration });
+    }
+
     if (result.status == 'pending') {
       this.pendingSpecs.push(result);
       this.executableSpecCount++;
@@ -201,8 +212,34 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     this.print('\n');
   }
 
-  private colored(color: keyof JasmineConsoleReporter['ansi'], str: string) {
-    return this.showColors ? this.ansi[color] + str + this.ansi.none : str;
+  /** Batch dot fragments while still flushing complete lines immediately. */
+  private print(message: string): void {
+    this.buffer += message;
+    this.flush();
+  }
+
+  private flush(force = false): void {
+    if (!this.buffer) return;
+
+    const completeLength = this.buffer.lastIndexOf('\n') + 1;
+    if (completeLength > 0) {
+      this.output(this.buffer.slice(0, completeLength));
+      this.buffer = this.buffer.slice(completeLength);
+    }
+
+    const visibleBuffer = this.buffer.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+    if (force || visibleBuffer.length >= (process.stdout.columns ?? 80)) {
+      this.output(this.buffer);
+      this.buffer = '';
+    }
+  }
+
+  private useRichUi(): boolean {
+    return this.showColors && supportsColor();
+  }
+
+  private colored(color: 'green' | 'red' | 'yellow', str: string) {
+    return this.showColors ? renderTerminalText(str, { color }) : str;
   }
 
   private plural(str: string, count: number) {
@@ -219,6 +256,22 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   }
 
   private specFailureDetails(result: jasmine.SpecResult, failedSpecNumber: number) {
+    if (this.useRichUi()) {
+      this.flush(true);
+      const expectation = result.failedExpectations?.[0];
+      const message = expectation?.message?.split('\n')[0] || 'Spec failed without an expectation message.';
+      const stack = expectation?.stack
+        ? this.stackFilter(expectation.stack).split('\n').slice(0, 5)
+        : [];
+      this.print(renderTerminalPanel(
+        `✕ ${result.fullName}`,
+        [this.colored('red', message), ...stack.map(line => renderTerminalText(line, { dimColor: true }))],
+        'red',
+      ) + '\n');
+      this.flush(true);
+      return;
+    }
+
     this.printNewline();
     this.print(failedSpecNumber + ') ');
     this.print(result.fullName);
@@ -237,6 +290,22 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   }
 
   private suiteFailureDetails(result: jasmine.SuiteResult | (FailureResult & { fullName: string })) {
+    if (this.useRichUi()) {
+      this.flush(true);
+      const expectation = result.failedExpectations[0];
+      const message = expectation?.message?.split('\n')[0] || 'Suite failed without an expectation message.';
+      const stack = expectation?.stack
+        ? this.stackFilter(expectation.stack).split('\n').slice(0, 5)
+        : [];
+      this.print(renderTerminalPanel(
+        `✕ Suite error: ${result.fullName}`,
+        [this.colored('red', message), ...stack.map(line => renderTerminalText(line, { dimColor: true }))],
+        'red',
+      ) + '\n');
+      this.flush(true);
+      return;
+    }
+
     this.printNewline();
     this.print('Suite error: ' + result.fullName);
     this.printFailedExpectations(result);
@@ -277,6 +346,18 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   }
 
   private pendingSpecDetails(result: jasmine.SpecResult, pendingSpecNumber: number) {
+    if (this.useRichUi()) {
+      this.flush(true);
+      const reason = result.pendingReason || 'No reason given';
+      this.print(renderTerminalPanel(
+        `◌ Pending · ${pendingSpecNumber}`,
+        [result.fullName, renderTerminalText(reason, { dimColor: true })],
+        'yellow',
+      ) + '\n');
+      this.flush(true);
+      return;
+    }
+
     this.printNewline();
     this.printNewline();
     this.print(pendingSpecNumber + ') ');
@@ -288,6 +369,25 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     }
     this.print(this.indent(this.colored('yellow', pendingReason), 2));
     this.printNewline();
+  }
+
+  private printRichSummary(result: jasmine.JasmineDoneInfo): void {
+    const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
+    const seconds = result.totalTime / 1000;
+    const lines = [
+      `${this.colored('green', `✓ ${Math.max(0, passed)} passed`)}  ${this.colored('red', `✕ ${this.failureCount} failed`)}  ${this.colored('yellow', `◌ ${this.pendingSpecs.length} pending`)}`,
+    ];
+
+    const slowest = [...this.slowSpecs].sort((a, b) => b.duration - a.duration).slice(0, 3);
+    for (const spec of slowest) {
+      lines.push(renderTerminalText(`Slow: ${spec.fullName} (${spec.duration}ms)`, { dimColor: true }));
+    }
+    if (result.order?.random) {
+      lines.push(renderTerminalText(`Re-run: ${this.randomSeedReproductionCmd(result.order.seed)}`, { dimColor: true }));
+    }
+    if (result.overallStatus === 'incomplete') lines.push(this.colored('yellow', `Incomplete: ${result.incompleteReason}`));
+
+    this.print('\n' + renderTerminalPanel(`TEST RUN · ${seconds.toFixed(3)}s`, lines, this.failureCount > 0 ? 'red' : 'green') + '\n');
   }
 }
 

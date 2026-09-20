@@ -241,7 +241,7 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       if (fs.existsSync(this.config.outDir) && !this.shouldPreserve()) {
-        logger.println(RunnerMessages.cleaningOutputDirectory());
+        logger.preparationStep('OUTPUT', RunnerMessages.cleaningOutputDirectory());
         this.cleanOutputDirectory();
       }
 
@@ -251,7 +251,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
       viteConfig.build!.rolldownOptions!.input = input;
 
-      logger.println(RunnerMessages.buildingFiles(Object.keys(input).length));
+      logger.preparationStep('BUILD', RunnerMessages.buildingFiles(Object.keys(input).length));
       this.viteCache = await viteBuild(viteConfig);
 
       const moduleFiles =
@@ -354,7 +354,7 @@ export class ViteJasmineRunner extends EventEmitter {
     // entrypoint (`watch()`), used by the CLI only when --watch is present.
     this.config.watch = false;
 
-    logger.println(this.config.headless ? RunnerMessages.startingHeadless() : RunnerMessages.startingServer());
+    logger.preparationStart(this.config.headless ? RunnerMessages.startingHeadless() : RunnerMessages.startingServer());
 
     try {
       const preprocessResult = await this.preprocess();

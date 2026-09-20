@@ -23,6 +23,8 @@ export default defineConfig({
         'util',
         'os',
         'child_process',
+        'ink',
+        'react',
       ],
     },
   },

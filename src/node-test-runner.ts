@@ -97,7 +97,8 @@ export class NodeTestRunner {
     this.isRunning = true;
 
     try {
-      logger.println(
+      logger.preparationStep(
+        'EXECUTE',
         NodeRunnerMessages
           .startingTestRunner(),
       );
