@@ -3,6 +3,7 @@ import * as path from 'path';
 import type { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import type { FileDiscoveryService } from './file-discovery-service';
+import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 import { BrowserPageBuilder } from './browser-page-builder';
 import {
