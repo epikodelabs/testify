@@ -3,7 +3,7 @@ import {
 } from './console-reporter';
 
 describe('ConsoleReporter output sink', () => {
-  it('uses the injected print sink', () => {
+  it('uses the injected print sink for the completed run report', () => {
     const messages: string[] = [];
 
     const reporter =
@@ -20,14 +20,19 @@ describe('ConsoleReporter output sink', () => {
       totalTime: 0,
     });
 
+    reporter.jasmineDone({
+      overallStatus: 'passed',
+      totalTime: 0,
+    });
+
     expect(
       messages.join(''),
     ).toContain(
-      'Test Runner Started',
+        'Test Run',
     );
   });
 
-  it('prints a failed final status for jasmineDone global failures', () => {
+  it('includes global failures in the completed run report', () => {
     const messages: string[] = [];
 
     const reporter =
@@ -55,11 +60,7 @@ describe('ConsoleReporter output sink', () => {
       totalTime: 0,
     });
 
-    expect(
-      messages.join(''),
-    ).toContain(
-      '1 TEST FAILED',
-    );
+    expect(messages.join('')).toContain('GLOBAL ERRORS');
   });
 
   it('reports run facts, pass rate, slowest spec and a final recap', () => {

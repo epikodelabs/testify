@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { Box, renderToString, Text } from 'ink';
+import { Box, render, renderToString, Text } from 'ink';
 import { getMaxWidth, supportsColor } from './ansi-constants';
 
 const ANSI_ESCAPE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
@@ -95,4 +95,52 @@ export function renderTerminalStage(
     ),
     { columns: getMaxWidth() },
   );
+}
+
+/** A connected, append-only pipeline row for test preparation. */
+export function renderTerminalPreparationStage(
+  label: string,
+  description: string,
+  tone: string = 'cyan',
+): string {
+  if (!supportsColor()) return `${label}: ${description}`;
+
+  return renderToString(
+    createElement(
+      Box,
+      { paddingLeft: 1 },
+      createElement(Text, { color: tone }, '├─'),
+      createElement(Text, { bold: true, color: tone }, ` ${label.padEnd(11)}`),
+      createElement(Text, { dimColor: true }, description),
+    ),
+    { columns: getMaxWidth() },
+  );
+}
+
+/** A small persistent Ink surface for reporter-owned live output. */
+export interface LiveTerminalView {
+  update(text: string): void;
+  stop(preserve?: boolean): void;
+}
+
+export function startLiveTerminalView(initialText: string): LiveTerminalView {
+  const renderText = (text: string) =>
+    createElement(Text, { wrap: 'truncate-end' }, text);
+  const instance: any = render(renderText(initialText), {
+    exitOnCtrlC: false,
+    patchConsole: false,
+    // Reporter callbacks are synchronous; render updates immediately so the
+    // completed report can replace the live table in the same terminal area.
+    concurrent: false,
+  });
+
+  return {
+    update: (text) => instance.rerender(renderText(text)),
+    stop: (preserve = false) => {
+      if (!preserve) {
+        instance.rerender(renderText(''));
+      }
+      instance.unmount();
+    },
+  };
 }

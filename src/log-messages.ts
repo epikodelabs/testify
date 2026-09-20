@@ -593,6 +593,27 @@ export const RunnerMessages = {
   cleaningOutputDirectory: () =>
     `%broom% Cleaning output directory...`,
 
+  discoveringTestFiles: (specCount: number, sourceCount: number) =>
+    `%search% Found ${specCount} spec ${specCount === 1 ? 'file' : 'files'} and ${sourceCount} source ${sourceCount === 1 ? 'file' : 'files'}.`,
+
+  preparingBuildConfiguration: () =>
+    `%gear% Preparing build configuration...`,
+
+  instrumentingModules: (count: number) =>
+    `%tool% Instrumenting ${count} compiled ${count === 1 ? 'module' : 'modules'}...`,
+
+  generatingTestPage: () =>
+    `%page% Generating test page...`,
+
+  generatedTestPage: () =>
+    `%page% Generated test page: index.html`,
+
+  testServerRunning: (port: number) =>
+    `%rocket% Test server running at http://localhost:${port}`,
+
+  startingBrowserTestSession: () =>
+    `%rocket% Starting browser test session...`,
+
   testsCompletedTimeout: (message: string) =>
     `%error% ${message}`,
 };

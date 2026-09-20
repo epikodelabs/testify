@@ -37,8 +37,8 @@ describe('ConsoleReporter abort', () => {
       );
 
     expect(rendered)
-      .toContain(
-        'time: 0.000s',
+      .not.toContain(
+        'All suites completed successfully',
       );
   });
 

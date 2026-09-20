@@ -217,9 +217,18 @@ export class ViteJasmineRunner extends EventEmitter {
         return 'no-specs';
       }
 
+      logger.preparationStep(
+        'DISCOVER',
+        RunnerMessages.discoveringTestFiles(specFiles.length, srcFiles.length),
+      );
+
       const entryFiles = [...srcFiles, ...specFiles];
       const selectedSpecArtifacts = specFiles.map((file) =>
         this.fileDiscovery.getOutputName(file),
+      );
+      logger.preparationStep(
+        'CONFIG',
+        RunnerMessages.preparingBuildConfiguration(),
       );
       const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
       const input: Record<string, string> = {};
@@ -274,6 +283,13 @@ export class ViteJasmineRunner extends EventEmitter {
             ),
         );
 
+      if (moduleFiles.length > 0) {
+        logger.preparationStep(
+          'INSTRUMENT',
+          RunnerMessages.instrumentingModules(moduleFiles.length),
+        );
+      }
+
       for (
         const moduleFile of
         moduleFiles
@@ -310,6 +326,7 @@ export class ViteJasmineRunner extends EventEmitter {
         } else {
           await this.htmlGenerator.generateHtmlFile(selectedSpecArtifacts);
         }
+        logger.preparationStep('PAGE', RunnerMessages.generatedTestPage());
       } else if (preserveHtml) {
         logger.println(RunnerMessages.preservingExistingHtml());
       }
@@ -458,6 +475,7 @@ export class ViteJasmineRunner extends EventEmitter {
   private async runHeadlessBrowserMode(): Promise<number> {
     const server = await this.httpServerManager.startServer();
     await this.httpServerManager.waitForServerReady(`http://localhost:${this.config.port}/index.html`, 10000);
+    logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!));
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     let testSuccess = false;
@@ -496,6 +514,8 @@ export class ViteJasmineRunner extends EventEmitter {
     }
 
     try {
+      logger.preparationStep('EXECUTE', RunnerMessages.startingBrowserTestSession());
+      logger.flushPreparation();
       await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
       // Wait for the jasmineDone WebSocket message to be processed so the final
       // summary is printed before we tear down the WebSocket server and exit.
@@ -539,6 +559,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
   private async runHeadedBrowserMode(): Promise<number> {
     const server = await this.httpServerManager.startServer();
+    logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!));
     let testsCompleted = false;
     let testSuccess = false;
     let testHasPending = false;
@@ -609,6 +630,8 @@ export class ViteJasmineRunner extends EventEmitter {
     };
 
     try {
+      logger.preparationStep('EXECUTE', RunnerMessages.startingBrowserTestSession());
+      logger.flushPreparation();
       await this.browserManager.openBrowser(
         this.config.port!,
         onBrowserClose,

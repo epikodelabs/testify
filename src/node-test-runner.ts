@@ -102,6 +102,7 @@ export class NodeTestRunner {
         NodeRunnerMessages
           .startingTestRunner(),
       );
+      logger.flushPreparation();
 
       return await this.execution
         .run(

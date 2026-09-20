@@ -1,4 +1,5 @@
 import util from 'util';
+import jasmineCore from 'jasmine-core';
 import { logger } from './logger';
 import { wrapLine, visibleWidth, ANSI_FULL_REGEX, normalize, normalizeStackTrace } from './utils';
 import { EXIT_CODES } from './exit-codes';
@@ -7,13 +8,15 @@ import { ReporterMessages } from './log-messages';
 import { SYMBOLS, replacePlaceholders } from './symbols';
 import {
   renderTerminalPanel,
-  renderTerminalStage,
   renderTerminalText,
   PANEL_RULE,
+  startLiveTerminalView,
+  type LiveTerminalView,
 } from './ink-output';
 
 export interface EnvironmentInfo {
   node: string;
+  jasmine: string;
   platform: string;
   arch: string;
   cwd: string;
@@ -21,6 +24,13 @@ export interface EnvironmentInfo {
   pid: number;
   uptime: string;
   userAgent?: UserAgent;
+}
+
+function getJasmineVersion(): string {
+  const version = typeof jasmineCore.version === 'function'
+    ? jasmineCore.version()
+    : jasmineCore.version;
+  return version ? `v${version}` : 'unknown';
 }
 
 export interface UserAgent {
@@ -72,6 +82,7 @@ export class ConsoleReporter {
   private globalFailures: any[];
   private pendingSpecs: any[];
   private startTime: number;
+  private runStartedAt = '';
   private config: any | null = null;
   private envInfo: EnvironmentInfo | null;
   private rootSuite: TestSuite;
@@ -89,10 +100,14 @@ export class ConsoleReporter {
   private orderedSpecs: any[] | null = null;
   private isTTY: boolean;
   private resultPanelLines: string[] | null = null;
+  private liveRunView: LiveTerminalView | null = null;
+  private liveUpdateTimer: NodeJS.Timeout | null = null;
+  private readonly usesDefaultPrint: boolean;
   /** Counts captured by printSummary for the final status box recap. */
   private summaryStats: { passed: number; failed: number; pending: number; totalTime: number } | null = null;
 
   constructor(options: ConsoleReporterOptions = {}) {
+    this.usesDefaultPrint = options.print === undefined;
     this.print =
       options.print ??
       ((...args) =>
@@ -215,14 +230,8 @@ export class ConsoleReporter {
       });
     }
 
-    // Debug summary
-    const totalSuites = this.orderedSuites?.length; // real suites (root excluded)
-    const totalSpecs = this.orderedSpecs?.length;   // all specs
-    logger.preparationStep(
-      'READY',
-      ReporterMessages.suiteTreeBuilt(totalSuites, totalSpecs),
-      true,
-    );
+    // Jasmine may rebuild the tree while it plans execution. The final report
+    // is the only place that should present its authoritative counts.
   }
 
   countSpecs(suite: TestSuite) {
@@ -307,6 +316,12 @@ export class ConsoleReporter {
 
   jasmineStarted(config: any) {
     this.startTime = Date.now();
+    this.runStartedAt = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
     this.specCount = 0;
     this.executableSpecCount = 0;
     this.failureCount = 0;
@@ -326,21 +341,17 @@ export class ConsoleReporter {
     this.buildSuiteTree(config);
     this.setupInterruptHandler();
 
-    this.print('\n');
-    this.printBox('Test Runner Started', 'cyan', this.runHeaderLines(config));
     this.printEnvironmentInfo();
+    this.startLiveRun();
   }
 
   /** Facts shown under the "Test Runner Started" title: scope, order, start time. */
   private runHeaderLines(config: any): string[] {
     const specCount = this.orderedSpecs?.length ?? config?.totalSpecsDefined ?? 0;
-    const suiteCount = Math.max(0, this.suiteById.size - 1); // root excluded
+    const suiteCount = Math.max(0, this.suiteById.size - 1);
     const order = config?.order?.random ? 'random order' : 'sequential order';
-    const startedAt = new Date().toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
+    const startedAt = this.runStartedAt || new Date().toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
 
     const scope = `${specCount} spec${specCount === 1 ? '' : 's'} · ${suiteCount} suite${suiteCount === 1 ? '' : 's'}`;
@@ -471,19 +482,10 @@ export class ConsoleReporter {
     // Passing suites are intentionally silent here — they're already listed
     // once, correctly, in the final SUITES summary panel. Printing a line per
     // passing suite here just duplicates that and drowns out real signal.
-    const needsAttention = suite.status === 'failed' || suite.status === 'pending' || suite.status === 'incomplete';
-    if (needsAttention) {
-      if (this.showColors) {
-        this.printLiveSuiteProgress(suite);
-      } else {
-        this.printSuiteLine(suite);
-        this.print('\n');
-      }
-    }
-
     // Pop from stack
     this.suiteStack.pop();
     this.currentSuite = this.suiteStack[this.suiteStack.length - 1] ?? null;
+    this.scheduleLiveRunUpdate();
   }
 
   jasmineDone(result?: any) {
@@ -506,8 +508,6 @@ export class ConsoleReporter {
         : Date.now() - this.startTime;
 
     const totalTime = totalTimeMs / 1000;
-
-    this.clearCurrentLine();
 
     if (this.showColors) this.resultPanelLines = [];
     this.printTestConfiguration(this.config, true);
@@ -554,9 +554,6 @@ export class ConsoleReporter {
 
     this.flushResultPanel();
 
-    this.print('\n');
-    this.printFinalStatus(result?.overallStatus);
-
     this.print('\n\n');
     this.removeInterruptHandler();
   }
@@ -600,6 +597,7 @@ export class ConsoleReporter {
       return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
     }
     this.interrupted = true;
+    this.stopLiveRun();
 
     if (this.isTTY) {
       // Clear the status line (which is on the line above)
@@ -612,16 +610,6 @@ export class ConsoleReporter {
     // Mark all unexecuted specs as skipped
     this.markUnexecutedAsSkipped();
 
-    // A reporter may be exercised directly in tests before jasmineStarted().
-    // In that case there is no meaningful elapsed time yet.
-    const totalTime =
-      this.startTime > 0
-        ? (
-            Date.now() -
-            this.startTime
-          ) / 1000
-        : 0;
-
     // Filter out stale specs before printing
     const actualFailedSpecs = this.failedSpecs.filter(s => s.status === 'failed' || s.overallStatus === 'failed');
     if (actualFailedSpecs.length > 0) {
@@ -630,13 +618,6 @@ export class ConsoleReporter {
     } else {
       this.failedSpecs = [];
     }
-
-    // Print test tree
-    this.printTestTree();
-
-    // Print summary
-    this.print('\n');
-    this.printSummary(totalTime);
 
     this.print('\n');
     this.printBox(ReporterMessages.testsInterrupted(), 'yellow');
@@ -686,6 +667,10 @@ export class ConsoleReporter {
   }
 
   private updateStatusLine() {
+    if (this.liveRunView) {
+      this.scheduleLiveRunUpdate();
+      return;
+    }
     if (!this.isTTY || !this.currentSuite) return;
 
     const total = this.specById.size;
@@ -827,18 +812,6 @@ export class ConsoleReporter {
     return '  ' + SYMBOLS.box_h.repeat(this.lineWidth - 2);
   }
 
-  private printLiveSuiteProgress(suite: TestSuite): void {
-    const { color } = this.getSuiteSymbol(suite.status ?? 'incomplete');
-    const totalSuites = Math.max(0, this.suiteById.size - 1);
-    const completedSuites = this.completedSuiteIds.size;
-    const dots = this.getSpecDots(suite);
-    const progress = this.colored('gray', `(${completedSuites}/${totalSuites})`);
-    const status = this.colored(color, (suite.status ?? 'incomplete').toUpperCase());
-    const description = `${status}  ${this.suiteDisplayName(suite)}${dots ? `  ${dots}` : ''}  ${progress}`;
-
-    this.print(renderTerminalStage('SUITE', description, color === 'brightRed' ? 'red' : color === 'brightYellow' ? 'yellow' : 'cyan') + '\n');
-  }
-
   private resultRule(): string {
     return PANEL_RULE;
   }
@@ -852,11 +825,17 @@ export class ConsoleReporter {
 
   private flushResultPanel(): void {
     if (!this.resultPanelLines) return;
-    this.print('\n' + renderTerminalPanel(
-      'TEST CONFIGURATION',
+    const panel = renderTerminalPanel(
+      'TEST RUN',
       this.resultPanelLines,
-      this.failureCount > 0 ? 'red' : this.pendingSpecs.length > 0 ? 'yellow' : 'magenta',
-    ) + '\n');
+      this.failureCount > 0 ? 'red' : this.pendingSpecs.length > 0 ? 'yellow' : 'green',
+    );
+    if (this.liveRunView) {
+      this.liveRunView.update(panel);
+      this.stopLiveRun(true);
+    } else {
+      this.print('\n' + panel + '\n');
+    }
     this.resultPanelLines = null;
   }
 
@@ -895,7 +874,11 @@ export class ConsoleReporter {
         lines.push(this.colored('white', `${globalIndex}. ${spec.fullName}`) + durationSuffix);
         const expectations = spec.failedExpectations ?? [];
         for (const expectation of expectations) {
-          const messageLines = wrapLine(normalize(expectation.message), this.lineWidth - 4, 0);
+          const messageLines = wrapLine(
+            this.formatFailureMessage(expectation.message),
+            this.lineWidth - 4,
+            0,
+          );
           lines.push(...messageLines.map(line => this.colored('brightRed', `${SYMBOLS.cross} ${line}`)));
           if (expectation.stack) {
             lines.push(...wrapLine(this.prepareStackTrace(expectation.stack), this.lineWidth - 4, 0)
@@ -949,7 +932,11 @@ export class ConsoleReporter {
 
       if (spec.failedExpectations?.length > 0) {
         spec.failedExpectations.forEach((expectation: any, exIndex: number) => {
-          const messageLines = wrapLine(`${SYMBOLS.cross} ${normalize(expectation.message)}`, this.lineWidth, 0);
+          const messageLines = wrapLine(
+            `${SYMBOLS.cross} ${this.formatFailureMessage(expectation.message)}`,
+            this.lineWidth,
+            0,
+          );
           // Continuation lines of same message
           messageLines.forEach(line => (this.print(this.colored('brightRed', `  ${line.trimStart()}`)), this.print('\n')));
 
@@ -986,6 +973,117 @@ export class ConsoleReporter {
         this.print('\n');
       });
     }
+  }
+
+  private runMetadataLines(config: any): string[] {
+    return this.runHeaderLines(config);
+  }
+
+  private startLiveRun(): void {
+    if (!this.showColors || !this.isTTY || !this.usesDefaultPrint) return;
+    this.liveRunView = startLiveTerminalView(this.getLiveRunText());
+  }
+
+  private updateLiveRun(): void {
+    this.liveRunView?.update(this.getLiveRunText());
+  }
+
+  /** Coalesce per-spec callbacks into a responsive, bounded redraw rate. */
+  private scheduleLiveRunUpdate(): void {
+    if (!this.liveRunView || this.liveUpdateTimer) return;
+    this.liveUpdateTimer = setTimeout(() => {
+      this.liveUpdateTimer = null;
+      this.updateLiveRun();
+    }, 75);
+  }
+
+  private stopLiveRun(preserve = false): void {
+    if (this.liveUpdateTimer) {
+      clearTimeout(this.liveUpdateTimer);
+      this.liveUpdateTimer = null;
+    }
+    if (!this.liveRunView) return;
+    this.liveRunView.stop(preserve);
+    this.liveRunView = null;
+  }
+
+  private getLiveRunText(): string {
+    const total = this.specById.size;
+    const progress = total > 0 ? `${this.specCount}/${total} specs` : 'discovering specs';
+    const status = [
+      `${SYMBOLS.checked} ${Math.max(0, this.executableSpecCount - this.failureCount - this.pendingSpecs.length)} passed`,
+      `${SYMBOLS.cross} ${this.failureCount} failed`,
+      `${SYMBOLS.pending} ${this.pendingSpecs.length} pending`,
+    ].join('  ');
+    const lines = [
+      ...this.runMetadataLines(this.config),
+      this.colored('white', `RUNNING  ${progress}`),
+      this.colored('gray', status),
+      PANEL_RULE,
+      ...this.getLiveSuiteLines(),
+    ];
+    return renderTerminalPanel(
+      'TEST RUN',
+      lines,
+      this.failureCount > 0 ? 'red' : this.pendingSpecs.length > 0 ? 'yellow' : 'green',
+    );
+  }
+
+  private getLiveSuiteLines(): string[] {
+    const completedIds = [...this.completedSuiteIds]
+      .filter((id) => id !== this.currentSuite?.id);
+    const visibleIds = [
+      ...completedIds,
+      ...(this.currentSuite ? [this.currentSuite.id] : []),
+    ];
+
+    if (visibleIds.length === 0) {
+      return [this.colored('gray', 'Waiting for the first test result…')];
+    }
+
+    return visibleIds.flatMap((id) => {
+      const suite = this.suiteById.get(id);
+      return suite ? [this.getLiveSuiteLine(suite)] : [];
+    });
+  }
+
+  private getLiveSuiteLine(suite: TestSuite): string {
+    const symbols = this.getSpecDots(suite);
+    const suffix = suite.specs.length > 0
+      ? this.colored('gray', ` · ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
+      : '';
+    const contentWidth = Math.max(32, this.lineWidth - 4);
+    const availableName = Math.max(1, contentWidth - visibleWidth(suffix) - visibleWidth(symbols) - 1);
+    const name = visibleWidth(this.suiteDisplayName(suite)) > availableName
+      ? this.truncateString(this.suiteDisplayName(suite), availableName)
+      : this.suiteDisplayName(suite);
+    const padding = symbols
+      ? ' '.repeat(Math.max(1, contentWidth - visibleWidth(name) - visibleWidth(suffix) - visibleWidth(symbols)))
+      : '';
+    return `${name}${suffix}${padding}${symbols}`;
+  }
+
+  /**
+   * Jasmine can embed an entire compiled module in an assertion's actual
+   * value. Keep both sides of the comparison visible, but never let that
+   * diagnostic consume the report with generated source.
+   */
+  private formatFailureMessage(message: unknown): string {
+    const normalized = normalize(String(message ?? 'Unknown expectation failure.'));
+    const comparison = normalized.match(/^Expected '([\s\S]+)' to ([\s\S]+)$/);
+
+    if (!comparison) {
+      return this.truncateString(normalized, Math.max(120, this.lineWidth * 2));
+    }
+
+    const [, actual, expectation] = comparison;
+    const preview = (value: string, limit: number) => {
+      if (value.length <= limit) return value;
+      const omitted = value.length - limit;
+      return `${value.slice(0, limit)}… [${omitted.toLocaleString()} chars omitted]`;
+    };
+
+    return `Expected '${preview(actual, 72)}' to ${preview(expectation, 96)}`;
   }
 
   private printGlobalFailures() {
@@ -1499,13 +1597,9 @@ export class ConsoleReporter {
     const totalSpecs = this.specById.size;
     const executed = passed + failed + pending;
     const duration = `${totalTime.toFixed(3)}s`;
-    const suiteCount = Math.max(0, this.suiteById.size - 1); // root excluded
-
     // The final status box prints right after this and reuses the counts.
     this.summaryStats = { passed, failed, pending, totalTime };
 
-    // Build the existing summary facts, then give them a dedicated Ink panel.
-    const rightInfo = `total: ${totalSpecs}  suites: ${suiteCount}  time: ${duration}`;
 
     // Derived run statistics: share of green specs and execution throughput.
     const statsParts: string[] = [];
@@ -1549,19 +1643,21 @@ export class ConsoleReporter {
     if (notRun > 0)
       parts.push(this.colored('gray', `${SYMBOLS.not_run} Not Run: ${notRun}`));
 
+    const completionRecap = [
+      `${passed} passed`,
+      ...(failed > 0 ? [`${failed} failed`] : []),
+      ...(pending > 0 ? [`${pending} pending`] : []),
+      `finished in ${duration}`,
+    ].join(' · ');
+
     if (!this.showColors) {
-      const lineWidth = this.lineWidth;
-      const title = '  Test Summary';
-      const spacing = Math.max(1, lineWidth - title.length - rightInfo.length);
       this.print('\n');
-      this.print(title + ' '.repeat(spacing) + rightInfo + '\n');
+      this.print('  Test Summary\n');
       this.print(this.separator() + '\n');
       if (statsParts.length > 0) {
         this.print(`  ${statsParts.join('  ·  ')}\n`);
       }
-      this.print(parts.length > 0
-        ? `  ${parts.join('  |  ')}\n`
-        : '  (no specs executed)\n');
+      this.print(`  ${completionRecap}\n`);
       if (slowestLine) {
         this.print(`  ${this.colored('gray', slowestLine)}\n`);
       }
@@ -1569,9 +1665,8 @@ export class ConsoleReporter {
     }
 
     const summaryLines = [
-      rightInfo,
       ...(statsParts.length > 0 ? [statsParts.join('  ·  ')] : []),
-      parts.length > 0 ? parts.join('  |  ') : '(no specs executed)',
+      this.colored('gray', completionRecap),
       ...(slowestLine ? [this.colored('gray', slowestLine)] : []),
     ];
     if (this.appendResultSection(
@@ -1617,6 +1712,7 @@ export class ConsoleReporter {
 
     return {
       node: process.version,
+      jasmine: getJasmineVersion(),
       platform: `${process.platform} ${process.arch}`,
       arch: process.arch,
       cwd: process.cwd(),
@@ -1631,6 +1727,27 @@ export class ConsoleReporter {
     return `${label.padEnd(12)} ${value}`;
   }
 
+  /** Two compact facts make the runtime card easy to scan without losing data. */
+  private factPair(
+    leftLabel: string,
+    leftValue: string,
+    rightLabel: string,
+    rightValue: string,
+  ): string {
+    const labelWidth = 12;
+    const contentWidth = Math.max(40, getMaxWidth() - 4);
+    const valueWidth = Math.max(
+      10,
+      Math.floor((contentWidth - (labelWidth * 2) - 4) / 2),
+    );
+    const shorten = (value: string) =>
+      value.length > valueWidth
+        ? `…${value.slice(-(valueWidth - 1))}`
+        : value;
+
+    return `${leftLabel.padEnd(labelWidth)} ${shorten(leftValue).padEnd(valueWidth)}  ${rightLabel.padEnd(labelWidth)} ${shorten(rightValue)}`;
+  }
+
   private printEnvironmentInfo() {
     if (!this.envInfo) this.envInfo = this.gatherEnvironmentInfo();
 
@@ -1639,12 +1756,10 @@ export class ConsoleReporter {
       this.print(renderTerminalPanel(
         'ENVIRONMENT',
         [
-          this.factRow('Node.js', this.envInfo.node),
-          this.factRow('Platform', this.envInfo.platform),
-          this.factRow('Architecture', this.envInfo.arch),
-          this.factRow('Process', `${this.envInfo.pid} · uptime ${this.envInfo.uptime}`),
-          this.factRow('Memory', `${this.envInfo.memory} heap`),
-          this.factRow('Directory', this.envInfo.cwd),
+          this.factPair('Node.js', this.envInfo.node, 'Jasmine', this.envInfo.jasmine),
+          this.factPair('Platform', this.envInfo.platform, 'Architecture', this.envInfo.arch),
+          this.factPair('Process', String(this.envInfo.pid), 'Uptime', this.envInfo.uptime),
+          this.factPair('Memory', `${this.envInfo.memory} heap`, 'Directory', this.envInfo.cwd),
         ],
         'blue',
       ) + '\n');
@@ -1658,6 +1773,7 @@ export class ConsoleReporter {
     this.print(this.colored('gray', this.separator() + '\n'));
 
     this.print(this.colored('cyan', '  Node.js:   ') + this.colored('white', `${this.envInfo.node}\n`));
+    this.print(this.colored('cyan', '  Jasmine:   ') + this.colored('white', `${this.envInfo.jasmine}\n`));
     this.print(this.colored('cyan', '  Platform:  ') + this.colored('white', `${this.envInfo.platform}\n`));
     this.print(this.colored('cyan', '  Arch:      ') + this.colored('white', `${this.envInfo.arch}\n`));
 
@@ -1763,15 +1879,12 @@ export class ConsoleReporter {
   private printTestConfiguration(config: any, includeSuites = false) {
     if (!config || Object.keys(config).length === 0) return;
 
-    const orderRow =
-      config.order?.random !== void 0
-        ? this.factRow('Order', config.order.random ? 'random' : 'sequential')
+    const seedRow =
+      config.order?.random && config.order?.seed !== void 0
+        ? this.factRow('Seed', String(config.order.seed))
         : null;
 
-    const seedRow =
-      config.order?.seed !== void 0 ? this.factRow('Seed', String(config.order.seed)) : null;
-
-    const orderRows = [orderRow, seedRow].filter(Boolean) as string[];
+    const orderRows = [seedRow].filter(Boolean) as string[];
 
     const parts = [];
 
@@ -1796,27 +1909,29 @@ export class ConsoleReporter {
         this.colored("white", config.failSpecWithNoExpectations ? `${SYMBOLS.checked} fail` : `${SYMBOLS.cross} pass`)
       );
 
-    const orderLines = orderRows.length > 0 ? orderRows : [this.factRow('Order', 'default')];
+    const orderLines = orderRows;
 
     if (this.showColors) {
       const suiteLines = includeSuites ? this.getSuiteSummaryLines() : [];
       if (this.resultPanelLines) {
         this.resultPanelLines.push(
+          ...this.runMetadataLines(config),
           ...orderLines,
           ...(parts.length > 0 ? [parts.join('  ·  ')] : []),
           ...(suiteLines.length > 0
-            ? ['', this.colored(['bold', 'brightBlue'], 'SUITES'), this.resultRule(), ...suiteLines]
+            ? ['', this.resultRule(), ...suiteLines]
             : []),
         );
         return;
       }
       this.print('\n');
       this.print(renderTerminalPanel(
-        'TEST CONFIGURATION',
+        'TEST RUN',
         [
+          ...this.runMetadataLines(config),
           ...orderLines,
           ...(parts.length > 0 ? [parts.join('  ·  ')] : []),
-          ...(suiteLines.length > 0 ? ['', 'SUITES', ...suiteLines] : []),
+          ...(suiteLines.length > 0 ? ['', ...suiteLines] : []),
         ],
         'magenta',
       ) + '\n');
@@ -1824,8 +1939,11 @@ export class ConsoleReporter {
     }
 
     this.print('\n');
-    this.print('  Test Configuration\n');
+    this.print('  Test Run\n');
     this.print(this.separator() + '\n');
+    for (const row of this.runMetadataLines(config)) {
+      this.print(`  ${row}\n`);
+    }
     for (const row of orderLines) {
       this.print(`  ${row}\n`);
     }
@@ -1864,22 +1982,15 @@ export class ConsoleReporter {
   }
 
   private getSuiteSummaryLines(): string[] {
-    const lines: string[] = [];
+    const entries: Array<{ line: string; status: TestStatus; specCount: number }> = [];
     // The Ink panel consumes two border columns and two padding columns.
     const contentWidth = Math.max(32, this.lineWidth - 4);
     const visit = (suite: TestSuite, depth: number) => {
       const symbols = this.getSpecDots(suite);
       const description = this.suiteDisplayName(suite);
       const status = suite.status ?? this.determineSuiteStatusFromInternal(suite);
-      const statusText = status === 'passed'
-        ? this.colored('brightGreen', 'PASS')
-        : status === 'failed'
-          ? this.colored('brightRed', 'FAIL')
-          : status === 'pending'
-            ? this.colored('brightYellow', 'PEND')
-            : this.colored('gray', status.toUpperCase());
       const indent = '  '.repeat(Math.min(depth, 6));
-      const prefix = `${indent}${statusText}  `;
+      const prefix = indent;
       const specCountSuffix = suite.specs.length > 0
         ? this.colored('gray', ` · ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
         : '';
@@ -1895,12 +2006,18 @@ export class ConsoleReporter {
         ? ' '.repeat(Math.max(1, contentWidth - visibleWidth(prefix) - visibleWidth(name) - visibleWidth(specCountSuffix) - symbolWidth))
         : '';
 
-      lines.push(`${prefix}${name}${specCountSuffix}${padding}${symbols}`);
+      entries.push({
+        line: `${prefix}${name}${specCountSuffix}${padding}${symbols}`,
+        status,
+        specCount: suite.specs.length,
+      });
       for (const child of suite.children) visit(child, depth + 1);
     };
 
     for (const suite of this.rootSuite.children) visit(suite, 0);
-    return lines;
+
+    return entries.map((entry) => entry.line);
+
   }
 
   private suiteDisplayName(suite: TestSuite): string {

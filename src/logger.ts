@@ -30,6 +30,7 @@ export class Logger {
   private previousLines: LoggedLine[] = [];
   private showPrompt = true;
   private plainPrompt = '> ';
+  private preparationLines: string[] | null = null;
 
   // ─── New API: structured log messages ────────────────────
 
@@ -141,22 +142,36 @@ export class Logger {
     return true;
   }
 
-  /** Render the setup phase as a concise, append-only Ink sequence. */
+  /** Collect setup messages so Ink can render one bounded preparation panel. */
   preparationStart(message: string) {
     if (areTestLogsSuppressed()) return true;
     if (!supportsColor()) return this.println(message);
-    this.printRaw(
-      renderTerminalPanel('PREPARING TEST RUN', [this.cleanPreparationMessage(message)]) + '\n',
-    );
+    this.preparationLines = [];
     return true;
   }
 
   preparationStep(label: string, message: string, complete = false) {
     if (areTestLogsSuppressed()) return true;
     if (!supportsColor()) return this.println(message);
-    this.printRaw(
-      renderTerminalStage(label, this.cleanPreparationMessage(message), complete ? 'green' : 'cyan') + '\n',
+    this.preparationLines ??= [];
+    this.preparationLines.push(
+      `${label.padEnd(12)} ${this.cleanPreparationMessage(message)}`,
     );
+    return true;
+  }
+
+  /** Print the preparation card once, immediately before execution begins. */
+  flushPreparation() {
+    if (areTestLogsSuppressed() || !this.preparationLines) return true;
+    if (!supportsColor()) return true;
+
+    this.printRaw(
+      renderTerminalPanel(
+        'PREPARING TEST ENVIRONMENT',
+        this.preparationLines,
+      ) + '\n',
+    );
+    this.preparationLines = null;
     return true;
   }
 
