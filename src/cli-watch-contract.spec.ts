@@ -13,7 +13,7 @@ describe('Testify CLI watch contract', () => {
       );
 
     expect(source).toContain(
-      "watch: { type: 'boolean', short: 'w' }",
+      "'-w, --watch'",
     );
 
     expect(source).toContain(

@@ -52,6 +52,7 @@
   "homepage": "https://github.com/epikodelabs/testify#readme",
   "dependencies": {
     "chokidar": "^5.0.0",
+    "commander": "^14.0.3",
     "esbuild": "^0.28.1",
     "glob": "^13.0.6",
     "ink": "^7.1.1",
