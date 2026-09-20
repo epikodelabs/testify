@@ -43,6 +43,7 @@ export class ViteJasmineRunner extends EventEmitter {
   private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
   private primarySrcDir: string;
   private primaryTestDir: string;
+  private aborting = false;
   private shouldPreserve(): boolean {
     return !!this.config.preserveOutputs;
   }
@@ -71,6 +72,24 @@ export class ViteJasmineRunner extends EventEmitter {
   
   constructor(config: ViteJasmineConfig) {
     super();
+
+    const configuredJasmineEnv = config.jasmineConfig?.env ?? {};
+    const configuredSeed = (configuredJasmineEnv as any).seed;
+    const randomSeed =
+      configuredJasmineEnv.random === true &&
+      (!Number.isFinite(configuredSeed) || Number(configuredSeed) === 0)
+        ? Math.floor(1 + Math.random() * 0x7ffffffe)
+        : configuredSeed;
+    const jasmineConfig =
+      randomSeed === configuredSeed
+        ? config.jasmineConfig
+        : {
+            ...config.jasmineConfig,
+            env: {
+              ...configuredJasmineEnv,
+              seed: randomSeed,
+            },
+          };
 
     const cwd = norm(process.cwd());
     let normalizedSrcDirs = (Array.isArray(config.srcDirs) ? config.srcDirs : [config.srcDirs ?? './src'])
@@ -104,6 +123,7 @@ export class ViteJasmineRunner extends EventEmitter {
       port: config.port ?? 8888,
       headless: config.headless ?? false,
       watch: config.watch ?? false,
+      jasmineConfig,
       srcDirs: normalizedSrcDirs,
       testDirs: normalizedTestDirs,
       outDir: norm(config.outDir ?? path.join(cwd, 'dist/.vite-jasmine-build/')),
@@ -209,7 +229,8 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       if (specFiles.length === 0) {
-        logger.println(
+        logger.preparationStep(
+          'DISCOVER',
           RunnerMessages.noTestFilesFound(
             this.describeConfiguredTestDirs(),
           ),
@@ -217,9 +238,18 @@ export class ViteJasmineRunner extends EventEmitter {
         return 'no-specs';
       }
 
+      logger.preparationStep(
+        'DISCOVER',
+        RunnerMessages.discoveringTestFiles(specFiles.length, srcFiles.length),
+      );
+
       const entryFiles = [...srcFiles, ...specFiles];
       const selectedSpecArtifacts = specFiles.map((file) =>
         this.fileDiscovery.getOutputName(file),
+      );
+      logger.preparationStep(
+        'CONFIG',
+        RunnerMessages.preparingBuildConfiguration(),
       );
       const viteConfig = this.viteConfigBuilder.createViteConfig(entryFiles);
       const input: Record<string, string> = {};
@@ -241,7 +271,7 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       if (fs.existsSync(this.config.outDir) && !this.shouldPreserve()) {
-        logger.println(RunnerMessages.cleaningOutputDirectory());
+        logger.preparationStep('OUTPUT', RunnerMessages.cleaningOutputDirectory());
         this.cleanOutputDirectory();
       }
 
@@ -251,7 +281,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
       viteConfig.build!.rolldownOptions!.input = input;
 
-      logger.println(RunnerMessages.buildingFiles(Object.keys(input).length));
+      logger.preparationStep('BUILD', RunnerMessages.buildingFiles(Object.keys(input).length));
       this.viteCache = await viteBuild(viteConfig);
 
       const moduleFiles =
@@ -273,6 +303,13 @@ export class ViteJasmineRunner extends EventEmitter {
               file,
             ),
         );
+
+      if (moduleFiles.length > 0) {
+        logger.preparationStep(
+          'INSTRUMENT',
+          RunnerMessages.instrumentingModules(moduleFiles.length),
+        );
+      }
 
       for (
         const moduleFile of
@@ -310,8 +347,14 @@ export class ViteJasmineRunner extends EventEmitter {
         } else {
           await this.htmlGenerator.generateHtmlFile(selectedSpecArtifacts);
         }
+        logger.preparationStep(
+          'PAGE',
+          this.config.watch
+            ? RunnerMessages.generatedHmrTestPage()
+            : RunnerMessages.generatedTestPage(),
+        );
       } else if (preserveHtml) {
-        logger.println(RunnerMessages.preservingExistingHtml());
+        logger.preparationStep('PAGE', RunnerMessages.preservingExistingHtml());
       }
 
       const runnerPath = path.join(this.config.outDir, 'test-runner.mjs');
@@ -319,7 +362,7 @@ export class ViteJasmineRunner extends EventEmitter {
       if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
         this.nodeTestRunner.generateTestRunner();
       } else if (this.config.headless && this.config.browser === 'node' && preserveRunner) {
-        logger.println(RunnerMessages.preservingExistingRunner());
+        logger.preparationStep('RUNNER', RunnerMessages.preservingExistingRunner());
       }
 
       return 'built';
@@ -342,10 +385,14 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   abort(message?: string): number {
+    this.aborting = true;
     // Signal the browser manager to stop any running browser immediately.
     // Node-runner mode has no cooperative cancel; it will exit via the
     // CLI's process.exit() after cleanup.
     this.browserManager.abort((message ?? 'SIGINT') as NodeJS.Signals);
+    if (this.consoleReporter.hasCompletedRun()) {
+      return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
+    }
     return this.consoleReporter.testsAborted(message);
   }
 
@@ -354,11 +401,12 @@ export class ViteJasmineRunner extends EventEmitter {
     // entrypoint (`watch()`), used by the CLI only when --watch is present.
     this.config.watch = false;
 
-    logger.println(this.config.headless ? RunnerMessages.startingHeadless() : RunnerMessages.startingServer());
+    logger.preparationStart(this.config.headless ? RunnerMessages.startingHeadless() : RunnerMessages.startingServer());
 
     try {
       const preprocessResult = await this.preprocess();
       if (preprocessResult === 'no-specs') {
+        logger.flushPreparation();
         return EXIT_CODES.SUCCESS;
       }
     } catch (error) {
@@ -385,27 +433,30 @@ export class ViteJasmineRunner extends EventEmitter {
     }
 
     this.config.watch = true;
-    logger.println(RunnerMessages.startingWatchMode());
+    logger.preparationStep('WATCH', RunnerMessages.startingWatchMode());
     const preprocessResult = await this.preprocess();
     if (preprocessResult === 'no-specs') {
+      logger.flushPreparation();
       return EXIT_CODES.SUCCESS;
     }
     return await this.runWatchMode();
   }
 
   private async runWatchMode(): Promise<number> {
-    logger.println(RunnerMessages.startingHmrWatcher());
+    logger.preparationStep('HMR', RunnerMessages.startingHmrWatcher());
 
     const server = await this.httpServerManager.startServer();
-    
+    logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!));
+
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
     this.hmrManager = new HmrManager(this.fileDiscovery, this.config, this.viteConfigBuilder, this.viteCache);
 
     this.webSocketManager.enableHmr(this.hmrManager);
     await this.hmrManager.start();
 
-    logger.println(RunnerMessages.webSocketReady());
-    logger.println(RunnerMessages.pressCtrlCToStop());
+    logger.preparationStep('WS', RunnerMessages.webSocketReady());
+    logger.preparationStep('READY', RunnerMessages.pressCtrlCToStop());
+    logger.flushPreparation();
 
     let shuttingDown = false;
     let watchFinishedResolve: ((code: number) => void) | null = null;
@@ -417,7 +468,9 @@ export class ViteJasmineRunner extends EventEmitter {
       if (shuttingDown) return;
       shuttingDown = true;
 
-      if (source === 'session') {
+      if (this.aborting) {
+        // Ctrl+C already owns the terminal shutdown sequence.
+      } else if (source === 'session') {
         logger.println(RunnerMessages.sessionExitRequested());
         await this.browserManager.closeBrowser();
       } else {
@@ -458,6 +511,7 @@ export class ViteJasmineRunner extends EventEmitter {
   private async runHeadlessBrowserMode(): Promise<number> {
     const server = await this.httpServerManager.startServer();
     await this.httpServerManager.waitForServerReady(`http://localhost:${this.config.port}/index.html`, 10000);
+    logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!));
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
 
     let testSuccess = false;
@@ -496,6 +550,8 @@ export class ViteJasmineRunner extends EventEmitter {
     }
 
     try {
+      logger.preparationStep('EXECUTE', RunnerMessages.startingBrowserTestSession());
+      logger.flushPreparation();
       await this.browserManager.runHeadlessBrowserTests(browserType, this.config.port!);
       // Wait for the jasmineDone WebSocket message to be processed so the final
       // summary is printed before we tear down the WebSocket server and exit.
@@ -539,14 +595,12 @@ export class ViteJasmineRunner extends EventEmitter {
 
   private async runHeadedBrowserMode(): Promise<number> {
     const server = await this.httpServerManager.startServer();
+    logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!));
     let testsCompleted = false;
     let testSuccess = false;
     let testHasPending = false;
     let finishHeadedRunPromise: Promise<void> | undefined;
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
-
-    logger.println(RunnerMessages.webSocketReadyWithReporting());
-    logger.println(RunnerMessages.pressCtrlCToStop());
 
     const finishHeadedRun = async (coverage: Record<string, any> | undefined): Promise<void> => {
       await this.coverageHost.generate(
@@ -609,6 +663,8 @@ export class ViteJasmineRunner extends EventEmitter {
     };
 
     try {
+      logger.preparationStep('EXECUTE', RunnerMessages.startingBrowserTestSession());
+      logger.flushPreparation();
       await this.browserManager.openBrowser(
         this.config.port!,
         onBrowserClose,

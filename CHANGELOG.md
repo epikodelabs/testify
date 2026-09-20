@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.52 - 2026-09-20
+
+### Improved
+
+* Restyled interactive test preparation, live execution, results, summaries, coverage, and diagnostics with consistent Ink terminal panels.
+* Kept browser test output isolated from host-only Ink dependencies and reduced repeated playground startup messages in browser DevTools.
+* Improved watch-mode lifecycle reporting, HMR change classification, and clean Ctrl+C shutdown behavior.
+
+### Fixed
+
+* Prevented terminal panels from wrapping, duplicating, or leaving unfinished borders during live output updates.
+* Added browser-safe global and environment shims for generated test pages.
+
 ## 1.0.51 - 2026-08-29
 
 ### Fixed

@@ -31,7 +31,7 @@ describe('Logger prompt styling', () => {
       'this.errorPrefix() +',
     );
     expect(source).toContain(
-      '${colors.red}${colors.bgBlack}',
+      "renderTerminalText(' ERROR ', { bold: true, color: 'black', backgroundColor: 'red' })",
     );
   });
 
@@ -60,6 +60,12 @@ describe('Logger prompt styling', () => {
     const writes: string[] = [];
     const originalWrite =
       process.stdout.write;
+    const hadSuppression = Object.prototype.hasOwnProperty.call(
+      globalThis,
+      '__testifySuppressLogs',
+    );
+    const previousSuppression = (globalThis as any).__testifySuppressLogs;
+    delete (globalThis as any).__testifySuppressLogs;
 
     process.stdout.write =
       ((chunk: any) => {
@@ -82,6 +88,9 @@ describe('Logger prompt styling', () => {
     } finally {
       process.stdout.write =
         originalWrite;
+      if (hadSuppression) {
+        (globalThis as any).__testifySuppressLogs = previousSuppression;
+      }
     }
   });
 });

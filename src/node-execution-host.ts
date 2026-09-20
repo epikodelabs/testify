@@ -48,7 +48,7 @@ export class NodeExecutionHost {
           options.suppressConsoleLogs,
       });
 
-    return environment.run(
+    const result = await environment.run(
       async () => {
         const host =
           this.artifacts
@@ -64,11 +64,15 @@ export class NodeExecutionHost {
             options.selector,
           );
 
-        await this.coverage
-          .generateGlobal();
-
         return result;
       },
     );
+
+    // The execution environment suppresses incidental test logging. Generate
+    // coverage after it has restored the logger so the final report panel is
+    // visible to the CLI user.
+    await this.coverage.generateGlobal();
+
+    return result;
   }
 }

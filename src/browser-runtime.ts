@@ -31,6 +31,9 @@ import {
 import {
   getBrowserPlaygroundFormattersSource,
 } from './browser-playground-formatters';
+import {
+  getEmbeddedNameHelperSource,
+} from './embedded-source';
 
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
@@ -83,8 +86,13 @@ export function getBrowserRuntimeScript(
   const playgroundRuntimeSource =
     getBrowserPlaygroundRuntimeSource();
 
+  const nameHelperSource =
+    getEmbeddedNameHelperSource();
+
   return `
 (function(globalThis) {
+  ${nameHelperSource}
+
   ${catalogSource}
 
   ${catalogIndexSource}
@@ -150,11 +158,11 @@ export function getBrowserRuntimeScript(
     try {
       env = await waitForJasmine();
       console.log(
-        'вњ… Jasmine environment found',
+        '✅ Jasmine environment found',
       );
     } catch (error) {
       console.error(
-        'вљ пёЏ  Jasmine environment not found:',
+        '⚠️  Jasmine environment not found:',
         error.message,
       );
       return;
@@ -438,7 +446,7 @@ export function getBrowserRuntimeScript(
           )
         ) {
           console.log(
-            \`в–¶пёЏ Running [\${config.id}]: \${config.description}\`,
+            \`▶️ Running [\${config.id}]: \${config.description}\`,
           );
         }
       },
@@ -494,7 +502,7 @@ export function getBrowserRuntimeScript(
         mergedResult.failedExpectations?.forEach(
           (failure) =>
             console.error(
-              'вќЊ',
+              '❌',
               failure.message,
               failure.stack
                 ? '\\n' + failure.stack
@@ -613,7 +621,7 @@ export function getBrowserRuntimeScript(
     async function executePlan(plan) {
       if (isExecuting) {
         console.warn(
-          'вљ пёЏ  Execution already in progress. Please wait...',
+          '⚠️  Execution already in progress. Please wait...',
         );
         return summarizeExecutionResults([]);
       }

@@ -369,8 +369,13 @@ export const HmrMessages = {
   noValidSourceOrTestFiles: () =>
     `%warn%  No valid source or test files to build after filtering`,
 
-  rebuildSummary: (changed: number, total: number, source: number, test: number) =>
-    `%box% Changed: ${changed} files → Rebuilding: ${total} files (${source} source, ${test} test)`,
+  rebuildSummary: (changed: number, total: number, source: number, test: number) => {
+    const fileCount = (count: number) => `${count} file${count === 1 ? '' : 's'}`;
+    const categories = [`${source} source`, `${test} test`];
+    const other = total - source - test;
+    if (other > 0) categories.push(`${other} other`);
+    return `%box% Changed: ${fileCount(changed)} → Rebuilding: ${fileCount(total)} (${categories.join(', ')})`;
+  },
 
   viteBuildFailed: (error: unknown) =>
     `%error% Vite build failed: ${toConsoleSafe(String(error))}`,
@@ -592,6 +597,30 @@ export const RunnerMessages = {
 
   cleaningOutputDirectory: () =>
     `%broom% Cleaning output directory...`,
+
+  discoveringTestFiles: (specCount: number, sourceCount: number) =>
+    `%search% Found ${specCount} spec ${specCount === 1 ? 'file' : 'files'} and ${sourceCount} source ${sourceCount === 1 ? 'file' : 'files'}.`,
+
+  preparingBuildConfiguration: () =>
+    `%gear% Preparing build configuration...`,
+
+  instrumentingModules: (count: number) =>
+    `%tool% Instrumenting ${count} compiled ${count === 1 ? 'module' : 'modules'}...`,
+
+  generatingTestPage: () =>
+    `%page% Generating test page...`,
+
+  generatedTestPage: () =>
+    `%page% Generated test page: index.html`,
+
+  generatedHmrTestPage: () =>
+    `%doc% Generated HMR-enabled test page: index.html`,
+
+  testServerRunning: (port: number) =>
+    `%rocket% Test server running at http://localhost:${port}`,
+
+  startingBrowserTestSession: () =>
+    `%rocket% Starting browser test session...`,
 
   testsCompletedTimeout: (message: string) =>
     `%error% ${message}`,

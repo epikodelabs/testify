@@ -13,7 +13,7 @@ describe('Testify CLI watch contract', () => {
       );
 
     expect(source).toContain(
-      "watch: { type: 'boolean', short: 'w' }",
+      "'-w, --watch'",
     );
 
     expect(source).toContain(
@@ -90,6 +90,91 @@ describe('Testify CLI watch contract', () => {
 
     expect(source).toContain(
       "browser: config.browser ?? 'chrome'",
+    );
+  });
+
+
+  it('keeps watch lifecycle output inside the preparation section', () => {
+    const runnerSource =
+      fs.readFileSync(
+        path.resolve(
+          process.cwd(),
+          'src/vite-jasmine-runner.ts',
+        ),
+        'utf8',
+      );
+    const serverSource =
+      fs.readFileSync(
+        path.resolve(
+          process.cwd(),
+          'src/http-server-manager.ts',
+        ),
+        'utf8',
+      );
+    const websocketSource =
+      fs.readFileSync(
+        path.resolve(
+          process.cwd(),
+          'src/websocket-manager.ts',
+        ),
+        'utf8',
+      );
+    const hmrSource =
+      fs.readFileSync(
+        path.resolve(
+          process.cwd(),
+          'src/hmr-manager.ts',
+        ),
+        'utf8',
+      );
+
+    expect(runnerSource).toContain(
+      "logger.preparationStep('WATCH', RunnerMessages.startingWatchMode())",
+    );
+    expect(runnerSource).toContain(
+      '? RunnerMessages.generatedHmrTestPage()',
+    );
+    expect(runnerSource).toContain(
+      "logger.preparationStep('HMR', RunnerMessages.startingHmrWatcher())",
+    );
+    expect(runnerSource).toContain(
+      "logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!))",
+    );
+    expect(runnerSource).toContain(
+      "logger.preparationStep('WS', RunnerMessages.webSocketReady())",
+    );
+    expect(runnerSource).toContain(
+      "logger.preparationStep('READY', RunnerMessages.pressCtrlCToStop())",
+    );
+    expect(serverSource).toContain(
+      "logger.preparationStep('PORT', HttpServerMessages.portBusyRetrying(port))",
+    );
+    expect(serverSource).toContain(
+      "logger.preparationStep('PORT', HttpServerMessages.portReclaimed(port))",
+    );
+    expect(websocketSource).toContain(
+      "logger.preparationStep('HMR', WebSocketMessages.hmrEnabled())",
+    );
+    expect(hmrSource).not.toContain(
+      'logger.println(HmrMessages.watcherStopped())',
+    );
+    expect(hmrSource).not.toContain(
+      "logger.preparationStep('HMR', HmrMessages.watcherStopped())",
+    );
+  });
+
+  it('uses the HMR page wording in watch mode', () => {
+    const messagesSource =
+      fs.readFileSync(
+        path.resolve(
+          process.cwd(),
+          'src/log-messages.ts',
+        ),
+        'utf8',
+      );
+
+    expect(messagesSource).toContain(
+      'Generated HMR-enabled test page: index.html',
     );
   });
 });

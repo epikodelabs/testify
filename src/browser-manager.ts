@@ -104,7 +104,6 @@ export class BrowserManager {
       page.on('pageerror', (error: Error) => logger.error(BrowserMessages.pageError(error.message)));
       page.on('requestfailed', (request: PlayWright.Request) => logger.error(BrowserMessages.requestFailed(request.url(), request.failure()?.errorText)));
 
-      logger.println(BrowserMessages.navigatingToTestPage());
       await page.goto(`http://localhost:${port}/index.html`, { waitUntil: 'networkidle', timeout: 120000 });
 
       await Promise.race([
@@ -119,8 +118,6 @@ export class BrowserManager {
       return true; // Success determined by WebSocket messages
     } catch (error) {
       if (interrupted || error === interruptError) {
-        logger.printRaw('\n\n');
-        logger.println(BrowserMessages.testsAbortedByUser());
         throw new ExitCodeError(EXIT_CODES.SIGINT, 'Tests aborted by user');
       }
       logger.error(BrowserMessages.testExecutionFailed(error));
@@ -168,7 +165,6 @@ export class BrowserManager {
         browserName = 'chrome';
       }
 
-      logger.println(BrowserMessages.openingBrowser(browserName));
       browser = await resolved.type.launch({
         headless: this.config.headless,
         args: ['--no-sandbox', '--disable-setuid-sandbox']

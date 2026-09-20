@@ -32,6 +32,9 @@ describe('BrowserPageBuilder', () => {
     expect(html).toContain(
       'binding.spec.mjs',
     );
+    expect(html).toContain(
+      'globalThis.global ??= globalThis;',
+    );
   });
 
   it('uses the shared BrowserPage renderer for HMR mode', () => {
@@ -51,6 +54,9 @@ describe('BrowserPageBuilder', () => {
     );
     expect(html).not.toContain(
       'assets/favicon.ico',
+    );
+    expect(html).toContain(
+      'globalThis.global ??= globalThis;',
     );
   });
   it('installs a static Jasmine specFilter for a suite selector', () => {

@@ -28,7 +28,6 @@ export class WebSocketManager extends EventEmitter {
     this.wss = new WebSocketServer({ server: this.server });
     
     this.wss.on('connection', async (ws: WebSocket) => {
-      logger.println(WebSocketMessages.clientConnected());
       this.wsClients.push(ws);
       // Send HMR status on connection
       if (this.hmrEnabled) {
@@ -144,7 +143,7 @@ export class WebSocketManager extends EventEmitter {
       });
     });
 
-    logger.println(WebSocketMessages.hmrEnabled());
+    logger.preparationStep('HMR', WebSocketMessages.hmrEnabled());
   }
 
   private broadcast(message: any): void {

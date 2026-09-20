@@ -92,7 +92,8 @@ export class NodeArtifactHost {
 
     this.runnerHost = host;
 
-    logger.println(
+    logger.preparationStep(
+      'RUNNER',
       NodeRunnerMessages
         .generatedInProcessRunner(
           norm(

@@ -10,6 +10,7 @@ import { getBrowserWebSocketReporterScript } from './browser-websocket-runtime';
 import { getBrowserHmrClientScript } from './browser-hmr-client';
 import { getBrowserBootstrapScript } from './browser-bootstrap-runtime';
 import { getJasmineBrowserAssets } from './jasmine-browser-assets';
+import { generateRandomSeed } from './execution-plan';
 
 function resolveEmbeddedFaviconHref():
   string | null {
@@ -52,6 +53,8 @@ export class BrowserPageBuilder {
     resolveEmbeddedFaviconHref();
   private readonly jasmineAssets =
     getJasmineBrowserAssets();
+  private initialSeedValue:
+    number | undefined;
 
   constructor(
     private readonly config: ViteJasmineConfig,
@@ -73,8 +76,7 @@ export class BrowserPageBuilder {
     const websocketReporter =
       getBrowserWebSocketReporterScript({
         initialSeed:
-          (this.config.jasmineConfig?.env as any)
-            ?.seed ?? 0,
+          this.getInitialSeed(),
         initialRandom:
           this.config.jasmineConfig?.env
             ?.random ?? false,
@@ -90,6 +92,7 @@ export class BrowserPageBuilder {
         `<link rel="stylesheet" href="${this.jasmineAssets.cssUrl}">`,
       ],
       headScripts: [
+        this.getBrowserGlobalShim(),
         `<script src="${this.jasmineAssets.jasmineScriptUrl}"></script>`,
         `<script src="${this.jasmineAssets.jasmineHtmlScriptUrl}"></script>`,
         ...this.jasmineAssets.bootScriptUrls.map(
@@ -132,11 +135,11 @@ ${this.getStaticSuiteFilterScript()}
         `<script src="${this.jasmineAssets.jasmineHtmlScriptUrl}"></script>`,
       ],
       inlineScripts: [
+        this.getBrowserGlobalShimScript(),
         getBrowserJasmineRegistrationPatchScript(),
         getBrowserWebSocketReporterScript({
           initialSeed:
-            (this.config.jasmineConfig?.env as any)
-              ?.seed ?? 0,
+            this.getInitialSeed(),
           initialRandom:
             this.config.jasmineConfig?.env
               ?.random ?? false,
@@ -187,6 +190,7 @@ const collectSpecs = (suite) => {
       selectedSpecIds.add(child.id);
     }
   }
+
 };
 const visitSuites = (suite, isRoot = false) => {
   if (!isRoot && matchesSuite(
@@ -209,10 +213,44 @@ jasmine.getEnv().configure({
 });`;
   }
 
+  /** Provide Node's common global alias before any bundled browser module. */
+  private getBrowserGlobalShim(): string {
+    return `<script>${this.getBrowserGlobalShimScript()}</script>`;
+  }
+
+  private getBrowserGlobalShimScript(): string {
+    return `globalThis.global ??= globalThis;
+globalThis.process ??= { env: {} };
+globalThis.process.env ??= {};
+globalThis.process.env.NODE_ENV ??= 'test';
+globalThis.process.env.DEV ??= false;`;
+  }
+
   private getPreludeModules(): string[] {
     return resolveBrowserPreludeModules(
       this.config,
     );
+  }
+
+  /**
+   * Seed embedded into the generated page scripts. Memoized so the WebSocket
+   * reporter and the runtime session share one seed per page; a random run
+   * without a usable seed gets one generated (falsy seeds are treated as
+   * unspecified, matching jasmine's Order).
+   */
+  private getInitialSeed(): number {
+    if (this.initialSeedValue === undefined) {
+      const env =
+        (this.config.jasmineConfig?.env as any) ??
+        {};
+      const seed: number =
+        env.random === true && !env.seed
+          ? generateRandomSeed()
+          : (env.seed ?? 0);
+      this.initialSeedValue = seed;
+    }
+
+    return this.initialSeedValue;
   }
 
   private getRuntimeScript(): string {
@@ -222,8 +260,7 @@ jasmine.getEnv().configure({
           ?.stopSpecOnExpectationFailure ??
         false,
       initialSeed:
-        (this.config.jasmineConfig?.env as any)
-          ?.seed ?? 0,
+        this.getInitialSeed(),
       initialRandom:
         this.config.jasmineConfig?.env
           ?.random ?? false,

@@ -83,7 +83,6 @@ export class CLIHandler {
       .name('testify')
       .helpOption(false)
       .allowUnknownOption(false)
-      .allowExcessArguments(false)
       .option('-h, --help')
       .option('-v, --version')
       .option('-w, --watch')
@@ -173,6 +172,9 @@ export class CLIHandler {
       timeoutValue = parsed;
     }
 
+    // `--no-random` is declared as commander's negation of `--random`, so an
+    // unset flag pair leaves `random` undefined; only a value set from the
+    // command line should override the config file.
     const randomSource = program.getOptionValueSource('random');
     const randomValue = randomSource === 'cli' ? v.random === true : undefined;
 
@@ -244,6 +246,9 @@ export class CLIHandler {
       if (shuttingDown) return;
       shuttingDown = true;
 
+      // A signal can arrive while the live preparation card is still growing.
+      // Freeze its completed frame before teardown clears terminal output.
+      logger.flushPreparation();
       const exitCode = this.runner?.abort('SIGINT') ?? EXIT_CODES.SIGINT;
       try {
         await Promise.race([
@@ -392,6 +397,9 @@ export class CLIHandler {
         setAnsiMode();
       }
 
+      // Seed randomization for random runs without a seed is owned by the
+      // ViteJasmineRunner constructor, the single funnel for CLI and
+      // programmatic use alike.
       if (seedValue !== undefined || randomValue !== undefined || bail || timeoutValue !== undefined) {
         const env = config.jasmineConfig?.env ?? {};
         config.jasmineConfig = {
@@ -405,6 +413,10 @@ export class CLIHandler {
           },
         };
       }
+
+      // Begin this before the process lock is acquired so any ordinary setup
+      // notices are retained in the preparation card.
+      logger.preparationStart('');
 
       if (config.preserveOutputs) {
         logger.println(CLIMessages.preserveOutputsEnabled());

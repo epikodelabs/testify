@@ -1,13 +1,22 @@
 import util from 'util';
+import jasmineCore from 'jasmine-core';
 import { logger } from './logger';
-import { wrapLine, visibleWidth, ANSI_FULL_REGEX, normalize } from './utils';
+import { wrapLine, visibleWidth, ANSI_FULL_REGEX, normalize, normalizeStackTrace } from './utils';
 import { EXIT_CODES } from './exit-codes';
 import { getMaxWidth, isAnsiMode } from './ansi-constants';
 import { ReporterMessages } from './log-messages';
 import { SYMBOLS, replacePlaceholders } from './symbols';
+import {
+  renderTerminalPanel,
+  renderTerminalText,
+  PANEL_RULE,
+  startLiveTerminalView,
+  type LiveTerminalView,
+} from './ink-output';
 
 export interface EnvironmentInfo {
   node: string;
+  jasmine: string;
   platform: string;
   arch: string;
   cwd: string;
@@ -15,6 +24,13 @@ export interface EnvironmentInfo {
   pid: number;
   uptime: string;
   userAgent?: UserAgent;
+}
+
+function getJasmineVersion(): string {
+  const version = typeof jasmineCore.version === 'function'
+    ? jasmineCore.version()
+    : jasmineCore.version;
+  return version ? `v${version}` : 'unknown';
 }
 
 export interface UserAgent {
@@ -35,6 +51,8 @@ export interface TestSpec {
   duration?: number;
   failedExpectations?: any[];
   pendingReason?: string;
+  /** Source file, when the catalog supplied one (TestCatalogSpec.file). Used to group failures. */
+  file?: string;
 }
 
 export interface TestSuite {
@@ -63,8 +81,8 @@ export class ConsoleReporter {
   private failedSpecs: any[];
   private globalFailures: any[];
   private pendingSpecs: any[];
-  private ansi: Record<string, string>;
   private startTime: number;
+  private runStartedAt = '';
   private config: any | null = null;
   private envInfo: EnvironmentInfo | null;
   private rootSuite: TestSuite;
@@ -73,14 +91,26 @@ export class ConsoleReporter {
   private currentSpec: TestSpec | null;
   private suiteById: Map<string, TestSuite> = new Map();
   private specById: Map<string, TestSpec> = new Map();
-  private get lineWidth(): number { return getMaxWidth(); }
+  /** Suite ids that have actually received suiteDone(), for an accurate live progress count. */
+  private completedSuiteIds: Set<string> = new Set();
+  // Terminal panels reserve a small right margin to avoid Windows auto-wrap.
+  // Keep every row calculation inside that actual outer frame width.
+  private get lineWidth(): number { return Math.max(24, getMaxWidth() - 2); }
   private interruptHandlersRegistered: boolean = false;
   private interrupted = false;
   private orderedSuites: any[] | null = null;
   private orderedSpecs: any[] | null = null;
   private isTTY: boolean;
+  private resultPanelLines: string[] | null = null;
+  private liveRunView: LiveTerminalView | null = null;
+  private liveUpdateTimer: NodeJS.Timeout | null = null;
+  private runCompleted = false;
+  private readonly usesDefaultPrint: boolean;
+  /** Counts captured by printSummary for the final status box recap. */
+  private summaryStats: { passed: number; failed: number; pending: number; totalTime: number } | null = null;
 
   constructor(options: ConsoleReporterOptions = {}) {
+    this.usesDefaultPrint = options.print === undefined;
     this.print =
       options.print ??
       ((...args) =>
@@ -103,28 +133,14 @@ export class ConsoleReporter {
     this.currentSuite = null;
     this.suiteStack = [this.rootSuite];
     this.currentSpec = null;
-    this.ansi = {
-      green: '\x1B[32m',
-      brightGreen: '\x1B[92m',
-      red: '\x1B[31m',
-      brightRed: '\x1B[91m',
-      yellow: '\x1B[33m',
-      brightYellow: '\x1B[93m',
-      blue: '\x1B[34m',
-      brightBlue: '\x1B[94m',
-      cyan: '\x1B[36m',
-      brightCyan: '\x1B[96m',
-      magenta: '\x1B[35m',
-      gray: '\x1B[90m',
-      white: '\x1B[97m',
-      bold: '\x1B[1m',
-      dim: '\x1B[2m',
-      none: '\x1B[0m',
-    };
   }
 
   getFailureCount(): number {
     return this.failureCount;
+  }
+
+  hasCompletedRun(): boolean {
+    return this.runCompleted;
   }
 
   // Detect if terminal supports colors
@@ -182,7 +198,8 @@ export class ConsoleReporter {
           id: specConfig.id,
           description: specConfig.description ?? specConfig.id,
           fullName: specConfig.fullName ?? specConfig.id,
-          status: 'skipped' as const
+          status: 'skipped' as const,
+          file: specConfig.file,
         };
 
         this.specById.set(spec.id, spec);
@@ -220,16 +237,8 @@ export class ConsoleReporter {
       });
     }
 
-    // Announce the catalog only when one was actually supplied.
-    // Direct reporter unit tests may call jasmineStarted() without catalog data.
-    if (this.orderedSuites && this.orderedSpecs) {
-      logger.println(
-        ReporterMessages.suiteTreeBuilt(
-          this.orderedSuites.length,
-          this.orderedSpecs.length,
-        ),
-      );
-    }
+    // Jasmine may rebuild the tree while it plans execution. The final report
+    // is the only place that should present its authoritative counts.
   }
 
   countSpecs(suite: TestSuite) {
@@ -314,6 +323,12 @@ export class ConsoleReporter {
 
   jasmineStarted(config: any) {
     this.startTime = Date.now();
+    this.runStartedAt = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
     this.specCount = 0;
     this.executableSpecCount = 0;
     this.failureCount = 0;
@@ -326,14 +341,35 @@ export class ConsoleReporter {
     this.currentSuite = null;
     this.currentSpec = null;
     this.interrupted = false;
+    this.runCompleted = false;
+    this.resultPanelLines = null;
+    this.summaryStats = null;
+    this.completedSuiteIds = new Set();
 
     this.buildSuiteTree(config);
     this.setupInterruptHandler();
 
-    this.print('\n');
-    this.printBox('Test Runner Started', 'cyan');
     this.printEnvironmentInfo();
-    this.printTestConfiguration(config);
+    this.startLiveRun();
+  }
+
+  /** Facts shown under the "Test Runner Started" title: scope, order, start time. */
+  private runHeaderLines(config: any): string[] {
+    const specCount = this.orderedSpecs?.length ?? config?.totalSpecsDefined ?? 0;
+    const suiteCount = Math.max(0, this.suiteById.size - 1);
+    const order = config?.order?.random ? 'random order' : 'sequential order';
+    const seed = config?.order?.random && config?.order?.seed !== void 0
+      ? `seed ${config.order.seed}`
+      : null;
+    const startedAt = this.runStartedAt || new Date().toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+
+    const scope = `${specCount} spec${specCount === 1 ? '' : 's'} . ${suiteCount} suite${suiteCount === 1 ? '' : 's'}`;
+    return [
+      this.colored('white', scope),
+      this.colored('gray', [order, seed, `started at ${startedAt}`].filter(Boolean).join('  .  ')),
+    ];
   }
 
   suiteStarted(config: any) {
@@ -377,8 +413,13 @@ export class ConsoleReporter {
       id: config.id,
       description: config.description,
       fullName: config.fullName,
-      status: 'running'
+      status: 'running',
+      file: config.file,
     };
+
+    // The catalog may not have carried a file for every spec (e.g. dynamically
+    // registered ones); fill it in from the live config if it shows up here.
+    if (!spec.file && config.file) spec.file = config.file;
 
     spec.status = 'running';
     this.specById.set(spec.id, spec);
@@ -412,6 +453,9 @@ export class ConsoleReporter {
       spec.duration = result.duration;
       spec.failedExpectations = result.failedExpectations;
       spec.pendingReason = result.pendingReason;
+      // jasmine's raw SpecResult doesn't carry a file; attach the one we
+      // tracked from the catalog so failure grouping has something to key on.
+      if (!result.file && spec.file) result.file = spec.file;
     }
 
     switch (status) {
@@ -443,14 +487,16 @@ export class ConsoleReporter {
 
     // Mark suite result
     suite.status = this.determineSuiteStatusFromInternal(suite);
+    this.completedSuiteIds.add(suite.id);
 
-    // Print final suite result
-    this.printSuiteLine(suite);
-    this.print('\n');
-
+    // Preserve live feedback while the final report is assembled separately.
+    // Passing suites are intentionally silent here — they're already listed
+    // once, correctly, in the final SUITES summary panel. Printing a line per
+    // passing suite here just duplicates that and drowns out real signal.
     // Pop from stack
     this.suiteStack.pop();
     this.currentSuite = this.suiteStack[this.suiteStack.length - 1] ?? null;
+    this.scheduleLiveRunUpdate();
   }
 
   jasmineDone(result?: any) {
@@ -474,7 +520,8 @@ export class ConsoleReporter {
 
     const totalTime = totalTimeMs / 1000;
 
-    this.clearCurrentLine();
+    this.resultPanelLines = [];
+    this.printTestConfiguration(this.config, true);
 
     // Filter out stale specs (e.g., retried specs that later passed)
     const actualFailedSpecs = this.failedSpecs.filter(s => s.status === 'failed' || s.overallStatus === 'failed');
@@ -497,17 +544,24 @@ export class ConsoleReporter {
 
     if (actualPendingSpecs.length > 0) {
       this.pendingSpecs = actualPendingSpecs;
-      this.printPendingSpecs();
     } else {
       this.pendingSpecs = [];
     }
 
+    this.calculateSuiteStatuses(this.rootSuite);
+    const attentionLines = this.getAttentionLines();
+    if (attentionLines.length > 0) {
+      this.appendResultSection(
+        'DEMANDING ATTENTION',
+        attentionLines,
+        'yellow',
+      );
+    }
+
     this.printSummary(totalTime);
 
-    this.print('\n');
-    this.printFinalStatus(result?.overallStatus);
-
-    this.print('\n\n');
+    this.flushResultPanel();
+    this.runCompleted = true;
     this.removeInterruptHandler();
   }
 
@@ -550,8 +604,10 @@ export class ConsoleReporter {
       return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
     }
     this.interrupted = true;
+    const hadLiveRun = this.liveRunView !== null;
+    this.stopLiveRun();
 
-    if (this.isTTY) {
+    if (this.isTTY && hadLiveRun) {
       // Clear the status line (which is on the line above)
       this.print('\r\x1b[1A'); // Move up one line
       this.clearCurrentLine();  // Clear that line
@@ -562,16 +618,6 @@ export class ConsoleReporter {
     // Mark all unexecuted specs as skipped
     this.markUnexecutedAsSkipped();
 
-    // A reporter may be exercised directly in tests before jasmineStarted().
-    // In that case there is no meaningful elapsed time yet.
-    const totalTime =
-      this.startTime > 0
-        ? (
-            Date.now() -
-            this.startTime
-          ) / 1000
-        : 0;
-
     // Filter out stale specs before printing
     const actualFailedSpecs = this.failedSpecs.filter(s => s.status === 'failed' || s.overallStatus === 'failed');
     if (actualFailedSpecs.length > 0) {
@@ -581,16 +627,7 @@ export class ConsoleReporter {
       this.failedSpecs = [];
     }
 
-    // Print test tree
-    this.printTestTree();
-
-    // Print summary
-    this.print('\n');
-    this.printSummary(totalTime);
-
-    this.print('\n');
     this.printBox(ReporterMessages.testsInterrupted(), 'yellow');
-    this.print('\n');
     this.removeInterruptHandler();
 
     return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
@@ -636,6 +673,10 @@ export class ConsoleReporter {
   }
 
   private updateStatusLine() {
+    if (this.liveRunView) {
+      this.scheduleLiveRunUpdate();
+      return;
+    }
     if (!this.isTTY || !this.currentSuite) return;
 
     const total = this.specById.size;
@@ -649,7 +690,8 @@ export class ConsoleReporter {
   }
 
   private printSuiteLine(suite: TestSuite) {
-    const suiteName = this.colored('brightBlue', suite.description);
+    const description = this.suiteDisplayName(suite);
+    const suiteName = this.colored('brightBlue', description);
     const dots = suite.specs.map(spec => this.getSpecSymbol(spec));
     const prefix = '  ';
     const maxWidth = this.lineWidth;
@@ -668,7 +710,7 @@ export class ConsoleReporter {
       let truncatedName = suiteName;
       if (visibleNameLength > availableForName) {
         // Truncate name with three dots if it does not fit on its own line
-        const rawName = suite.description;
+        const rawName = description;
         const ellipsis = '...';
         truncatedName = this.colored('brightBlue', rawName.substring(0, Math.max(0, availableForName - ellipsis.length)) + ellipsis);
       }
@@ -730,7 +772,25 @@ export class ConsoleReporter {
   }
 
   private getSpecDots(suite: TestSuite): string {
-    return suite.specs.map(spec => this.getSpecSymbol(spec)).join('');
+    return this.getSpecIndicators(suite.specs);
+  }
+
+  /**
+   * Preserve the per-spec glyphs while they fit; large suites become a compact
+   * outcome tally instead of wrapping a wall of dots across several rows.
+   */
+  private getSpecIndicators(specs: readonly TestSpec[]): string {
+    const dots = specs.map((spec) => this.getSpecSymbol(spec)).join('');
+    if (visibleWidth(dots) <= 28) return dots;
+
+    const counts = new Map<string, number>();
+    for (const spec of specs) {
+      const symbol = this.getSpecSymbol(spec);
+      if (symbol) counts.set(symbol, (counts.get(symbol) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([symbol, count]) => `${symbol} ${count}`)
+      .join('  ');
   }
 
   private getSpecSymbol(spec: TestSpec): string {
@@ -772,140 +832,304 @@ export class ConsoleReporter {
     return dotsString.replace(/\x1b\[[0-9;]*m/g, '').length;
   }
 
-  private separator(): string {
-    return '  ' + SYMBOLS.box_h.repeat(this.lineWidth - 2);
+  private resultRule(): string {
+    return PANEL_RULE;
+  }
+
+  private appendResultSection(title: string, lines: string[], color: string): boolean {
+    if (!this.resultPanelLines || lines.length === 0) return false;
+    if (this.resultPanelLines.length > 0) this.resultPanelLines.push('', this.resultRule(), '');
+    this.resultPanelLines.push(this.colored(['bold', color], title), ...lines);
+    return true;
+  }
+
+  private flushResultPanel(): void {
+    if (!this.resultPanelLines) return;
+    const panel = renderTerminalPanel(
+      'TEST RESULTS',
+      this.resultPanelLines,
+      this.getRunTone(),
+      this.showColors,
+    );
+    if (this.liveRunView) {
+      // End the dynamic surface before emitting the fixed report. In
+      // particular, do not attempt to paint a taller final report over a
+      // diff-managed panel: terminals can leave the previous tail visible.
+      this.stopLiveRun();
+      this.print(panel + '\n');
+    } else {
+      this.print(panel + '\n');
+    }
+    this.resultPanelLines = null;
+  }
+
+  /**
+   * Groups failedSpecs by their source file, in first-seen order, but only
+   * when every failing spec actually has a `file` (from the catalog). If any
+   * spec is missing one, grouping would be misleading (an unlabeled bucket
+   * next to labeled ones), so this returns null and the caller falls back to
+   * the flat list unchanged.
+   */
+  private groupFailedSpecsByFile(): Array<{ file: string; specs: any[] }> | null {
+    if (this.failedSpecs.length === 0) return null;
+    if (!this.failedSpecs.every(spec => typeof spec.file === 'string' && spec.file)) return null;
+
+    const order: string[] = [];
+    const byFile = new Map<string, any[]>();
+    for (const spec of this.failedSpecs) {
+      if (!byFile.has(spec.file)) {
+        byFile.set(spec.file, []);
+        order.push(spec.file);
+      }
+      byFile.get(spec.file)!.push(spec);
+    }
+    return order.map(file => ({ file, specs: byFile.get(file)! }));
   }
 
   private printFailures() {
-    this.print('\n');
-    this.printSectionHeader('FAILURES', 'red');
-    this.print(this.colored('red', this.separator() + '\n'));
+    const groups = this.groupFailedSpecsByFile();
+    const lines: string[] = [];
+    let globalIndex = 0;
 
-    if (!this.failedSpecs.length) return;
-
-    this.failedSpecs.forEach((spec, idx) => {
-      // Print numbered spec header
-      const header = wrapLine(`${idx + 1}) ${spec.fullName}`, this.lineWidth, 1);
-      header.forEach(line => (this.print(this.colored("white", `  ${line.trimStart()}`)), this.print('\n')));
-
-      if (spec.failedExpectations?.length > 0) {
-        spec.failedExpectations.forEach((expectation: any, exIndex: number) => {
-          const messageLines = wrapLine(`${SYMBOLS.cross} ${normalize(expectation.message)}`, this.lineWidth, 0);
-          // Continuation lines of same message
-          messageLines.forEach(line => (this.print(this.colored('brightRed', `  ${line.trimStart()}`)), this.print('\n')));
-
-          // Stack trace — lightly indented and gray
-          if (expectation.stack) {
-            const stackLines = wrapLine(normalize(expectation.stack), this.lineWidth, 0);
-            stackLines.forEach(line => (this.print(this.colored('gray', `  ${line.trimStart()}`)), this.print('\n')));
-          }
-
-          // Space between multiple expectations for same spec
-          if (exIndex < spec.failedExpectations.length - 1) this.print('\n');
-        });
+    const renderSpec = (spec: any) => {
+      globalIndex++;
+      const durationSuffix = this.formatSpecDuration(spec);
+      lines.push(this.colored('white', `${globalIndex}. ${spec.fullName}`) + durationSuffix);
+      const expectations = spec.failedExpectations ?? [];
+      for (const expectation of expectations) {
+        const messageLines = wrapLine(
+          this.formatFailureMessage(expectation.message),
+          this.lineWidth - 4,
+          0,
+        );
+        lines.push(...messageLines.map(line => this.colored('brightRed', `${SYMBOLS.cross} ${line}`)));
+        if (expectation.stack) {
+          lines.push(...wrapLine(this.prepareStackTrace(expectation.stack), this.lineWidth - 4, 0)
+            .map(line => this.colored('gray', line)));
+        }
       }
+      if (expectations.length === 0 && !(spec.passedExpectations?.length > 0)) {
+        lines.push(this.colored('brightRed', `${SYMBOLS.cross} Spec has no expectations`));
+      }
+    };
 
-      // Extra spacing between specs
-      this.print('\n');
+    if (groups) {
+      groups.forEach((group, groupIndex) => {
+        lines.push(
+          this.colored(['bold', 'white'], group.file) +
+          this.colored('gray', `  (${group.specs.length} failed)`),
+        );
+        group.specs.forEach((spec, specIndex) => {
+          renderSpec(spec);
+          if (specIndex < group.specs.length - 1) lines.push('');
+        });
+        if (groupIndex < groups.length - 1) lines.push('');
+      });
+    } else {
+      this.failedSpecs.forEach((spec, index) => {
+        renderSpec(spec);
+        if (index < this.failedSpecs.length - 1) lines.push('');
+      });
+    }
+
+    if (this.appendResultSection('FAILURES', lines, 'red')) return;
+    this.print(renderTerminalPanel('FAILURES', lines, 'red', this.showColors) + '\n');
+  }
+
+  private runMetadataLines(config: any): string[] {
+    return this.runHeaderLines(config);
+  }
+
+  private startLiveRun(): void {
+    if (!this.showColors || !this.isTTY || !this.usesDefaultPrint) return;
+    this.liveRunView = startLiveTerminalView(this.getLiveRunText());
+  }
+
+  private updateLiveRun(): void {
+    this.liveRunView?.update(this.getLiveRunText());
+  }
+
+  /** Coalesce per-spec callbacks into a responsive, bounded redraw rate. */
+  private scheduleLiveRunUpdate(): void {
+    if (!this.liveRunView || this.liveUpdateTimer) return;
+    this.liveUpdateTimer = setTimeout(() => {
+      this.liveUpdateTimer = null;
+      this.updateLiveRun();
+    }, 75);
+  }
+
+  private stopLiveRun(preserve = false): void {
+    if (this.liveUpdateTimer) {
+      clearTimeout(this.liveUpdateTimer);
+      this.liveUpdateTimer = null;
+    }
+    if (!this.liveRunView) return;
+    this.liveRunView.stop(preserve);
+    this.liveRunView = null;
+  }
+
+  private getLiveRunText(): string {
+    const total = this.specById.size;
+    const progress = total > 0 ? `${this.specCount}/${total} specs` : 'discovering specs';
+    const status = [
+      `${SYMBOLS.checked} ${Math.max(0, this.executableSpecCount - this.failureCount - this.pendingSpecs.length)} passed`,
+      `${SYMBOLS.cross} ${this.failureCount} failed`,
+      `${SYMBOLS.pending} ${this.pendingSpecs.length} pending`,
+    ].join('  ');
+    const lines = [
+      ...this.runMetadataLines(this.config),
+      PANEL_RULE,
+      ...this.getLiveSuiteLines(),
+      PANEL_RULE,
+      this.colored('white', `RUNNING  ${progress}`) + this.colored('gray', `  .  ${status}`),
+    ];
+    return renderTerminalPanel(
+      'TEST RUN',
+      lines,
+      this.getRunTone(),
+    );
+  }
+
+  /** The live frame is itself a compact result signal. */
+  private getRunTone(): 'green' | 'yellow' | 'red' {
+    if (this.failureCount > 0 || this.globalFailures.length > 0) return 'red';
+    if (this.pendingSpecs.length > 0) return 'yellow';
+    return 'green';
+  }
+
+  private getLiveSuiteLines(): string[] {
+    const completedIds = [...this.completedSuiteIds]
+      .filter((id) => id !== this.currentSuite?.id);
+    const rowLimit = this.getLiveSuiteRowLimit();
+    const completedCapacity = rowLimit - (this.currentSuite ? 1 : 0);
+    const visibleIds = [
+      ...completedIds.slice(-completedCapacity),
+      ...(this.currentSuite ? [this.currentSuite.id] : []),
+    ];
+
+    if (visibleIds.length === 0) {
+      return [this.colored('gray', 'Waiting for the first test result...')];
+    }
+
+    const lines = visibleIds.flatMap((id) => {
+      const suite = this.suiteById.get(id);
+      return suite ? [this.getLiveSuiteLine(suite)] : [];
     });
+    return [...lines, ...Array(Math.max(0, rowLimit - lines.length)).fill('')];
+  }
+
+  private getLiveSuiteRowLimit(): number {
+    const terminalRows = process.stdout.rows || 24;
+    // Keep the live surface entirely in the active screen buffer. Terminal
+    // scrollback cannot be erased, so an unbounded table cannot be replaced.
+    return Math.max(2, Math.min(5, terminalRows - 10));
+  }
+
+  private getLiveSuiteLine(suite: TestSuite): string {
+    const symbols = this.getSpecDots(suite);
+    const suffix = suite.specs.length > 0
+      ? this.colored('gray', ` . ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
+      : '';
+    // Leave one spare cell: Ink may wrap a Text node that lands exactly on
+    // its content boundary in Windows terminals.
+    const contentWidth = Math.max(31, this.lineWidth - 5);
+    const availableName = Math.max(1, contentWidth - visibleWidth(suffix) - visibleWidth(symbols) - 1);
+    const name = visibleWidth(this.suiteDisplayName(suite)) > availableName
+      ? this.truncateString(this.suiteDisplayName(suite), availableName)
+      : this.suiteDisplayName(suite);
+    const padding = symbols
+      ? ' '.repeat(Math.max(1, contentWidth - visibleWidth(name) - visibleWidth(suffix) - visibleWidth(symbols)))
+      : '';
+    return `${name}${suffix}${padding}${symbols}`;
+  }
+
+  /**
+   * Jasmine can embed an entire compiled module in an assertion's actual
+   * value. Keep both sides of the comparison visible, but never let that
+   * diagnostic consume the report with generated source.
+   */
+  private formatFailureMessage(message: unknown): string {
+    const normalized = normalize(String(message ?? 'Unknown expectation failure.'));
+    const comparison = normalized.match(/^Expected '([\s\S]+)' to ([\s\S]+)$/);
+
+    if (!comparison) {
+      return this.truncateString(normalized, Math.max(120, this.lineWidth * 2));
+    }
+
+    const [, actual, expectation] = comparison;
+    const preview = (value: string, limit: number) => {
+      if (value.length <= limit) return value;
+      const omitted = value.length - limit;
+      return `${value.slice(0, limit)}... [${omitted.toLocaleString()} chars omitted]`;
+    };
+
+    return `Expected '${preview(actual, 72)}' to ${preview(expectation, 96)}`;
   }
 
   private printGlobalFailures() {
-    this.print('\n');
-    this.printSectionHeader(
-      'GLOBAL ERRORS',
-      'red',
-    );
-    this.print(
-      this.colored(
-        'red',
-        this.separator() + '\n',
-      ),
-    );
-
-    this.globalFailures.forEach(
-      (failure, idx) => {
-        const label =
-          failure.globalErrorType ||
-          failure.type ||
-          'global error';
-        const message =
-          normalize(
-            failure.message ??
-              String(failure),
-          );
-        const header = wrapLine(
-          `${idx + 1}) ${label}`,
-          this.lineWidth,
-          0,
-        );
-        header.forEach(
-          (line) => (
-            this.print(
-              this.colored(
-                'white',
-                `  ${line.trimStart()}`,
-              ),
-            ),
-            this.print('\n')
-          ),
-        );
-
-        const messageLines =
-          wrapLine(
-            `${SYMBOLS.cross} ${message}`,
-            this.lineWidth,
-            0,
-          );
-        messageLines.forEach(
-          (line) => (
-            this.print(
-              this.colored(
-                'brightRed',
-                `  ${line.trimStart()}`,
-              ),
-            ),
-            this.print('\n')
-          ),
-        );
-
-        if (failure.stack) {
-          const stackLines =
-            wrapLine(
-              normalize(
-                failure.stack,
-              ),
-              this.lineWidth,
-              0,
-            );
-          stackLines.forEach(
-            (line) => (
-              this.print(
-                this.colored(
-                  'gray',
-                  `  ${line.trimStart()}`,
-                ),
-              ),
-              this.print('\n')
-            ),
-          );
-        }
-
-        this.print('\n');
-      },
-    );
+    const lines: string[] = [];
+    this.globalFailures.forEach((failure, index) => {
+      const label = failure.globalErrorType || failure.type || 'global error';
+      lines.push(this.colored('white', `${index + 1}. ${label}`));
+      lines.push(...wrapLine(normalize(failure.message ?? String(failure)), this.lineWidth - 8, 0)
+        .map(line => this.colored('brightRed', `  ${SYMBOLS.cross} ${line}`)));
+      if (failure.stack) {
+        lines.push(...wrapLine(this.prepareStackTrace(failure.stack), this.lineWidth - 10, 0)
+          .map(line => this.colored('gray', `    ${line}`)));
+      }
+      if (index < this.globalFailures.length - 1) lines.push('');
+    });
+    if (this.appendResultSection('GLOBAL ERRORS', lines, 'red')) return;
+    this.print(renderTerminalPanel('GLOBAL ERRORS', lines, 'red', this.showColors) + '\n');
   }
 
   private printPendingSpecs() {
-    this.print('\n');
-    this.printSectionHeader('PENDING', 'yellow');
-    this.print(this.colored('yellow', this.separator() + '\n'));
-
-    this.pendingSpecs.forEach((spec, idx) => {
-      // Print numbered spec header with wrapping
-      const header = wrapLine(`${this.colored('brightYellow', SYMBOLS.pending)} ${this.colored('white', spec.fullName)}`, this.lineWidth, 1, 'word');
-      header.forEach(line => (this.print(line), this.print('\n')));
+    const lines = this.pendingSpecs.flatMap((spec, index) => {
+      const headerLines = wrapLine(`${index + 1}. ${spec.fullName}`, this.lineWidth - 6, 0)
+        .map(line => this.colored('brightYellow', `${SYMBOLS.pending} ${line}`));
+      const reason = this.pendingReasonText(spec);
+      const reasonLines = wrapLine(reason, this.lineWidth - 8, 0)
+        .map(line => this.colored('dim', `    ${line}`));
+      return [...headerLines, ...reasonLines];
     });
+    if (this.appendResultSection('PENDING', lines, 'yellow')) return;
+    this.print(renderTerminalPanel('PENDING', lines, 'yellow', this.showColors) + '\n');
+  }
+
+  private pendingReasonText(spec: any): string {
+    return spec.pendingReason && spec.pendingReason !== ''
+      ? spec.pendingReason
+      : 'No reason given';
+  }
+
+  /** Slower than this and the duration gets flagged instead of just stated. */
+  private static readonly SLOW_SPEC_MS = 500;
+
+  /** Formats a millisecond duration compactly for inline use ("620ms", "1.20s"). */
+  private formatDuration(ms: number): string {
+    return ms >= 1000
+      ? `${(ms / 1000).toFixed(2)}s`
+      : `${Math.round(ms)}ms`;
+  }
+
+  /**
+   * Normalizes a raw stack for display: one frame per line, and frames pointing
+   * at Jasmine's own internals ("at <Jasmine>") dropped — they are noise when
+   * diagnosing a spec failure, unless they are all there is.
+   */
+  private prepareStackTrace(raw: string): string {
+    const normalized = normalizeStackTrace(raw);
+    const frames = normalized.split('\n');
+    const userFrames = frames.filter(line => !/^at <Jasmine>/.test(line));
+    return userFrames.length > 0 ? userFrames.join('\n') : normalized;
+  }
+
+  /** Renders " (123ms)", flagged " (1.2s, slow)" past the slow threshold, or "" when unknown. */
+  private formatSpecDuration(spec: TestSpec): string {
+    if (typeof spec.duration !== 'number' || Number.isNaN(spec.duration)) return '';
+    const slow = spec.duration >= ConsoleReporter.SLOW_SPEC_MS;
+    const rendered = slow ? `${this.formatDuration(spec.duration)}, slow` : this.formatDuration(spec.duration);
+    return ' ' + this.colored(slow ? 'brightYellow' : 'gray', `(${rendered})`);
   }
 
   private computeOverallStatus(jasmineOverallStatus?: string): 'passed' | 'failed' | 'incomplete' {
@@ -928,58 +1152,43 @@ export class ConsoleReporter {
 
   private printFinalStatus(jasmineOverallStatus?: string) {
     const overallStatus = this.computeOverallStatus(jasmineOverallStatus);
+    const recap = this.finalStatusRecapLines();
     if (overallStatus === 'passed') {
       const msg = this.pendingSpecs.length === 0
         ? ReporterMessages.allTestsPassed()
         : ReporterMessages.allTestsPassedWithPending(this.pendingSpecs.length);
-      this.printBox(msg, 'green');
+      this.printBox(msg, 'green', recap);
     } else if (overallStatus === 'failed') {
-      this.printBox(ReporterMessages.testsFailed(this.failureCount), 'red');
+      this.printBox(ReporterMessages.testsFailed(this.failureCount), 'red', recap);
     } else if (overallStatus === 'incomplete') {
-      this.printBox(ReporterMessages.testsIncomplete(), 'yellow');
+      this.printBox(ReporterMessages.testsIncomplete(), 'yellow', recap);
     } else {
-      this.printBox(ReporterMessages.unknownStatus(overallStatus), 'red');
+      this.printBox(ReporterMessages.unknownStatus(overallStatus), 'red', recap);
     }
   }
 
-  private printTestTree() {
-    this.print(this.colored('bold', '  Demanding Attention\n'));
-    this.print(this.colored('gray', this.separator() + '\n'));
+  /** Counts + duration recap printed inside the final status box. */
+  private finalStatusRecapLines(): string[] {
+    const stats = this.summaryStats;
+    if (!stats) return [];
 
-    // Calculate suite statuses starting from root (recursively covers all suites)
-    this.calculateSuiteStatuses(this.rootSuite);
+    const counts: string[] = [];
+    if (stats.passed > 0) counts.push(`${stats.passed} passed`);
+    if (stats.failed > 0) counts.push(`${stats.failed} failed`);
+    if (stats.pending > 0) counts.push(`${stats.pending} pending`);
 
-    // Print all top-level suites (those whose parent is rootSuite)
-    let hasProblems = false;
-
-    for (const [id, suite] of this.suiteById) {
-      // Skip root suite itself
-      if (suite.id === this.rootSuite.id) continue;
-
-      // Only print top-level suites (direct children of root)
-      // Their children will be printed recursively
-      if (!suite.parent || suite.parent.id === this.rootSuite.id) {
-        if (this.printProblemSuite(suite, 1)) {
-          hasProblems = true;
-        }
-      }
-    }
-
-    if (!hasProblems) {
-      this.print('  ' + this.colored('brightGreen', SYMBOLS.checked) + ' ' + this.colored('dim', 'All suites completed successfully\n'));
-    }
+    return [
+      ...(counts.length > 0 ? [this.colored('white', counts.join(' . '))] : []),
+      this.colored('gray', `finished in ${stats.totalTime.toFixed(3)}s`),
+    ];
   }
 
   private calculateSuiteStatuses(suite: TestSuite): TestStatus {
     const childStatuses = suite.children.map(child => this.calculateSuiteStatuses(child));
 
-    // Normalize spec statuses first
     for (const spec of suite.specs) {
-      if (!spec.status) {
-        spec.status = 'skipped';
-      } else if (spec.status === 'running') {
-        spec.status = 'incomplete';
-      }
+      if (!spec.status) spec.status = 'skipped';
+      else if (spec.status === 'running') spec.status = 'incomplete';
     }
 
     const specs = suite.specs;
@@ -988,16 +1197,11 @@ export class ConsoleReporter {
     const incompleteCount = specs.filter(s => s.status === 'incomplete' || s.status === 'running').length;
     const skippedCount = specs.filter(s => s.status === 'skipped').length;
 
-    const hasFailedChildren = childStatuses.includes('failed');
-    const hasPendingChildren = childStatuses.includes('pending') || childStatuses.includes('running');
-    const hasIncompleteChildren = childStatuses.includes('incomplete');
-
-    // 🚨 FIX: Check incomplete status BEFORE passed status
-    if (failedCount > 0 || hasFailedChildren) {
+    if (failedCount > 0 || childStatuses.includes('failed')) {
       suite.status = 'failed';
-    } else if (incompleteCount > 0 || hasIncompleteChildren) {
-      suite.status = 'incomplete';  // This should come before pending/passed
-    } else if (pendingCount > 0 || hasPendingChildren) {
+    } else if (incompleteCount > 0 || childStatuses.includes('incomplete')) {
+      suite.status = 'incomplete';
+    } else if (pendingCount > 0 || childStatuses.includes('pending') || childStatuses.includes('running')) {
       suite.status = 'pending';
     } else if (skippedCount > 0) {
       suite.status = 'skipped';
@@ -1006,113 +1210,6 @@ export class ConsoleReporter {
     }
 
     return suite.status;
-  }
-
-  /** Print only suites/specs that need attention */
-  printProblemSuite(suite: TestSuite, indentLevel: number = 0): boolean {
-    if (suite.id === this.rootSuite.id) return false;
-
-    const indent = "  ".repeat(indentLevel);
-    let hasProblems = false;
-
-    // --- 1️⃣ Process children ---
-    let childHasProblems = false;
-    for (const child of suite.children) {
-      if (this.printProblemSuite(child, indentLevel + 1)) {
-        childHasProblems = true;
-        hasProblems = true;
-      }
-    }
-
-    // --- 2️⃣ Determine if this suite is a problem node ---
-    const isProblemSuite = ["failed", "pending", "incomplete", "skipped"].includes(suite.status!);
-
-    if (isProblemSuite || childHasProblems) {
-      hasProblems = true;
-
-      if (isProblemSuite) {
-        const { symbol, color } = this.getSuiteSymbol(suite.status!);
-        const specs = suite.specs;
-        const specCount = specs.length;
-
-        const failed = specs.filter(s => s.status === "failed").length;
-        const pending = specs.filter(s => s.status === "pending").length;
-        const incomplete = specs.filter(s => s.status === "incomplete").length;
-        const skipped = specs.filter(s => s.status === "skipped").length;
-        const passed = specs.filter(s => s.status === "passed").length;
-
-        const statusParts: string[] = [];
-
-        // Show status based on the suite's overall status
-        switch (suite.status) {
-          case "failed":
-            if (failed > 0) statusParts.push(`${failed} failed`);
-            if (passed > 0) statusParts.push(`${passed} passed`);
-            if (pending > 0) statusParts.push(`${pending} pending`);
-            if (incomplete > 0) statusParts.push(`${incomplete} incomplete`);
-            if (skipped > 0) statusParts.push(`${skipped} skipped`);
-            break;
-
-          case "incomplete":
-            if (incomplete > 0) statusParts.push(`${incomplete} incomplete`);
-            if (passed > 0) statusParts.push(`${passed} passed`);
-            if (failed > 0) statusParts.push(`${failed} failed`);
-            if (pending > 0) statusParts.push(`${pending} pending`);
-            break;
-
-          case "pending":
-            if (pending > 0) statusParts.push(`${pending} pending`);
-            if (passed > 0) statusParts.push(`${passed} passed`);
-            if (failed > 0) statusParts.push(`${failed} failed`);
-            break;
-
-          case "skipped":
-            statusParts.push(`${specCount} skipped`);
-            break;
-
-          case "passed":
-            statusParts.push(`${specCount} passed`);
-            break;
-        }
-
-        // Add child suite count if applicable
-        if (suite.children.length > 0) {
-          statusParts.push(`${suite.children.length} child suite${suite.children.length !== 1 ? "s" : ""}`);
-        }
-
-        const details = statusParts.length ? this.colored("gray", ` (${statusParts.join(", ")})`) : "";
-        // Truncate description so status details stay on the same line.
-        const rawDesc = suite.description;
-        const statusSymbol = this.colored(color, symbol);
-        const prefix = `${indent}${statusSymbol} `;
-        const availableForDesc = Math.max(0, this.lineWidth - visibleWidth(prefix) - visibleWidth(details));
-        const truncatedDesc =
-          availableForDesc > 0 && visibleWidth(rawDesc) > availableForDesc
-            ? this.truncateString(rawDesc, availableForDesc)
-            : rawDesc;
-        const desc = suite.status === "incomplete" ? this.colored("yellow", truncatedDesc) : truncatedDesc;
-
-        this.print(`${prefix}${desc}${details}\n`);
-      } else if (childHasProblems) {
-        // Visual grouping for parent of problem children
-        const hasNonSkippedChildProblems = suite.children.some(c =>
-          ["failed", "pending", "incomplete"].includes(c.status!)
-        );
-        if (hasNonSkippedChildProblems) {
-          const arrow = this.colored("brightBlue", SYMBOLS.arrow_down_right);
-          const prefix = `${indent}${arrow} `;
-          const rawDesc = suite.description;
-          const availableForDesc = Math.max(0, this.lineWidth - visibleWidth(prefix));
-          const truncatedDesc =
-            availableForDesc > 0 && visibleWidth(rawDesc) > availableForDesc
-              ? this.truncateString(rawDesc, availableForDesc)
-              : rawDesc;
-          this.print(`${prefix}${this.colored("dim", truncatedDesc)}\n`);
-        }
-      }
-    }
-
-    return hasProblems;
   }
 
   private getSuiteSymbol(status: 'failed' | 'pending' | 'skipped' | 'incomplete' | 'passed' | 'running'): { symbol: string; color: string } {
@@ -1142,42 +1239,13 @@ export class ConsoleReporter {
     }
   }
 
-  private printBox(text: string, color: string) {
-    text = replacePlaceholders(text);
-    const strippedText = text.replace(ANSI_FULL_REGEX, '');
-    const width = visibleWidth(text) + 4;
-
-    if (!this.showColors) {
-      const border =
-        '-'.repeat(width);
-
-      this.print(
-        `  +${border}+\n`,
-      );
-
-      this.print(
-        `  |  ${strippedText}  |\n`,
-      );
-
-      this.print(
-        `  +${border}+\n`,
-      );
-
-      return;
-    }
-
-    const topBottom = SYMBOLS.box_double_h.repeat(width);    
-    this.print(this.colored(color, `  ${SYMBOLS.box_tl}${topBottom}${SYMBOLS.box_tr}\n`));
-    this.print(`${this.colored(color, `  ${SYMBOLS.box_v}  `)}${this.colored(['bold', color], text)}${this.colored(color, `  ${SYMBOLS.box_v}`)}\n`);
-    this.print(this.colored(color, `  ${SYMBOLS.box_bl}${topBottom}${SYMBOLS.box_br}\n`));
-  }
-
-  private printSectionHeader(text: string, color: string) {
-    this.print(this.colored('bold', this.colored(color, `  ${text}\n`)));
-  }
-
-  private printDivider() {
-    this.print(this.colored('gray', this.separator() + '\n'));
+  private printBox(text: string, color: string, detailLines: string[] = []) {
+    this.print(renderTerminalPanel(
+      replacePlaceholders(text),
+      detailLines,
+      color,
+      this.showColors,
+    ) + '\n');
   }
 
   private printSummary(totalTime: number) {
@@ -1217,25 +1285,32 @@ export class ConsoleReporter {
     const totalSpecs = this.specById.size;
     const executed = passed + failed + pending;
     const duration = `${totalTime.toFixed(3)}s`;
+    // The final status box prints right after this and reuses the counts.
+    this.summaryStats = { passed, failed, pending, totalTime };
 
-    const lineWidth = this.lineWidth;
 
-    // Build right-aligned info (total and duration)
-    const rightInfo = `total: ${totalSpecs}  time: ${duration}`;
-    const title = '  Test Summary';
-    const spacing = Math.max(1, lineWidth - title.length - rightInfo.length);
+    // Derived run statistics: share of green specs and execution throughput.
+    const statsParts: string[] = [];
+    if (totalSpecs > 0 && executed > 0) {
+      statsParts.push(`pass rate: ${Math.round((passed / totalSpecs) * 100)}%`);
+    }
+    if (totalTime > 0 && executed > 0) {
+      statsParts.push(`${(executed / totalTime).toFixed(1)} specs/s`);
+    }
 
-    // Header
-    const headerLine =
-      this.colored('bold', title) +
-      ' '.repeat(spacing) +
-      this.colored('gray', rightInfo);
+    // The slowest spec is worth naming once its duration becomes non-trivial.
+    let slowest: { name: string; duration: number } | null = null;
+    for (const spec of this.specById.values()) {
+      if (typeof spec.duration === 'number' && !Number.isNaN(spec.duration)) {
+        if (!slowest || spec.duration > slowest.duration) {
+          slowest = { name: spec.fullName, duration: spec.duration };
+        }
+      }
+    }
+    const slowestLine = slowest !== null && slowest.duration >= 100
+      ? `slowest: ${slowest.name} (${this.formatDuration(slowest.duration)})`
+      : null;
 
-    this.print('\n');
-    this.print(headerLine + '\n');
-    this.print(this.colored('gray', this.separator() + '\n'));
-
-    // Inline summary line
     const parts: string[] = [];
 
     if (passed > 0)
@@ -1256,17 +1331,52 @@ export class ConsoleReporter {
     if (notRun > 0)
       parts.push(this.colored('gray', `${SYMBOLS.not_run} Not Run: ${notRun}`));
 
-    if (parts.length > 0)
-      this.print('  ' + parts.join(this.colored('gray', '  |  ')) + '\n');
-    else
-      this.print(this.colored('gray', '  (no specs executed)\n'));
+    const completionRecap = [
+      `${passed} passed`,
+      ...(failed > 0 ? [`${failed} failed`] : []),
+      ...(pending > 0 ? [`${pending} pending`] : []),
+      `finished in ${duration}`,
+    ].join(' . ');
+
+    const summaryLines = [
+      ...(statsParts.length > 0 ? [statsParts.join('  .  ')] : []),
+      this.colored('gray', completionRecap),
+      ...(slowestLine ? [this.colored('gray', slowestLine)] : []),
+    ];
+    if (this.appendResultSection(
+      'TEST SUMMARY',
+      summaryLines,
+      failed > 0 ? 'red' : pending > 0 ? 'yellow' : 'green',
+    )) return;
+
+    this.print(renderTerminalPanel(
+      'TEST SUMMARY',
+      summaryLines,
+      failed > 0 ? 'red' : pending > 0 ? 'yellow' : 'green',
+      this.showColors,
+    ) + '\n');
   }
 
   private colored(style: string | string[], text: string): string {
     if (!this.showColors) return text.replace(ANSI_FULL_REGEX, '');
     const styles = Array.isArray(style) ? style : [style];
-    const seq = styles.map(s => this.ansi[s] ?? '').join('');
-    return `${seq}${text}${this.ansi.none}`;
+    const color = styles.find(styleName => styleName !== 'bold' && styleName !== 'dim');
+
+    return renderTerminalText(text, {
+      color: color === 'brightGreen'
+        ? 'greenBright'
+        : color === 'brightRed'
+          ? 'redBright'
+          : color === 'brightYellow'
+            ? 'yellowBright'
+            : color === 'brightBlue'
+              ? 'blueBright'
+              : color === 'brightCyan'
+                ? 'cyanBright'
+                : color,
+      bold: styles.includes('bold'),
+      dimColor: styles.includes('dim'),
+    });
   }
 
   private gatherEnvironmentInfo(): EnvironmentInfo {
@@ -1276,6 +1386,7 @@ export class ConsoleReporter {
 
     return {
       node: process.version,
+      jasmine: getJasmineVersion(),
       platform: `${process.platform} ${process.arch}`,
       arch: process.arch,
       cwd: process.cwd(),
@@ -1285,27 +1396,42 @@ export class ConsoleReporter {
     };
   }
 
+  /** A label/value row with the label column aligned across panels. */
+  private factRow(label: string, value: string): string {
+    return `${label.padEnd(12)} ${value}`;
+  }
+
+  /** Two compact facts make the runtime card easy to scan without losing data. */
+  private factPair(
+    leftLabel: string,
+    leftValue: string,
+    rightLabel: string,
+    rightValue: string,
+  ): string {
+    const labelWidth = 12;
+    const contentWidth = Math.max(40, this.lineWidth - 4);
+    const valueWidth = Math.max(
+      10,
+      Math.floor((contentWidth - (labelWidth * 2) - 4) / 2),
+    );
+    const shorten = (value: string) =>
+      value.length > valueWidth
+        ? `...${value.slice(-(valueWidth - 3))}`
+        : value;
+
+    return `${leftLabel.padEnd(labelWidth)} ${shorten(leftValue).padEnd(valueWidth)}  ${rightLabel.padEnd(labelWidth)} ${shorten(rightValue)}`;
+  }
+
   private printEnvironmentInfo() {
     if (!this.envInfo) this.envInfo = this.gatherEnvironmentInfo();
-
-    this.print('\n');
-    this.print(this.colored('bold', '  Environment\n'));
-    this.print(this.colored('gray', this.separator() + '\n'));
-
-    this.print(this.colored('cyan', '  Node.js:   ') + this.colored('white', `${this.envInfo.node}\n`));
-    this.print(this.colored('cyan', '  Platform:  ') + this.colored('white', `${this.envInfo.platform}\n`));
-    this.print(this.colored('cyan', '  Arch:      ') + this.colored('white', `${this.envInfo.arch}\n`));
-
-    this.print(this.colored('cyan', '  PID:       ') + this.colored('white', `${this.envInfo.pid}\n`));
-    this.print(this.colored('cyan', '  Uptime:    ') + this.colored('white', `${this.envInfo.uptime}\n`));
-    this.print(this.colored('cyan', '  Memory:    ') + this.colored('white', `${this.envInfo.memory} heap\n`));
-
-    if (this.envInfo.userAgent) {
-      this.printUserAgentInfo(this.envInfo.userAgent);
-    }
-
-    this.print('\n');
-    this.printLabeledField('Directory:  ', this.envInfo.cwd, 'gray', true);
+    const lines = [
+      this.factPair('Node.js', this.envInfo.node, 'Jasmine', this.envInfo.jasmine),
+      this.factPair('Platform', this.envInfo.platform, 'Architecture', this.envInfo.arch),
+      this.factPair('Process', String(this.envInfo.pid), 'Uptime', this.envInfo.uptime),
+      this.factPair('Memory', `${this.envInfo.memory} heap`, 'Directory', this.envInfo.cwd),
+    ];
+    this.print(renderTerminalPanel('ENVIRONMENT', lines, 'blue', this.showColors) + '\n');
+    if (this.envInfo.userAgent) this.printUserAgentInfo(this.envInfo.userAgent);
   }
 
   private detectBrowser(userAgent: string): { name: string; version: string } {
@@ -1336,39 +1462,15 @@ export class ConsoleReporter {
 
   private printUserAgentInfo(userAgent: UserAgent) {
     const { name: browserName, version: browserVersion } = this.detectBrowser(userAgent.userAgent);
-
-    this.print('\n');
-    this.print(this.colored('bold', '  Browser/Navigator\n'));
-    this.print(this.colored('gray', this.separator() + '\n'));
-
-    this.printLabeledField('User Agent: ', userAgent.userAgent, 'white');
-    this.printLabeledField('Browser:    ', `${browserName} ${browserVersion}`, 'white');
-
-    if (userAgent.platform) {
-      this.printLabeledField('Platform:   ', userAgent.platform, 'white');
-    }
-
-    if (userAgent.vendor) {
-      this.printLabeledField('Vendor:     ', userAgent.vendor, 'white');
-    }
-
-    if (userAgent.language) {
-      this.printLabeledField('Language:   ', userAgent.language, 'white');
-    }
-
-    if (userAgent.languages?.length > 0) {
-      const langs = userAgent.languages.join(', ');
-      this.printLabeledField('Languages:  ', langs, 'white');
-    }
-  }
-
-  private printLabeledField(label: string, value: string, valueColor: string, fromStart: boolean = false): void {
-    const prefix = `  ${this.colored('cyan', label)}`;
-    const available = Math.max(0, this.lineWidth - visibleWidth(prefix));
-    const displayValue = available > 3 && visibleWidth(value) > available
-      ? this.truncateString(value, available, fromStart)
-      : value;
-    this.print(prefix + this.colored(valueColor, `${displayValue}\n`));
+    const lines = [
+      this.factRow('Browser', `${browserName} ${browserVersion}`.trimEnd()),
+      this.factRow('User agent', userAgent.userAgent),
+    ];
+    if (userAgent.platform) lines.push(this.factRow('Platform', userAgent.platform));
+    if (userAgent.vendor) lines.push(this.factRow('Vendor', userAgent.vendor));
+    if (userAgent.language) lines.push(this.factRow('Language', userAgent.language));
+    if (userAgent.languages?.length > 0) lines.push(this.factRow('Languages', userAgent.languages.join(', ')));
+    this.print(renderTerminalPanel('BROWSER / NAVIGATOR', lines, 'blue', this.showColors) + '\n');
   }
 
   private truncateString(str: string, maxLength: number, fromStart: boolean = false): string {
@@ -1380,59 +1482,106 @@ export class ConsoleReporter {
     return str.substring(0, maxLength - 3) + '...';
   }
 
-  private printTestConfiguration(config: any) {
+  private printTestConfiguration(config: any, includeSuites = false) {
     if (!config || Object.keys(config).length === 0) return;
 
-    const lineWidth = this.lineWidth; // adjust or detect terminal width
-
-    const orderPart =
-      config.order?.random !== void 0
-        ? (config.order.random ? "random" : "sequential")
-        : null;
-
-    const seedPart =
-      config.order?.seed !== void 0 ? `seed: ${config.order.seed}` : null;
-
-    const rightInfo = [orderPart, seedPart].filter(Boolean).join("  ");
-
-    // Header line with right alignment
-    const title = "  Test Configuration";
-    const spacing = Math.max(1, lineWidth - title.length - rightInfo.length);
-    const headerLine =
-      this.colored("bold", title) +
-      " ".repeat(spacing) +
-      this.colored("gray", rightInfo);
-
-    this.print("\n");
-    this.print(headerLine + "\n");
-    this.print(this.colored("gray", this.separator() + "\n"));
-
-    // Then list the other flags in single line
-    const parts = [];
-
-    if (config.stopOnSpecFailure !== void 0)
-      parts.push(
-        this.colored("magenta", "Fail Fast:") +
-        " " +
-        this.colored("white", config.stopOnSpecFailure ? `${SYMBOLS.checked} enabled` : `${SYMBOLS.cross} disabled`)
-      );
-
-    if (config.stopSpecOnExpectationFailure !== void 0)
-      parts.push(
-        this.colored("magenta", "Stop Spec:") +
-        " " +
-        this.colored("white", config.stopSpecOnExpectationFailure ? `${SYMBOLS.checked} enabled` : `${SYMBOLS.cross} disabled`)
-      );
-
-    if (config.failSpecWithNoExpectations !== void 0)
-      parts.push(
-        this.colored("magenta", "No Expect:") +
-        " " +
-        this.colored("white", config.failSpecWithNoExpectations ? `${SYMBOLS.checked} fail` : `${SYMBOLS.cross} pass`)
-      );
-
-    if (parts.length > 0) {
-      this.print("  " + parts.join(this.colored("gray", "  |  ")) + "\n");
+    const parts: string[] = [];
+    if (config.stopOnSpecFailure !== void 0) {
+      parts.push(`Fail Fast: ${config.stopOnSpecFailure ? `${SYMBOLS.checked} enabled` : `${SYMBOLS.cross} disabled`}`);
     }
+    if (config.stopSpecOnExpectationFailure !== void 0) {
+      parts.push(`Stop Spec: ${config.stopSpecOnExpectationFailure ? `${SYMBOLS.checked} enabled` : `${SYMBOLS.cross} disabled`}`);
+    }
+    if (config.failSpecWithNoExpectations !== void 0) {
+      parts.push(`No Expect: ${config.failSpecWithNoExpectations ? `${SYMBOLS.checked} fail` : `${SYMBOLS.cross} pass`}`);
+    }
+
+    const suiteLines = includeSuites ? this.getSuiteSummaryLines() : [];
+    const lines = [
+      ...this.runMetadataLines(config),
+      ...(parts.length > 0 ? [parts.join('  .  ')] : []),
+      ...(suiteLines.length > 0 ? [PANEL_RULE, ...suiteLines] : []),
+    ];
+
+    if (this.resultPanelLines) {
+      this.resultPanelLines.push(...lines);
+      return;
+    }
+    this.print(renderTerminalPanel('TEST RUN', lines, 'magenta', this.showColors) + '\n');
+  }
+
+  private getAttentionLines(): string[] {
+    const lines: string[] = [];
+    const visit = (suite: TestSuite, depth: number) => {
+      const status = suite.status ?? 'skipped';
+      const hasAttention = ['incomplete', 'skipped'].includes(status);
+      if (hasAttention) {
+        const tone = status === 'incomplete' ? 'cyan' : 'gray';
+        const label = status === 'incomplete' ? 'INCOMPLETE' : status.toUpperCase();
+        const counts = suite.specs.length > 0
+          ? ` . ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`
+          : '';
+        lines.push(`${'  '.repeat(Math.min(depth, 6))}${this.colored(tone, label.padEnd(10))} ${this.suiteDisplayName(suite)}${this.colored('gray', counts)}`);
+      }
+      for (const child of suite.children) visit(child, depth + 1);
+    };
+
+    for (const suite of this.rootSuite.children) visit(suite, 0);
+    return lines;
+  }
+
+  private getSuiteSummaryLines(): string[] {
+    const entries: Array<{ line: string; status: TestStatus; specCount: number }> = [];
+    // The Ink panel consumes two border columns and two padding columns.
+    // Keep the suite glyph column on this same line rather than relying on
+    // Ink's edge-of-cell wrapping behavior.
+    const contentWidth = Math.max(31, this.lineWidth - 5);
+    const visit = (suite: TestSuite, depth: number) => {
+      const suiteSpecs = this.getSuiteSpecs(suite);
+      const symbols = this.getSpecIndicators(suiteSpecs);
+      const description = this.suiteDisplayName(suite);
+      const status = suite.status ?? this.determineSuiteStatusFromInternal(suite);
+      const indent = '  '.repeat(Math.min(depth, 6));
+      const prefix = indent;
+      const specCountSuffix = suiteSpecs.length > 0
+        ? this.colored('gray', ` . ${suiteSpecs.length} spec${suiteSpecs.length === 1 ? '' : 's'}`)
+        : '';
+      const symbolWidth = visibleWidth(symbols);
+      const availableNameWidth = Math.max(
+        1,
+        contentWidth - visibleWidth(prefix) - visibleWidth(specCountSuffix) - (symbolWidth > 0 ? symbolWidth + 1 : 0),
+      );
+      const name = visibleWidth(description) > availableNameWidth
+        ? this.truncateString(description, availableNameWidth)
+        : description;
+      const padding = symbolWidth > 0
+        ? ' '.repeat(Math.max(1, contentWidth - visibleWidth(prefix) - visibleWidth(name) - visibleWidth(specCountSuffix) - symbolWidth))
+        : '';
+
+      entries.push({
+        line: `${prefix}${name}${specCountSuffix}${padding}${symbols}`,
+        status,
+        specCount: suiteSpecs.length,
+      });
+    };
+
+    for (const suite of this.rootSuite.children) visit(suite, 0);
+
+    return entries.map((entry) => entry.line);
+
+  }
+
+  /** Collapse nested suites into their nearest displayed parent. */
+  private getSuiteSpecs(suite: TestSuite): TestSpec[] {
+    return [
+      ...suite.specs,
+      ...suite.children.flatMap((child) => this.getSuiteSpecs(child)),
+    ];
+  }
+
+  private suiteDisplayName(suite: TestSuite): string {
+    if (typeof suite.description === 'string' && suite.description) return suite.description;
+    if (typeof suite.fullName === 'string' && suite.fullName) return suite.fullName;
+    return suite.id || '(unnamed suite)';
   }
 }

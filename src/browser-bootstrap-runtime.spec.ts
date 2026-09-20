@@ -7,6 +7,7 @@ describe('Browser bootstrap runtime', () => {
     const source =
       getBrowserBootstrapScript({
         preludeModules: [],
+        jasmineBootScriptUrl: 'boot0.js',
       });
 
     expect(source).toContain(

@@ -549,6 +549,29 @@ export function isPlannedExecution(
   );
 }
 
+/**
+ * Generates a seed for random runs that did not specify one. Always a
+ * non-zero positive integer: jasmine's Order treats falsy seeds (0) as
+ * absent and silently generates its own, which would escape the report.
+ */
+export function generateRandomSeed(): number {
+  return (
+    Math.floor(
+      Math.random() *
+        1_000_000_000,
+    ) + 1
+  );
+}
+
+function resolvePlanSeed(
+  random: boolean,
+  seed: number | undefined,
+): number | undefined {
+  return random && !seed
+    ? generateRandomSeed()
+    : seed;
+}
+
 export function createExecutionPlan(
   catalog: TestCatalog,
   selector?: TestSelector,
@@ -564,11 +587,17 @@ export function createExecutionPlan(
           selector,
         );
 
+  const random =
+    options.random ?? false;
+
   return createPlannedExecution(
     {
       specIds: [...new Set(specIds)],
-      random: options.random ?? false,
-      seed: options.seed,
+      random,
+      seed: resolvePlanSeed(
+        random,
+        options.seed,
+      ),
       stopOnFailure:
         options.stopOnFailure,
       source: {
@@ -757,6 +786,8 @@ export function getEmbeddedExecutionPlanSource():
     createPlannedExecution,
     isPlannedExecution,
     inferSelectorKind,
+    generateRandomSeed,
+    resolvePlanSeed,
     createExecutionPlan,
     createSpecExecutionPlan,
     createSuiteExecutionPlan,

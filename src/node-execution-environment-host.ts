@@ -36,9 +36,14 @@ export class NodeExecutionEnvironmentHost {
 
     const consoleSnapshot =
       this.captureConsole();
+    const logSuppressionSnapshot =
+      this.captureLogSuppression();
 
     try {
       this.applyEnvironment();
+      // The reporter and test modules share a process. Keep incidental logger
+      // calls from test subjects out of the reporter-owned terminal layout.
+      (globalThis as any).__testifySuppressLogs = true;
 
       if (
         this.options
@@ -56,7 +61,34 @@ export class NodeExecutionEnvironmentHost {
       this.restoreEnvironment(
         envSnapshot,
       );
+      this.restoreLogSuppression(
+        logSuppressionSnapshot,
+      );
     }
+  }
+
+  private captureLogSuppression(): {
+    exists: boolean;
+    value: unknown;
+  } {
+    return {
+      exists: Object.prototype.hasOwnProperty.call(
+        globalThis,
+        '__testifySuppressLogs',
+      ),
+      value: (globalThis as any).__testifySuppressLogs,
+    };
+  }
+
+  private restoreLogSuppression(
+    snapshot: { exists: boolean; value: unknown },
+  ): void {
+    if (snapshot.exists) {
+      (globalThis as any).__testifySuppressLogs = snapshot.value;
+      return;
+    }
+
+    delete (globalThis as any).__testifySuppressLogs;
   }
 
   private captureEnvironment():

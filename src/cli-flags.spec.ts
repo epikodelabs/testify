@@ -100,6 +100,15 @@ describe('Testify CLI flags', () => {
     expect(getConfig().jasmineConfig?.env?.random).toBe(false);
   });
 
+  it('keeps an explicit --seed', async () => {
+    process.argv = ['node', 'testify', '--random', '--seed', '42'];
+    const { getConfig } = stubSuccessfulRunner();
+
+    await CLIHandler.run();
+
+    expect(getConfig().jasmineConfig?.env?.seed).toBe(42);
+  });
+
   it('maps --timeout to the jasmine env timeout', async () => {
     process.argv = ['node', 'testify', '--timeout', '5000'];
     const { getConfig } = stubSuccessfulRunner();

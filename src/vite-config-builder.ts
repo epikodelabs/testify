@@ -419,13 +419,27 @@ export class ViteConfigBuilder {
           }
         },
 
-        resolve: { alias: this.createPathAliases() },
+        resolve: {
+          alias: {
+            ...this.createPathAliases(),
+            ...(!isNodeTarget
+              ? { ink: path.resolve(process.cwd(), 'src/browser-ink-shim.ts') }
+              : {}),
+          },
+        },
         esbuild: {
           target: 'es2022',
           keepNames: false,
           tsconfigRaw: tsconfigData ? { compilerOptions: tsconfigData.compilerOptions } : undefined,
         },
-        define: { 'process.env.NODE_ENV': '"test"' },
+        define: {
+          'process.env.NODE_ENV': '"test"',
+          'process.env.DEV': 'false',
+          'import.meta.env.DEV': 'false',
+          // Some CommonJS dependencies refer to Node's `global` directly.
+          // Browser test chunks need the standards-based global object.
+          global: 'globalThis',
+        },
         logLevel: 'warn'
       };
     }
