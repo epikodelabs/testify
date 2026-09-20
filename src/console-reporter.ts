@@ -1481,9 +1481,6 @@ export class ConsoleReporter {
   private printTestConfiguration(config: any, includeSuites = false) {
     if (!config || Object.keys(config).length === 0) return;
 
-    const seedRow = config.order?.random && config.order?.seed !== void 0
-      ? this.factRow('Seed', String(config.order.seed))
-      : null;
     const parts: string[] = [];
     if (config.stopOnSpecFailure !== void 0) {
       parts.push(`Fail Fast: ${config.stopOnSpecFailure ? `${SYMBOLS.checked} enabled` : `${SYMBOLS.cross} disabled`}`);
@@ -1498,7 +1495,6 @@ export class ConsoleReporter {
     const suiteLines = includeSuites ? this.getSuiteSummaryLines() : [];
     const lines = [
       ...this.runMetadataLines(config),
-      ...(seedRow ? [seedRow] : []),
       ...(parts.length > 0 ? [parts.join('  ·  ')] : []),
       ...(suiteLines.length > 0 ? [PANEL_RULE, ...suiteLines] : []),
     ];
