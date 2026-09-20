@@ -608,6 +608,9 @@ export const RunnerMessages = {
   generatedTestPage: () =>
     `%page% Generated test page: index.html`,
 
+  generatedHmrTestPage: () =>
+    `%doc% Generated HMR-enabled test page: index.html`,
+
   testServerRunning: (port: number) =>
     `%rocket% Test server running at http://localhost:${port}`,
 

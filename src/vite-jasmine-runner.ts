@@ -345,7 +345,12 @@ export class ViteJasmineRunner extends EventEmitter {
         } else {
           await this.htmlGenerator.generateHtmlFile(selectedSpecArtifacts);
         }
-        logger.preparationStep('PAGE', RunnerMessages.generatedTestPage());
+        logger.preparationStep(
+          'PAGE',
+          this.config.watch
+            ? RunnerMessages.generatedHmrTestPage()
+            : RunnerMessages.generatedTestPage(),
+        );
       } else if (preserveHtml) {
         logger.preparationStep('PAGE', RunnerMessages.preservingExistingHtml());
       }
@@ -421,7 +426,7 @@ export class ViteJasmineRunner extends EventEmitter {
     }
 
     this.config.watch = true;
-    logger.println(RunnerMessages.startingWatchMode());
+    logger.preparationStep('WATCH', RunnerMessages.startingWatchMode());
     const preprocessResult = await this.preprocess();
     if (preprocessResult === 'no-specs') {
       return EXIT_CODES.SUCCESS;
@@ -430,18 +435,19 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   private async runWatchMode(): Promise<number> {
-    logger.println(RunnerMessages.startingHmrWatcher());
+    logger.preparationStep('HMR', RunnerMessages.startingHmrWatcher());
 
     const server = await this.httpServerManager.startServer();
-    
+    logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!));
+
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
     this.hmrManager = new HmrManager(this.fileDiscovery, this.config, this.viteConfigBuilder, this.viteCache);
 
     this.webSocketManager.enableHmr(this.hmrManager);
     await this.hmrManager.start();
 
-    logger.println(RunnerMessages.webSocketReady());
-    logger.println(RunnerMessages.pressCtrlCToStop());
+    logger.preparationStep('WS', RunnerMessages.webSocketReady());
+    logger.preparationStep('READY', RunnerMessages.pressCtrlCToStop());
     logger.flushPreparation();
 
     let shuttingDown = false;

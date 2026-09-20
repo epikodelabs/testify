@@ -143,7 +143,7 @@ export class WebSocketManager extends EventEmitter {
       });
     });
 
-    logger.println(WebSocketMessages.hmrEnabled());
+    logger.preparationStep('HMR', WebSocketMessages.hmrEnabled());
   }
 
   private broadcast(message: any): void {

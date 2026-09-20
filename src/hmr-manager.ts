@@ -466,9 +466,14 @@ export class HmrManager extends EventEmitter {
     this.watcher.on('addDir', dirPath => this.handleDirectoryAdd(norm(dirPath)));
     this.watcher.on('unlinkDir', dirPath => this.handleDirectoryRemove(norm(dirPath)));
 
-    this.watcher.on('ready', async () => {
-      logger.println(HmrMessages.watchingFiles(this.allFiles.length, this.rebuildMode, this.sourceChangeStrategy));
-      this.emit('hmr:ready');
+    // Hold start() open until the initial scan finishes so the watcher's
+    // summary lands inside the preparation card instead of after it.
+    await new Promise<void>((resolveReady) => {
+      this.watcher.on('ready', async () => {
+        logger.preparationStep('HMR', HmrMessages.watchingFiles(this.allFiles.length, this.rebuildMode, this.sourceChangeStrategy));
+        this.emit('hmr:ready');
+        resolveReady();
+      });
     });
   }
 
@@ -987,7 +992,8 @@ export class HmrManager extends EventEmitter {
       this.watcher = null;
       this.dependencyGraph.clear();
       this.reverseDependencyGraph.clear();
-      logger.println(HmrMessages.watcherStopped());
+      logger.preparationStep('HMR', HmrMessages.watcherStopped());
+      logger.flushPreparation();
     }
   }
 }

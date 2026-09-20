@@ -72,7 +72,7 @@
     "ws": "^8.21.1"
   },
   "devDependencies": {
-    "@epikodelabs/testify": "file:epikodelabs-testify-1.0.50.tgz",
+    "@epikodelabs/testify": "file:epikodelabs-testify-1.0.52.tgz",
     "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",

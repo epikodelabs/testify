@@ -31,6 +31,9 @@ import {
 import {
   getBrowserPlaygroundFormattersSource,
 } from './browser-playground-formatters';
+import {
+  getEmbeddedNameHelperSource,
+} from './embedded-source';
 
 export interface BrowserRuntimeScriptOptions {
   stopOnSpecFailure: boolean;
@@ -83,8 +86,13 @@ export function getBrowserRuntimeScript(
   const playgroundRuntimeSource =
     getBrowserPlaygroundRuntimeSource();
 
+  const nameHelperSource =
+    getEmbeddedNameHelperSource();
+
   return `
 (function(globalThis) {
+  ${nameHelperSource}
+
   ${catalogSource}
 
   ${catalogIndexSource}
@@ -150,11 +158,11 @@ export function getBrowserRuntimeScript(
     try {
       env = await waitForJasmine();
       console.log(
-        'вњ… Jasmine environment found',
+        '✅ Jasmine environment found',
       );
     } catch (error) {
       console.error(
-        'вљ пёЏ  Jasmine environment not found:',
+        '⚠️  Jasmine environment not found:',
         error.message,
       );
       return;

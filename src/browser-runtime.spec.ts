@@ -24,6 +24,12 @@ describe('Browser runtime', () => {
     );
   });
 
+  it('embeds the helper required by transformed browser sources', () => {
+    expect(source).toContain(
+      'function __name(target, value)',
+    );
+  });
+
   it('does not expose a separate runner facade', () => {
     expect(source).not.toContain(
       'globalThis.runner =',
