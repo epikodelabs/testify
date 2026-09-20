@@ -72,6 +72,24 @@ export class ViteJasmineRunner extends EventEmitter {
   constructor(config: ViteJasmineConfig) {
     super();
 
+    const configuredJasmineEnv = config.jasmineConfig?.env ?? {};
+    const configuredSeed = (configuredJasmineEnv as any).seed;
+    const randomSeed =
+      configuredJasmineEnv.random === true &&
+      (!Number.isFinite(configuredSeed) || Number(configuredSeed) === 0)
+        ? Math.floor(1 + Math.random() * 0x7ffffffe)
+        : configuredSeed;
+    const jasmineConfig =
+      randomSeed === configuredSeed
+        ? config.jasmineConfig
+        : {
+            ...config.jasmineConfig,
+            env: {
+              ...configuredJasmineEnv,
+              seed: randomSeed,
+            },
+          };
+
     const cwd = norm(process.cwd());
     let normalizedSrcDirs = (Array.isArray(config.srcDirs) ? config.srcDirs : [config.srcDirs ?? './src'])
       .filter(Boolean)
@@ -104,6 +122,7 @@ export class ViteJasmineRunner extends EventEmitter {
       port: config.port ?? 8888,
       headless: config.headless ?? false,
       watch: config.watch ?? false,
+      jasmineConfig,
       srcDirs: normalizedSrcDirs,
       testDirs: normalizedTestDirs,
       outDir: norm(config.outDir ?? path.join(cwd, 'dist/.vite-jasmine-build/')),

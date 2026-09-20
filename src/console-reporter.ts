@@ -350,14 +350,17 @@ export class ConsoleReporter {
     const specCount = this.orderedSpecs?.length ?? config?.totalSpecsDefined ?? 0;
     const suiteCount = Math.max(0, this.suiteById.size - 1);
     const order = config?.order?.random ? 'random order' : 'sequential order';
+    const seed = config?.order?.random && config?.order?.seed !== void 0
+      ? `seed ${config.order.seed}`
+      : null;
     const startedAt = this.runStartedAt || new Date().toLocaleTimeString([], {
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
 
     const scope = `${specCount} spec${specCount === 1 ? '' : 's'} · ${suiteCount} suite${suiteCount === 1 ? '' : 's'}`;
     return [
-      this.colored('white', scope) + this.colored('gray', `  ·  ${order}`),
-      this.colored('gray', `started at ${startedAt}`),
+      this.colored('white', scope),
+      this.colored('gray', [order, seed, `started at ${startedAt}`].filter(Boolean).join('  ·  ')),
     ];
   }
 

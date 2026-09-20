@@ -10,6 +10,7 @@ import { getBrowserWebSocketReporterScript } from './browser-websocket-runtime';
 import { getBrowserHmrClientScript } from './browser-hmr-client';
 import { getBrowserBootstrapScript } from './browser-bootstrap-runtime';
 import { getJasmineBrowserAssets } from './jasmine-browser-assets';
+import { generateRandomSeed } from './execution-plan';
 
 function resolveEmbeddedFaviconHref():
   string | null {
@@ -52,6 +53,8 @@ export class BrowserPageBuilder {
     resolveEmbeddedFaviconHref();
   private readonly jasmineAssets =
     getJasmineBrowserAssets();
+  private initialSeedValue:
+    number | undefined;
 
   constructor(
     private readonly config: ViteJasmineConfig,
@@ -73,8 +76,7 @@ export class BrowserPageBuilder {
     const websocketReporter =
       getBrowserWebSocketReporterScript({
         initialSeed:
-          (this.config.jasmineConfig?.env as any)
-            ?.seed ?? 0,
+          this.getInitialSeed(),
         initialRandom:
           this.config.jasmineConfig?.env
             ?.random ?? false,
@@ -135,8 +137,7 @@ ${this.getStaticSuiteFilterScript()}
         getBrowserJasmineRegistrationPatchScript(),
         getBrowserWebSocketReporterScript({
           initialSeed:
-            (this.config.jasmineConfig?.env as any)
-              ?.seed ?? 0,
+            this.getInitialSeed(),
           initialRandom:
             this.config.jasmineConfig?.env
               ?.random ?? false,
@@ -215,6 +216,27 @@ jasmine.getEnv().configure({
     );
   }
 
+  /**
+   * Seed embedded into the generated page scripts. Memoized so the WebSocket
+   * reporter and the runtime session share one seed per page; a random run
+   * without a usable seed gets one generated (falsy seeds are treated as
+   * unspecified, matching jasmine's Order).
+   */
+  private getInitialSeed(): number {
+    if (this.initialSeedValue === undefined) {
+      const env =
+        (this.config.jasmineConfig?.env as any) ??
+        {};
+      const seed: number =
+        env.random === true && !env.seed
+          ? generateRandomSeed()
+          : (env.seed ?? 0);
+      this.initialSeedValue = seed;
+    }
+
+    return this.initialSeedValue;
+  }
+
   private getRuntimeScript(): string {
     return getBrowserRuntimeScript({
       stopOnSpecFailure:
@@ -222,8 +244,7 @@ jasmine.getEnv().configure({
           ?.stopSpecOnExpectationFailure ??
         false,
       initialSeed:
-        (this.config.jasmineConfig?.env as any)
-          ?.seed ?? 0,
+        this.getInitialSeed(),
       initialRandom:
         this.config.jasmineConfig?.env
           ?.random ?? false,

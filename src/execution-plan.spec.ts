@@ -47,6 +47,32 @@ describe('ExecutionPlan', () => {
     );
   });
 
+  it('generates a usable seed for random runs without one', () => {
+    const plan =
+      createExecutionPlan(
+        catalog,
+        undefined,
+        { random: true },
+      );
+
+    expect(
+      plan.seed,
+    ).toBeGreaterThan(0);
+
+    expect(
+      createExecutionPlan(
+        catalog,
+        undefined,
+        { random: true, seed: 42 },
+      ).seed,
+    ).toBe(42);
+
+    expect(
+      createExecutionPlan(catalog)
+        .seed,
+    ).toBeUndefined();
+  });
+
   it('creates a suite plan', () => {
     expect(
       createSuiteExecutionPlan(
