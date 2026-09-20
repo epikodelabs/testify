@@ -94,8 +94,11 @@ function renderPlainPanel(
     visibleWidth(title),
     ...lines.filter((line) => line !== PANEL_RULE).map((line) => visibleWidth(line)),
   );
+  // Keep one terminal column free for a live panel. Writing exactly to the
+  // final column can trigger automatic wrapping, which shifts a subsequent
+  // cursor-based redraw down and leaves duplicate borders behind.
   const innerWidth = fullWidth
-    ? maxWidth - 4
+    ? maxWidth - 5
     : Math.min(Math.max(contentWidth, visibleWidth(title)), maxWidth - 4);
   const border = `+${'-'.repeat(innerWidth + 2)}+`;
   const rule = `+${'-'.repeat(innerWidth + 2)}+`;
@@ -133,7 +136,7 @@ export function renderTerminalPanel(
         borderColor: tone,
         flexDirection: 'column',
         paddingX: 1,
-        ...(fullWidth ? { width: getMaxWidth() } : {}),
+        ...(fullWidth ? { width: getMaxWidth() - 1 } : {}),
       },
       createElement(Text, { bold: true, color: tone }, title),
       ...lines.map((line, index) =>

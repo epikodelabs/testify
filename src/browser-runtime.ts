@@ -446,7 +446,7 @@ export function getBrowserRuntimeScript(
           )
         ) {
           console.log(
-            \`в–¶пёЏ Running [\${config.id}]: \${config.description}\`,
+            \`▶️ Running [\${config.id}]: \${config.description}\`,
           );
         }
       },
@@ -502,7 +502,7 @@ export function getBrowserRuntimeScript(
         mergedResult.failedExpectations?.forEach(
           (failure) =>
             console.error(
-              'вќЊ',
+              '❌',
               failure.message,
               failure.stack
                 ? '\\n' + failure.stack
@@ -621,7 +621,7 @@ export function getBrowserRuntimeScript(
     async function executePlan(plan) {
       if (isExecuting) {
         console.warn(
-          'вљ пёЏ  Execution already in progress. Please wait...',
+          '⚠️  Execution already in progress. Please wait...',
         );
         return summarizeExecutionResults([]);
       }

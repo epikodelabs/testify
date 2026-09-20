@@ -284,7 +284,7 @@ function installTestifyPlaygroundFormatters() {
       const failed = value.filter(
         (result) => result.status === 'failed',
       ).length;
-      hint = value.length + ' items В· ' + failed + ' failed';
+      hint = value.length + ' items · ' + failed + ' failed';
     } else if (
       (kind === 'tests' || kind === 'suites') &&
       first
@@ -294,7 +294,7 @@ function installTestifyPlaygroundFormatters() {
         first.name ||
         first.description;
       if (name) {
-        hint += ' В· ' + name + (value.length > 1 ? ' вЂ¦' : '');
+        hint += ' · ' + name + (value.length > 1 ? ' …' : '');
       }
     }
 
@@ -316,7 +316,7 @@ function installTestifyPlaygroundFormatters() {
 
         return summarySpan(
           'Testify Session',
-          text(value.state) + ' В· revision ' + revision,
+          text(value.state) + ' · revision ' + revision,
         );
       }
 
@@ -332,12 +332,12 @@ function installTestifyPlaygroundFormatters() {
         return summarySpan(
           'Execution Plan',
           tests.length +
-            ' tests В· ' +
+            ' tests · ' +
             files.size +
-            ' files В· ' +
+            ' files · ' +
             source +
             (value.catalogVersion !== undefined
-              ? ' В· revision ' + value.catalogVersion
+              ? ' · revision ' + value.catalogVersion
               : ''),
         );
       }
@@ -364,7 +364,7 @@ function installTestifyPlaygroundFormatters() {
         return summarySpan(
           'Execution Result',
           detailParts.join(
-            ' В· ',
+            ' · ',
           ),
         );
       }
@@ -418,7 +418,7 @@ function installTestifyPlaygroundFormatters() {
           ]),
           row([
             'controls',
-            'tests В· plan В· run В· rerun В· retry В· exit',
+            'tests · plan · run · rerun · retry · exit',
             '',
           ]),
         ];
