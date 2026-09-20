@@ -84,13 +84,19 @@ export function renderTerminalText(
     : text;
 }
 
-function renderPlainPanel(title: string, lines: readonly string[]): string {
+function renderPlainPanel(
+  title: string,
+  lines: readonly string[],
+  fullWidth = false,
+): string {
   const maxWidth = Math.max(24, getMaxWidth());
   const contentWidth = Math.max(
     visibleWidth(title),
     ...lines.filter((line) => line !== PANEL_RULE).map((line) => visibleWidth(line)),
   );
-  const innerWidth = Math.min(Math.max(contentWidth, visibleWidth(title)), maxWidth - 4);
+  const innerWidth = fullWidth
+    ? maxWidth - 4
+    : Math.min(Math.max(contentWidth, visibleWidth(title)), maxWidth - 4);
   const border = `+${'-'.repeat(innerWidth + 2)}+`;
   const rule = `+${'-'.repeat(innerWidth + 2)}+`;
   const row = (value: string) => {
@@ -115,8 +121,9 @@ export function renderTerminalPanel(
   lines: readonly string[],
   tone: string = 'cyan',
   rich = supportsColor(),
+  fullWidth = false,
 ): string {
-  if (!rich || !supportsColor()) return renderPlainPanel(title, lines);
+  if (!rich || !supportsColor()) return renderPlainPanel(title, lines, fullWidth);
 
   const rendered = renderToString(
     createElement(
@@ -126,6 +133,7 @@ export function renderTerminalPanel(
         borderColor: tone,
         flexDirection: 'column',
         paddingX: 1,
+        ...(fullWidth ? { width: getMaxWidth() } : {}),
       },
       createElement(Text, { bold: true, color: tone }, title),
       ...lines.map((line, index) =>

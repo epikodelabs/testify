@@ -357,10 +357,10 @@ export class ConsoleReporter {
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
 
-    const scope = `${specCount} spec${specCount === 1 ? '' : 's'} · ${suiteCount} suite${suiteCount === 1 ? '' : 's'}`;
+    const scope = `${specCount} spec${specCount === 1 ? '' : 's'} . ${suiteCount} suite${suiteCount === 1 ? '' : 's'}`;
     return [
       this.colored('white', scope),
-      this.colored('gray', [order, seed, `started at ${startedAt}`].filter(Boolean).join('  ·  ')),
+      this.colored('gray', [order, seed, `started at ${startedAt}`].filter(Boolean).join('  .  ')),
     ];
   }
 
@@ -978,7 +978,7 @@ export class ConsoleReporter {
       PANEL_RULE,
       ...this.getLiveSuiteLines(),
       PANEL_RULE,
-      this.colored('white', `RUNNING  ${progress}`) + this.colored('gray', `  ·  ${status}`),
+      this.colored('white', `RUNNING  ${progress}`) + this.colored('gray', `  .  ${status}`),
     ];
     return renderTerminalPanel(
       'TEST RUN',
@@ -1005,7 +1005,7 @@ export class ConsoleReporter {
     ];
 
     if (visibleIds.length === 0) {
-      return [this.colored('gray', 'Waiting for the first test result…')];
+      return [this.colored('gray', 'Waiting for the first test result...')];
     }
 
     const lines = visibleIds.flatMap((id) => {
@@ -1025,7 +1025,7 @@ export class ConsoleReporter {
   private getLiveSuiteLine(suite: TestSuite): string {
     const symbols = this.getSpecDots(suite);
     const suffix = suite.specs.length > 0
-      ? this.colored('gray', ` · ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
+      ? this.colored('gray', ` . ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
       : '';
     const contentWidth = Math.max(32, this.lineWidth - 4);
     const availableName = Math.max(1, contentWidth - visibleWidth(suffix) - visibleWidth(symbols) - 1);
@@ -1055,7 +1055,7 @@ export class ConsoleReporter {
     const preview = (value: string, limit: number) => {
       if (value.length <= limit) return value;
       const omitted = value.length - limit;
-      return `${value.slice(0, limit)}… [${omitted.toLocaleString()} chars omitted]`;
+      return `${value.slice(0, limit)}... [${omitted.toLocaleString()} chars omitted]`;
     };
 
     return `Expected '${preview(actual, 72)}' to ${preview(expectation, 96)}`;
@@ -1173,7 +1173,7 @@ export class ConsoleReporter {
     if (stats.pending > 0) counts.push(`${stats.pending} pending`);
 
     return [
-      ...(counts.length > 0 ? [this.colored('white', counts.join(' · '))] : []),
+      ...(counts.length > 0 ? [this.colored('white', counts.join(' . '))] : []),
       this.colored('gray', `finished in ${stats.totalTime.toFixed(3)}s`),
     ];
   }
@@ -1331,10 +1331,10 @@ export class ConsoleReporter {
       ...(failed > 0 ? [`${failed} failed`] : []),
       ...(pending > 0 ? [`${pending} pending`] : []),
       `finished in ${duration}`,
-    ].join(' · ');
+    ].join(' . ');
 
     const summaryLines = [
-      ...(statsParts.length > 0 ? [statsParts.join('  ·  ')] : []),
+      ...(statsParts.length > 0 ? [statsParts.join('  .  ')] : []),
       this.colored('gray', completionRecap),
       ...(slowestLine ? [this.colored('gray', slowestLine)] : []),
     ];
@@ -1412,7 +1412,7 @@ export class ConsoleReporter {
     );
     const shorten = (value: string) =>
       value.length > valueWidth
-        ? `…${value.slice(-(valueWidth - 1))}`
+        ? `...${value.slice(-(valueWidth - 3))}`
         : value;
 
     return `${leftLabel.padEnd(labelWidth)} ${shorten(leftValue).padEnd(valueWidth)}  ${rightLabel.padEnd(labelWidth)} ${shorten(rightValue)}`;
@@ -1495,7 +1495,7 @@ export class ConsoleReporter {
     const suiteLines = includeSuites ? this.getSuiteSummaryLines() : [];
     const lines = [
       ...this.runMetadataLines(config),
-      ...(parts.length > 0 ? [parts.join('  ·  ')] : []),
+      ...(parts.length > 0 ? [parts.join('  .  ')] : []),
       ...(suiteLines.length > 0 ? [PANEL_RULE, ...suiteLines] : []),
     ];
 
@@ -1515,7 +1515,7 @@ export class ConsoleReporter {
         const tone = status === 'incomplete' ? 'cyan' : 'gray';
         const label = status === 'incomplete' ? 'INCOMPLETE' : status.toUpperCase();
         const counts = suite.specs.length > 0
-          ? ` · ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`
+          ? ` . ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`
           : '';
         lines.push(`${'  '.repeat(Math.min(depth, 6))}${this.colored(tone, label.padEnd(10))} ${this.suiteDisplayName(suite)}${this.colored('gray', counts)}`);
       }
@@ -1538,7 +1538,7 @@ export class ConsoleReporter {
       const indent = '  '.repeat(Math.min(depth, 6));
       const prefix = indent;
       const specCountSuffix = suiteSpecs.length > 0
-        ? this.colored('gray', ` · ${suiteSpecs.length} spec${suiteSpecs.length === 1 ? '' : 's'}`)
+        ? this.colored('gray', ` . ${suiteSpecs.length} spec${suiteSpecs.length === 1 ? '' : 's'}`)
         : '';
       const symbolWidth = visibleWidth(symbols);
       const availableNameWidth = Math.max(

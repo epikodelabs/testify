@@ -228,7 +228,8 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       if (specFiles.length === 0) {
-        logger.println(
+        logger.preparationStep(
+          'DISCOVER',
           RunnerMessages.noTestFilesFound(
             this.describeConfiguredTestDirs(),
           ),
@@ -400,6 +401,7 @@ export class ViteJasmineRunner extends EventEmitter {
     try {
       const preprocessResult = await this.preprocess();
       if (preprocessResult === 'no-specs') {
+        logger.flushPreparation();
         return EXIT_CODES.SUCCESS;
       }
     } catch (error) {
@@ -429,6 +431,7 @@ export class ViteJasmineRunner extends EventEmitter {
     logger.preparationStep('WATCH', RunnerMessages.startingWatchMode());
     const preprocessResult = await this.preprocess();
     if (preprocessResult === 'no-specs') {
+      logger.flushPreparation();
       return EXIT_CODES.SUCCESS;
     }
     return await this.runWatchMode();

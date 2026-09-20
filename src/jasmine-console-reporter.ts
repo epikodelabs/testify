@@ -350,7 +350,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
       this.flush(true);
       const reason = result.pendingReason || 'No reason given';
       this.print(renderTerminalPanel(
-        `◌ Pending · ${pendingSpecNumber}`,
+        `◌ Pending . ${pendingSpecNumber}`,
         [result.fullName, renderTerminalText(reason, { dimColor: true })],
         'yellow',
       ) + '\n');
@@ -387,7 +387,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     }
     if (result.overallStatus === 'incomplete') lines.push(this.colored('yellow', `Incomplete: ${result.incompleteReason}`));
 
-    this.print('\n' + renderTerminalPanel(`TEST RUN · ${seconds.toFixed(3)}s`, lines, this.failureCount > 0 ? 'red' : 'green') + '\n');
+    this.print('\n' + renderTerminalPanel(`TEST RUN . ${seconds.toFixed(3)}s`, lines, this.failureCount > 0 ? 'red' : 'green') + '\n');
   }
 }
 

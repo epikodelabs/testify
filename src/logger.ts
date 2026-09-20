@@ -5,6 +5,8 @@ import {
   InkTextStyle,
   renderTerminalPanel,
   renderTerminalText,
+  startLiveTerminalView,
+  type LiveTerminalView,
 } from './ink-output';
 
 type LogMessageKey = keyof typeof LOG_MESSAGES;
@@ -30,6 +32,8 @@ export class Logger {
   private showPrompt = true;
   private plainPrompt = '> ';
   private preparationLines: string[] | null = null;
+  private preparationFlushed = false;
+  private preparationView: LiveTerminalView | null = null;
 
   // ─── New API: structured log messages ────────────────────
 
@@ -124,6 +128,10 @@ export class Logger {
       this.preparationStep('STATUS', msg);
       return true;
     }
+    if (msg && this.preparationFlushed) {
+      this.printRuntimePanel('STATUS', msg, 'cyan');
+      return true;
+    }
 
     if (msg) this.print(msg);
     process.stdout.write('\n');
@@ -153,15 +161,36 @@ export class Logger {
   preparationStart(_message: string) {
     if (areTestLogsSuppressed()) return true;
     this.preparationLines ??= [];
+    this.preparationFlushed = false;
+    if (!this.preparationView && supportsColor() && process.stdout.isTTY) {
+      this.preparationView = startLiveTerminalView(this.renderPreparationPanel());
+    }
     return true;
   }
 
   preparationStep(label: string, message: string, _complete = false) {
     if (areTestLogsSuppressed()) return true;
+    if (!this.preparationLines && this.preparationFlushed) {
+      this.printRuntimePanel(label, message, 'cyan');
+      return true;
+    }
     this.preparationLines ??= [];
+    const severity = /^%(error|warn)%\s*/i.exec(message)?.[1]?.toLowerCase();
+    const labelText = label.trim();
+    const badge = ` ${labelText} `;
+    const columnPadding = ' '.repeat(Math.max(0, 12 - badge.length));
+    const normalColumn =
+      renderTerminalText(labelText, { color: 'white', backgroundColor: 'black' }) +
+      ' '.repeat(Math.max(0, 12 - labelText.length));
+    const styledColumn = severity === 'error'
+      ? renderTerminalText(badge, { bold: true, color: 'white', backgroundColor: 'red' }) + columnPadding
+      : severity === 'warn'
+        ? renderTerminalText(badge, { bold: true, color: 'black', backgroundColor: 'yellow' }) + columnPadding
+        : normalColumn;
     this.preparationLines.push(
-      `${label.padEnd(12)} ${this.cleanPreparationMessage(message)}`,
+      `${styledColumn} ${this.cleanPreparationMessage(message)}`,
     );
+    this.preparationView?.update(this.renderPreparationPanel());
     return true;
   }
 
@@ -169,20 +198,29 @@ export class Logger {
   flushPreparation() {
     if (areTestLogsSuppressed() || !this.preparationLines) return true;
 
-    this.printRaw(
-      renderTerminalPanel(
-        'PREPARING TEST ENVIRONMENT',
-        this.preparationLines,
-        'cyan',
-        supportsColor(),
-      ) + '\n',
-    );
+    if (this.preparationView) {
+      // The interactive view is already in the terminal; retain its final
+      // frame and let the following section start on the next line.
+      this.preparationView.stop(true);
+      this.preparationView = null;
+    } else {
+      this.printRaw(this.renderPreparationPanel() + '\n');
+    }
     this.preparationLines = null;
+    this.preparationFlushed = true;
     return true;
   }
 
   error(msg: string) {
     if (areTestLogsSuppressed()) return true;
+    if (this.preparationLines) {
+      this.preparationStep('ERROR', msg);
+      return true;
+    }
+    if (this.preparationFlushed) {
+      this.printRuntimePanel('ERROR', msg, 'red');
+      return true;
+    }
 
     msg = this.stripLegacyPrefix(
       msg,
@@ -219,6 +257,14 @@ export class Logger {
 
   warn(msg: string) {
     if (areTestLogsSuppressed()) return true;
+    if (this.preparationLines) {
+      this.preparationStep('WARN', msg);
+      return true;
+    }
+    if (this.preparationFlushed) {
+      this.printRuntimePanel('WARNING', msg, 'yellow');
+      return true;
+    }
 
     msg = this.stripLegacyPrefix(
       msg,
@@ -413,10 +459,31 @@ export class Logger {
   }
 
   private cleanPreparationMessage(message: string): string {
-    return replacePlaceholders(message)
-      .replace(/^%[a-z_]+%\s*/i, '')
+    return replacePlaceholders(
+      message.replace(/^%[a-z_]+%\s*/i, ''),
+    )
       .replace(LEGACY_LOG_TAG_PREFIX, '')
       .replace(LEADING_BADGE_PREFIX, '');
+  }
+
+  private printRuntimePanel(title: string, message: string, tone: string): void {
+    const lines = message
+      .split('\n')
+      .map((line) => this.cleanPreparationMessage(line))
+      .filter(Boolean);
+    this.printRaw(
+      '\n' + renderTerminalPanel(title, lines, tone, supportsColor()) + '\n',
+    );
+  }
+
+  private renderPreparationPanel(): string {
+    return renderTerminalPanel(
+      'PREPARING TEST ENVIRONMENT',
+      this.preparationLines ?? [],
+      'cyan',
+      supportsColor(),
+      true,
+    );
   }
 
   private errorPrefix(): string {
