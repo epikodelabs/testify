@@ -591,6 +591,14 @@ function installTestifyPlayground(
 
   globalThis.session = session;
 
+  // The Playground may be installed by several isolated spec modules. Keep
+  // the current session handle fresh, but do not flood DevTools with the same
+  // onboarding message on every installation.
+  if (globalThis.__testifyPlaygroundAnnounced) {
+    return session;
+  }
+  globalThis.__testifyPlaygroundAnnounced = true;
+
   console.log(
     '%c✅ Testify Playground ready!',
     'color: green; font-weight: bold;',

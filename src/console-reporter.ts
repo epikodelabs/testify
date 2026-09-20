@@ -93,7 +93,9 @@ export class ConsoleReporter {
   private specById: Map<string, TestSpec> = new Map();
   /** Suite ids that have actually received suiteDone(), for an accurate live progress count. */
   private completedSuiteIds: Set<string> = new Set();
-  private get lineWidth(): number { return getMaxWidth(); }
+  // Terminal panels reserve a small right margin to avoid Windows auto-wrap.
+  // Keep every row calculation inside that actual outer frame width.
+  private get lineWidth(): number { return Math.max(24, getMaxWidth() - 2); }
   private interruptHandlersRegistered: boolean = false;
   private interrupted = false;
   private orderedSuites: any[] | null = null;
@@ -102,6 +104,7 @@ export class ConsoleReporter {
   private resultPanelLines: string[] | null = null;
   private liveRunView: LiveTerminalView | null = null;
   private liveUpdateTimer: NodeJS.Timeout | null = null;
+  private runCompleted = false;
   private readonly usesDefaultPrint: boolean;
   /** Counts captured by printSummary for the final status box recap. */
   private summaryStats: { passed: number; failed: number; pending: number; totalTime: number } | null = null;
@@ -134,6 +137,10 @@ export class ConsoleReporter {
 
   getFailureCount(): number {
     return this.failureCount;
+  }
+
+  hasCompletedRun(): boolean {
+    return this.runCompleted;
   }
 
   // Detect if terminal supports colors
@@ -334,6 +341,7 @@ export class ConsoleReporter {
     this.currentSuite = null;
     this.currentSpec = null;
     this.interrupted = false;
+    this.runCompleted = false;
     this.resultPanelLines = null;
     this.summaryStats = null;
     this.completedSuiteIds = new Set();
@@ -553,6 +561,7 @@ export class ConsoleReporter {
     this.printSummary(totalTime);
 
     this.flushResultPanel();
+    this.runCompleted = true;
     this.removeInterruptHandler();
   }
 
@@ -595,9 +604,10 @@ export class ConsoleReporter {
       return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
     }
     this.interrupted = true;
+    const hadLiveRun = this.liveRunView !== null;
     this.stopLiveRun();
 
-    if (this.isTTY) {
+    if (this.isTTY && hadLiveRun) {
       // Clear the status line (which is on the line above)
       this.print('\r\x1b[1A'); // Move up one line
       this.clearCurrentLine();  // Clear that line
@@ -1020,7 +1030,9 @@ export class ConsoleReporter {
     const suffix = suite.specs.length > 0
       ? this.colored('gray', ` . ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
       : '';
-    const contentWidth = Math.max(32, this.lineWidth - 4);
+    // Leave one spare cell: Ink may wrap a Text node that lands exactly on
+    // its content boundary in Windows terminals.
+    const contentWidth = Math.max(31, this.lineWidth - 5);
     const availableName = Math.max(1, contentWidth - visibleWidth(suffix) - visibleWidth(symbols) - 1);
     const name = visibleWidth(this.suiteDisplayName(suite)) > availableName
       ? this.truncateString(this.suiteDisplayName(suite), availableName)
@@ -1397,7 +1409,7 @@ export class ConsoleReporter {
     rightValue: string,
   ): string {
     const labelWidth = 12;
-    const contentWidth = Math.max(40, getMaxWidth() - 4);
+    const contentWidth = Math.max(40, this.lineWidth - 4);
     const valueWidth = Math.max(
       10,
       Math.floor((contentWidth - (labelWidth * 2) - 4) / 2),
@@ -1521,7 +1533,9 @@ export class ConsoleReporter {
   private getSuiteSummaryLines(): string[] {
     const entries: Array<{ line: string; status: TestStatus; specCount: number }> = [];
     // The Ink panel consumes two border columns and two padding columns.
-    const contentWidth = Math.max(32, this.lineWidth - 4);
+    // Keep the suite glyph column on this same line rather than relying on
+    // Ink's edge-of-cell wrapping behavior.
+    const contentWidth = Math.max(31, this.lineWidth - 5);
     const visit = (suite: TestSuite, depth: number) => {
       const suiteSpecs = this.getSuiteSpecs(suite);
       const symbols = this.getSpecIndicators(suiteSpecs);

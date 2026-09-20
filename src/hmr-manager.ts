@@ -451,6 +451,10 @@ export class HmrManager extends EventEmitter {
     const watchDirs = [...(this.config.srcDirs || []), ...(this.config.testDirs || [])].filter(Boolean);
     const watchTargets = watchDirs.length > 0 ? watchDirs : [this.primarySrcDir, this.primaryTestDir];
     await this.initializeTrackedFiles(watchTargets);
+    // Populate reverse dependencies before the first edit. Without this,
+    // the first library-source change has no known dependent spec and is
+    // incorrectly treated as a rebuild with nothing to execute.
+    await this.buildDependencyGraph(this.allFiles);
     this.watcher = watch(watchTargets, {
       ignored: /(^|[\/\\])\../,
       persistent: true,
@@ -779,7 +783,7 @@ export class HmrManager extends EventEmitter {
           });
         }
 
-        const rebuiltFiles = Array.from(filesToRebuild);
+        let rebuiltFiles = Array.from(filesToRebuild);
 
         if (rebuiltFiles.length === 0) {
           logger.warn(HmrMessages.noValidFilesToRebuild());
@@ -795,14 +799,30 @@ export class HmrManager extends EventEmitter {
               fs.existsSync(file),
           );
 
-        const validTestFiles =
+        let validTestFiles =
           rebuiltFiles.filter(
             (file) =>
               this.isTestFile(file) &&
               fs.existsSync(file),
           );
 
-        logger.println(
+        // A missing or incomplete graph must never make a library edit a
+        // no-op. Rebuild all known specs as a safe fallback; future edits use
+        // the precise reverse-dependency set populated above.
+        if (
+          validTestFiles.length === 0 &&
+          directChangedFiles.some((file) => this.isSourceFile(file))
+        ) {
+          validTestFiles = this.allFiles.filter(
+            (file) => this.isTestFile(file) && fs.existsSync(file),
+          );
+          const rebuilt = new Set(rebuiltFiles);
+          for (const file of validTestFiles) rebuilt.add(file);
+          rebuiltFiles = Array.from(rebuilt);
+        }
+
+        logger.preparationStep(
+          'HMR',
           HmrMessages.rebuildSummary(
             directChangedFiles.length,
             rebuiltFiles.length,
@@ -815,9 +835,7 @@ export class HmrManager extends EventEmitter {
         // build. The source will be pulled transitively the next time a spec
         // that imports it is rebuilt.
         if (validTestFiles.length === 0) {
-          logger.warn(
-            HmrMessages.noValidSourceOrTestFiles(),
-          );
+          logger.warn(HmrMessages.noValidSourceOrTestFiles());
           continue;
         }
 
@@ -1001,7 +1019,6 @@ export class HmrManager extends EventEmitter {
       this.watcher = null;
       this.dependencyGraph.clear();
       this.reverseDependencyGraph.clear();
-      logger.preparationStep('HMR', HmrMessages.watcherStopped());
       logger.flushPreparation();
     }
   }

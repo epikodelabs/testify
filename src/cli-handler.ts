@@ -246,6 +246,9 @@ export class CLIHandler {
       if (shuttingDown) return;
       shuttingDown = true;
 
+      // A signal can arrive while the live preparation card is still growing.
+      // Freeze its completed frame before teardown clears terminal output.
+      logger.flushPreparation();
       const exitCode = this.runner?.abort('SIGINT') ?? EXIT_CODES.SIGINT;
       try {
         await Promise.race([

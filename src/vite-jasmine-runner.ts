@@ -43,6 +43,7 @@ export class ViteJasmineRunner extends EventEmitter {
   private completePromise = new Promise<void>((resolve, reject) => { this.completePromiseResolve = resolve; });
   private primarySrcDir: string;
   private primaryTestDir: string;
+  private aborting = false;
   private shouldPreserve(): boolean {
     return !!this.config.preserveOutputs;
   }
@@ -384,10 +385,14 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   abort(message?: string): number {
+    this.aborting = true;
     // Signal the browser manager to stop any running browser immediately.
     // Node-runner mode has no cooperative cancel; it will exit via the
     // CLI's process.exit() after cleanup.
     this.browserManager.abort((message ?? 'SIGINT') as NodeJS.Signals);
+    if (this.consoleReporter.hasCompletedRun()) {
+      return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
+    }
     return this.consoleReporter.testsAborted(message);
   }
 
@@ -463,7 +468,9 @@ export class ViteJasmineRunner extends EventEmitter {
       if (shuttingDown) return;
       shuttingDown = true;
 
-      if (source === 'session') {
+      if (this.aborting) {
+        // Ctrl+C already owns the terminal shutdown sequence.
+      } else if (source === 'session') {
         logger.println(RunnerMessages.sessionExitRequested());
         await this.browserManager.closeBrowser();
       } else {

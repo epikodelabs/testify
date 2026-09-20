@@ -155,11 +155,11 @@ describe('Testify CLI watch contract', () => {
     expect(websocketSource).toContain(
       "logger.preparationStep('HMR', WebSocketMessages.hmrEnabled())",
     );
-    expect(hmrSource).toContain(
-      "logger.preparationStep('HMR', HmrMessages.watcherStopped())",
-    );
     expect(hmrSource).not.toContain(
       'logger.println(HmrMessages.watcherStopped())',
+    );
+    expect(hmrSource).not.toContain(
+      "logger.preparationStep('HMR', HmrMessages.watcherStopped())",
     );
   });
 

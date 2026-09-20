@@ -92,6 +92,7 @@ export class BrowserPageBuilder {
         `<link rel="stylesheet" href="${this.jasmineAssets.cssUrl}">`,
       ],
       headScripts: [
+        this.getBrowserGlobalShim(),
         `<script src="${this.jasmineAssets.jasmineScriptUrl}"></script>`,
         `<script src="${this.jasmineAssets.jasmineHtmlScriptUrl}"></script>`,
         ...this.jasmineAssets.bootScriptUrls.map(
@@ -134,6 +135,7 @@ ${this.getStaticSuiteFilterScript()}
         `<script src="${this.jasmineAssets.jasmineHtmlScriptUrl}"></script>`,
       ],
       inlineScripts: [
+        this.getBrowserGlobalShimScript(),
         getBrowserJasmineRegistrationPatchScript(),
         getBrowserWebSocketReporterScript({
           initialSeed:
@@ -188,6 +190,7 @@ const collectSpecs = (suite) => {
       selectedSpecIds.add(child.id);
     }
   }
+
 };
 const visitSuites = (suite, isRoot = false) => {
   if (!isRoot && matchesSuite(
@@ -208,6 +211,19 @@ visitSuites(jasmine.getEnv().topSuite(), true);
 jasmine.getEnv().configure({
   specFilter: (spec) => selectedSpecIds.has(spec.id),
 });`;
+  }
+
+  /** Provide Node's common global alias before any bundled browser module. */
+  private getBrowserGlobalShim(): string {
+    return `<script>${this.getBrowserGlobalShimScript()}</script>`;
+  }
+
+  private getBrowserGlobalShimScript(): string {
+    return `globalThis.global ??= globalThis;
+globalThis.process ??= { env: {} };
+globalThis.process.env ??= {};
+globalThis.process.env.NODE_ENV ??= 'test';
+globalThis.process.env.DEV ??= false;`;
   }
 
   private getPreludeModules(): string[] {

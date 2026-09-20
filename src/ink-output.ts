@@ -146,12 +146,16 @@ export function renderTerminalPanel(
     { columns: getMaxWidth() },
   );
 
+  const renderedLines = rendered.split('\n');
+  const panelWidth = Math.max(
+    4,
+    ...renderedLines.map((line) => visibleWidth(line)),
+  );
   const connectedRule = renderTerminalText(
-    `├${'─'.repeat(Math.max(1, getMaxWidth() - 2))}┤`,
+    `├${'─'.repeat(Math.max(1, panelWidth - 2))}┤`,
     { color: tone },
   );
-  return rendered
-    .split('\n')
+  return renderedLines
     .map((line) => line.includes(PANEL_RULE) ? connectedRule : line)
     .join('\n');
 }
