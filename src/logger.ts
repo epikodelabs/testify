@@ -117,6 +117,14 @@ export class Logger {
   println(msg = '') {
     if (areTestLogsSuppressed()) return true;
 
+    // Preparation is assembled as one card. Legacy callers still use
+    // `println`, so absorb their ordinary setup notices instead of leaking
+    // prompt-style rows above or below that card.
+    if (msg && this.preparationLines) {
+      this.preparationStep('STATUS', msg);
+      return true;
+    }
+
     if (msg) this.print(msg);
     process.stdout.write('\n');
     this.addLine('');
@@ -144,7 +152,7 @@ export class Logger {
   /** Collect setup messages so Ink can render one bounded preparation panel. */
   preparationStart(_message: string) {
     if (areTestLogsSuppressed()) return true;
-    this.preparationLines = [];
+    this.preparationLines ??= [];
     return true;
   }
 

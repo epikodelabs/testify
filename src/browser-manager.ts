@@ -118,8 +118,6 @@ export class BrowserManager {
       return true; // Success determined by WebSocket messages
     } catch (error) {
       if (interrupted || error === interruptError) {
-        logger.printRaw('\n\n');
-        logger.println(BrowserMessages.testsAbortedByUser());
         throw new ExitCodeError(EXIT_CODES.SIGINT, 'Tests aborted by user');
       }
       logger.error(BrowserMessages.testExecutionFailed(error));

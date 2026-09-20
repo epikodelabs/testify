@@ -551,7 +551,9 @@ export class ConsoleReporter {
 
     this.flushResultPanel();
 
-    this.print('\n\n');
+    // The result panel already ends with a newline. Leave one empty row for
+    // optional follow-up sections such as the coverage card.
+    this.print('\n');
     this.removeInterruptHandler();
   }
 

@@ -426,6 +426,10 @@ export class CLIHandler {
         };
       }
 
+      // Begin this before the process lock is acquired so any ordinary setup
+      // notices are retained in the preparation card.
+      logger.preparationStart('');
+
       if (config.preserveOutputs) {
         logger.println(CLIMessages.preserveOutputsEnabled());
       }

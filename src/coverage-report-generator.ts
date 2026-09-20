@@ -4,10 +4,11 @@ import libCoverage from 'istanbul-lib-coverage';
 import libReport from 'istanbul-lib-report';
 import libSourceMaps from 'istanbul-lib-source-maps';
 import reports from 'istanbul-reports';
-import { getMaxWidth } from './ansi-constants';
+import { getMaxWidth, supportsColor } from './ansi-constants';
 import { logger } from './logger';
 import { norm } from './utils';
 import { CoverageMessages } from './log-messages';
+import { renderTerminalPanel } from './ink-output';
 
 export class CoverageReportGenerator {
   private reportDir: string;
@@ -77,18 +78,40 @@ export class CoverageReportGenerator {
     reports.create('html').execute(context);
     reports.create('lcov').execute(context);
 
-    // Text report: write to file fitted to terminal width, then print through logger
+    // Keep the detailed table on disk. The terminal gets a compact summary so
+    // it remains visible after the test-results panel.
     reports.create('text', { file: 'coverage.txt', maxCols: getMaxWidth() }).execute(context);
-    const textPath = path.join(this.reportDir, 'coverage.txt');
-    if (fs.existsSync(textPath)) {
-      const text = fs.readFileSync(textPath, 'utf-8');
-      for (const line of text.split('\n')) {
-        if (line.trim().length > 0) {
-          logger.printlnRaw(line);
-        }
-      }
-    }
-
-    logger.println(CoverageMessages.coverageReportsGenerated());
+    const summary = filteredCoverage.getCoverageSummary().data;
+    const metrics = [
+      ['Statements', summary.statements],
+      ['Branches', summary.branches],
+      ['Functions', summary.functions],
+      ['Lines', summary.lines],
+    ] as const;
+    const countWidth = Math.max(
+      ...metrics.map(([, metric]) => `${metric.covered}/${metric.total}`.length),
+    );
+    const metricLine = (
+      label: string,
+      metric: { pct: number; covered: number; total: number },
+    ) => {
+      const cells = 20;
+      const filled = Math.round(Math.max(0, Math.min(100, metric.pct)) / 100 * cells);
+      const meter = `${'━'.repeat(filled)}${'─'.repeat(cells - filled)}`;
+      const prefix = `${label.padEnd(11)} ${String(metric.pct).padStart(6)}%  ${meter}`;
+      const total = `${metric.covered}/${metric.total}`;
+      return `${prefix}  ${total.padStart(countWidth)}`;
+    };
+    const displayPath = (file: string) => norm(path.relative(process.cwd(), file)) || '.';
+    const htmlReport = path.join(this.reportDir, 'index.html');
+    const lines = [
+      ...metrics.map(([label, metric]) => metricLine(label, metric)),
+      '',
+      `HTML report  ${displayPath(htmlReport)}`,
+      `LCOV         ${displayPath(path.join(this.reportDir, 'lcov.info'))}`,
+    ];
+    logger.printlnRaw(
+      renderTerminalPanel('COVERAGE', lines, '#f59e0b', supportsColor()) + '\n',
+    );
   }
 }

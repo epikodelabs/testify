@@ -423,6 +423,7 @@ export class ViteJasmineRunner extends EventEmitter {
 
     logger.println(RunnerMessages.webSocketReady());
     logger.println(RunnerMessages.pressCtrlCToStop());
+    logger.flushPreparation();
 
     let shuttingDown = false;
     let watchFinishedResolve: ((code: number) => void) | null = null;

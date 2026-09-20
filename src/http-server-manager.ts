@@ -292,7 +292,7 @@ export class HttpServerManager {
 
         this.server!.on('error', (error: any) => {
           if (error.code === 'EADDRINUSE' && attempt < 3) {
-            logger.println(HttpServerMessages.portBusyRetrying(port));
+            logger.preparationStep('PORT', HttpServerMessages.portBusyRetrying(port));
 
             this.server!.close(() => {
               setTimeout(() => {
@@ -306,7 +306,7 @@ export class HttpServerManager {
                   if (err) {
                     logger.error(HttpServerMessages.failedToKillProcess(port, err.message, stderr));
                   } else {
-                    logger.println(HttpServerMessages.portReclaimed(port));
+                    logger.preparationStep('PORT', HttpServerMessages.portReclaimed(port));
                   }
                   this.server = this.createHttpServer();
                   tryListen(attempt + 1);
