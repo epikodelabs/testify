@@ -553,10 +553,6 @@ export class ConsoleReporter {
     this.printSummary(totalTime);
 
     this.flushResultPanel();
-
-    // The result panel already ends with a newline. Leave one empty row for
-    // optional follow-up sections such as the coverage card.
-    this.print('\n');
     this.removeInterruptHandler();
   }
 
@@ -621,9 +617,7 @@ export class ConsoleReporter {
       this.failedSpecs = [];
     }
 
-    this.print('\n');
     this.printBox(ReporterMessages.testsInterrupted(), 'yellow');
-    this.print('\n');
     this.removeInterruptHandler();
 
     return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
@@ -854,7 +848,7 @@ export class ConsoleReporter {
       this.stopLiveRun();
       this.print(panel + '\n');
     } else {
-      this.print('\n' + panel + '\n');
+      this.print(panel + '\n');
     }
     this.resultPanelLines = null;
   }
@@ -929,7 +923,7 @@ export class ConsoleReporter {
     }
 
     if (this.appendResultSection('FAILURES', lines, 'red')) return;
-    this.print('\n' + renderTerminalPanel('FAILURES', lines, 'red', this.showColors) + '\n');
+    this.print(renderTerminalPanel('FAILURES', lines, 'red', this.showColors) + '\n');
   }
 
   private runMetadataLines(config: any): string[] {
@@ -938,7 +932,6 @@ export class ConsoleReporter {
 
   private startLiveRun(): void {
     if (!this.showColors || !this.isTTY || !this.usesDefaultPrint) return;
-    this.print('\n');
     this.liveRunView = startLiveTerminalView(this.getLiveRunText());
   }
 
@@ -1075,7 +1068,7 @@ export class ConsoleReporter {
       if (index < this.globalFailures.length - 1) lines.push('');
     });
     if (this.appendResultSection('GLOBAL ERRORS', lines, 'red')) return;
-    this.print('\n' + renderTerminalPanel('GLOBAL ERRORS', lines, 'red', this.showColors) + '\n');
+    this.print(renderTerminalPanel('GLOBAL ERRORS', lines, 'red', this.showColors) + '\n');
   }
 
   private printPendingSpecs() {
@@ -1088,7 +1081,7 @@ export class ConsoleReporter {
       return [...headerLines, ...reasonLines];
     });
     if (this.appendResultSection('PENDING', lines, 'yellow')) return;
-    this.print('\n' + renderTerminalPanel('PENDING', lines, 'yellow', this.showColors) + '\n');
+    this.print(renderTerminalPanel('PENDING', lines, 'yellow', this.showColors) + '\n');
   }
 
   private pendingReasonText(spec: any): string {
@@ -1344,7 +1337,6 @@ export class ConsoleReporter {
       failed > 0 ? 'red' : pending > 0 ? 'yellow' : 'green',
     )) return;
 
-    this.print('\n');
     this.print(renderTerminalPanel(
       'TEST SUMMARY',
       summaryLines,
@@ -1426,7 +1418,7 @@ export class ConsoleReporter {
       this.factPair('Process', String(this.envInfo.pid), 'Uptime', this.envInfo.uptime),
       this.factPair('Memory', `${this.envInfo.memory} heap`, 'Directory', this.envInfo.cwd),
     ];
-    this.print('\n' + renderTerminalPanel('ENVIRONMENT', lines, 'blue', this.showColors) + '\n');
+    this.print(renderTerminalPanel('ENVIRONMENT', lines, 'blue', this.showColors) + '\n');
     if (this.envInfo.userAgent) this.printUserAgentInfo(this.envInfo.userAgent);
   }
 
@@ -1466,7 +1458,7 @@ export class ConsoleReporter {
     if (userAgent.vendor) lines.push(this.factRow('Vendor', userAgent.vendor));
     if (userAgent.language) lines.push(this.factRow('Language', userAgent.language));
     if (userAgent.languages?.length > 0) lines.push(this.factRow('Languages', userAgent.languages.join(', ')));
-    this.print('\n' + renderTerminalPanel('BROWSER / NAVIGATOR', lines, 'blue', this.showColors) + '\n');
+    this.print(renderTerminalPanel('BROWSER / NAVIGATOR', lines, 'blue', this.showColors) + '\n');
   }
 
   private truncateString(str: string, maxLength: number, fromStart: boolean = false): string {
@@ -1503,7 +1495,7 @@ export class ConsoleReporter {
       this.resultPanelLines.push(...lines);
       return;
     }
-    this.print('\n' + renderTerminalPanel('TEST RUN', lines, 'magenta', this.showColors) + '\n');
+    this.print(renderTerminalPanel('TEST RUN', lines, 'magenta', this.showColors) + '\n');
   }
 
   private getAttentionLines(): string[] {

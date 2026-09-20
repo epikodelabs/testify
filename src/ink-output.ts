@@ -94,11 +94,11 @@ function renderPlainPanel(
     visibleWidth(title),
     ...lines.filter((line) => line !== PANEL_RULE).map((line) => visibleWidth(line)),
   );
-  // Keep one terminal column free for a live panel. Writing exactly to the
-  // final column can trigger automatic wrapping, which shifts a subsequent
-  // cursor-based redraw down and leaves duplicate borders behind.
+  // Keep a small right margin for a live panel. Some Windows terminals wrap
+  // a box border at (or very near) the final column, which shifts a
+  // subsequent cursor-based redraw down and leaves duplicate borders behind.
   const innerWidth = fullWidth
-    ? maxWidth - 5
+    ? maxWidth - 7
     : Math.min(Math.max(contentWidth, visibleWidth(title)), maxWidth - 4);
   const border = `+${'-'.repeat(innerWidth + 2)}+`;
   const rule = `+${'-'.repeat(innerWidth + 2)}+`;
@@ -124,7 +124,7 @@ export function renderTerminalPanel(
   lines: readonly string[],
   tone: string = 'cyan',
   rich = supportsColor(),
-  fullWidth = false,
+  fullWidth = true,
 ): string {
   if (!rich || !supportsColor()) return renderPlainPanel(title, lines, fullWidth);
 
@@ -136,7 +136,7 @@ export function renderTerminalPanel(
         borderColor: tone,
         flexDirection: 'column',
         paddingX: 1,
-        ...(fullWidth ? { width: getMaxWidth() - 1 } : {}),
+        ...(fullWidth ? { width: getMaxWidth() - 3 } : {}),
       },
       createElement(Text, { bold: true, color: tone }, title),
       ...lines.map((line, index) =>
@@ -202,6 +202,26 @@ export function startLiveTerminalView(initialText: string): LiveTerminalView {
 
       const nextLines = nextText.split('\n');
       if (nextLines.length !== previousLines.length) {
+        // A panel which only gains body rows can grow from its bottom border.
+        // This is both cheaper and more reliable on Windows terminals than
+        // repainting upward from a cursor whose wrapped-row position varies.
+        const sharedHeaderLength = previousLines.length - 1;
+        const growsFromBottom =
+          nextLines.length > previousLines.length &&
+          previousLines.slice(0, sharedHeaderLength).every(
+            (line, index) => line === nextLines[index],
+          ) &&
+          previousLines[previousLines.length - 1] === nextLines[nextLines.length - 1];
+
+        if (growsFromBottom) {
+          const addedLines = nextLines.slice(sharedHeaderLength, -1);
+          process.stdout.write(
+            `\r${CLEAR_LINE}\r${addedLines.join('\n')}\n${nextLines[nextLines.length - 1]}`,
+          );
+          previousText = nextText;
+          previousLines = nextLines;
+          return;
+        }
         replaceSurface(nextText, nextLines);
         return;
       }

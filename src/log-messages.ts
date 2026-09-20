@@ -369,8 +369,13 @@ export const HmrMessages = {
   noValidSourceOrTestFiles: () =>
     `%warn%  No valid source or test files to build after filtering`,
 
-  rebuildSummary: (changed: number, total: number, source: number, test: number) =>
-    `%box% Changed: ${changed} files → Rebuilding: ${total} files (${source} source, ${test} test)`,
+  rebuildSummary: (changed: number, total: number, source: number, test: number) => {
+    const fileCount = (count: number) => `${count} file${count === 1 ? '' : 's'}`;
+    const categories = [`${source} source`, `${test} test`];
+    const other = total - source - test;
+    if (other > 0) categories.push(`${other} other`);
+    return `%box% Changed: ${fileCount(changed)} → Rebuilding: ${fileCount(total)} (${categories.join(', ')})`;
+  },
 
   viteBuildFailed: (error: unknown) =>
     `%error% Vite build failed: ${toConsoleSafe(String(error))}`,

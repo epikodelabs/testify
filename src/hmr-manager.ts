@@ -100,8 +100,8 @@ export class HmrManager extends EventEmitter {
     super();
     const srcDir = Array.isArray(config.srcDirs) && config.srcDirs.length > 0 ? config.srcDirs[0] : './src';
     const testDir = Array.isArray(config.testDirs) && config.testDirs.length > 0 ? config.testDirs[0] : './tests';
-    this.primarySrcDir = norm(srcDir);
-    this.primaryTestDir = norm(testDir);
+    this.primarySrcDir = this.normalizedAbsolutePath(srcDir);
+    this.primaryTestDir = this.normalizedAbsolutePath(testDir);
     this.pathAliases = (this.viteConfigBuilder as any).createPathAliases();
     if (options?.fileFilter) this.fileFilter = { ...this.fileFilter, ...options.fileFilter };
     if (options?.rebuildMode) this.rebuildMode = options.rebuildMode;
@@ -152,11 +152,11 @@ export class HmrManager extends EventEmitter {
    * may be "./src"), so directory membership alone cannot classify a file.
    */
   private isTestFile(filePath: string): boolean {
-    const normalized =
-      norm(filePath);
+    const normalized = this.normalizedAbsolutePath(filePath);
 
     if (
-      !normalized.startsWith(
+      !this.isWithinDirectory(
+        normalized,
         this.primaryTestDir,
       )
     ) {
@@ -174,17 +174,26 @@ export class HmrManager extends EventEmitter {
    * same directory.
    */
   private isSourceFile(filePath: string): boolean {
-    const normalized =
-      norm(filePath);
+    const normalized = this.normalizedAbsolutePath(filePath);
 
     return (
-      normalized.startsWith(
+      this.isWithinDirectory(
+        normalized,
         this.primarySrcDir,
       ) &&
       !this.isTestFile(
         normalized,
       )
     );
+  }
+
+  private normalizedAbsolutePath(filePath: string): string {
+    const normalized = norm(path.resolve(filePath));
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  }
+
+  private isWithinDirectory(filePath: string, directory: string): boolean {
+    return filePath === directory || filePath.startsWith(`${directory}/`);
   }
 
   /**

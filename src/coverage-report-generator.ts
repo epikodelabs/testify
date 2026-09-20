@@ -110,7 +110,7 @@ export class CoverageReportGenerator {
       `HTML report  ${displayPath(htmlReport)}`,
       `LCOV         ${displayPath(path.join(this.reportDir, 'lcov.info'))}`,
     ];
-    logger.printlnRaw(
+    logger.printRaw(
       renderTerminalPanel('COVERAGE', lines, '#f59e0b', supportsColor()) + '\n',
     );
   }

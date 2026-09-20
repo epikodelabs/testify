@@ -202,6 +202,7 @@ export class Logger {
       // The interactive view is already in the terminal; retain its final
       // frame and let the following section start on the next line.
       this.preparationView.stop(true);
+      process.stdout.write('\n');
       this.preparationView = null;
     } else {
       this.printRaw(this.renderPreparationPanel() + '\n');
@@ -472,7 +473,7 @@ export class Logger {
       .map((line) => this.cleanPreparationMessage(line))
       .filter(Boolean);
     this.printRaw(
-      '\n' + renderTerminalPanel(title, lines, tone, supportsColor()) + '\n',
+      renderTerminalPanel(title, lines, tone, supportsColor()) + '\n',
     );
   }
 
