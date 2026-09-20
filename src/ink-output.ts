@@ -1,6 +1,7 @@
 import { createElement } from 'react';
-import { Box, render, renderToString, Text } from 'ink';
+import { Box, renderToString, Text } from 'ink';
 import { getMaxWidth, supportsColor } from './ansi-constants';
+import { visibleWidth } from './utils';
 
 const ANSI_ESCAPE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
 
@@ -15,10 +16,52 @@ export interface InkTextStyle {
   dimColor?: boolean;
 }
 
+const FOREGROUND: Readonly<Record<string, number>> = {
+  black: 30,
+  red: 31,
+  green: 32,
+  yellow: 33,
+  blue: 34,
+  magenta: 35,
+  cyan: 36,
+  white: 37,
+  gray: 90,
+  grey: 90,
+  blackBright: 90,
+  redBright: 91,
+  greenBright: 92,
+  yellowBright: 93,
+  blueBright: 94,
+  magentaBright: 95,
+  cyanBright: 96,
+  whiteBright: 97,
+};
+
+const BACKGROUND: Readonly<Record<string, number>> = {
+  black: 40,
+  red: 41,
+  green: 42,
+  yellow: 43,
+  blue: 44,
+  magenta: 45,
+  cyan: 46,
+  white: 47,
+  gray: 100,
+  grey: 100,
+  blackBright: 100,
+  redBright: 101,
+  greenBright: 102,
+  yellowBright: 103,
+  blueBright: 104,
+  magentaBright: 105,
+  cyanBright: 106,
+  whiteBright: 107,
+};
+
 /**
- * Render a log fragment through Ink without taking ownership of stdin or
- * redrawing earlier output. That preserves callback ordering for Jasmine and
- * watch mode while making Ink responsible for terminal styling.
+ * Style a terminal fragment without spinning up an Ink/React render tree.
+ * Panels and live surfaces still belong to Ink; tiny fragments use ANSI
+ * directly because reporters may style hundreds of them per test run.
  */
 export function renderTerminalText(
   text: string,
@@ -26,17 +69,44 @@ export function renderTerminalText(
 ): string {
   if (!text || !supportsColor()) return text;
 
-  return renderToString(
-    createElement(Text, { ...style, wrap: 'wrap' }, text),
-    // Ink normally wraps at the terminal edge. Existing Testify output owns
-    // its wrapping, so provide enough virtual width to preserve each line.
-    {
-      columns: Math.max(
-        getMaxWidth(),
-        ...text.split('\n').map(line => [...line.replace(ANSI_ESCAPE, '')].length + 1),
-      ),
-    },
+  const codes: number[] = [];
+  if (style.bold) codes.push(1);
+  if (style.dimColor) codes.push(2);
+  if (style.color && FOREGROUND[style.color] !== undefined) {
+    codes.push(FOREGROUND[style.color]);
+  }
+  if (style.backgroundColor && BACKGROUND[style.backgroundColor] !== undefined) {
+    codes.push(BACKGROUND[style.backgroundColor]);
+  }
+
+  return codes.length > 0
+    ? `\x1b[${codes.join(';')}m${text}\x1b[0m`
+    : text;
+}
+
+function renderPlainPanel(title: string, lines: readonly string[]): string {
+  const maxWidth = Math.max(24, getMaxWidth());
+  const contentWidth = Math.max(
+    visibleWidth(title),
+    ...lines.filter((line) => line !== PANEL_RULE).map((line) => visibleWidth(line)),
   );
+  const innerWidth = Math.min(Math.max(contentWidth, visibleWidth(title)), maxWidth - 4);
+  const border = `+${'-'.repeat(innerWidth + 2)}+`;
+  const rule = `+${'-'.repeat(innerWidth + 2)}+`;
+  const row = (value: string) => {
+    const clean = value.replace(ANSI_ESCAPE, '');
+    const clipped = visibleWidth(clean) > innerWidth
+      ? `${clean.slice(0, Math.max(0, innerWidth - 3))}...`
+      : clean;
+    return `| ${clipped}${' '.repeat(Math.max(0, innerWidth - visibleWidth(clipped)))} |`;
+  };
+
+  return [
+    border,
+    row(title),
+    ...lines.map((line) => line === PANEL_RULE ? rule : row(line)),
+    border,
+  ].join('\n');
 }
 
 /** A compact Ink panel used for reporter milestones and result summaries. */
@@ -44,8 +114,9 @@ export function renderTerminalPanel(
   title: string,
   lines: readonly string[],
   tone: string = 'cyan',
+  rich = supportsColor(),
 ): string {
-  if (!supportsColor()) return [title, ...lines].join('\n');
+  if (!rich || !supportsColor()) return renderPlainPanel(title, lines);
 
   const rendered = renderToString(
     createElement(
@@ -61,86 +132,104 @@ export function renderTerminalPanel(
         createElement(Text, { key: index }, line),
       ),
     ),
-    // Panels are viewport-bound: long diagnostics must wrap inside the border.
     { columns: getMaxWidth() },
   );
 
-  // Ink borders every child row. A rule deliberately replaces those sides with
-  // T-junctions so adjacent sections read as one connected report.
   const connectedRule = renderTerminalText(
     `├${'─'.repeat(Math.max(1, getMaxWidth() - 2))}┤`,
     { color: tone },
   );
   return rendered
     .split('\n')
-    .map(line => line.includes(PANEL_RULE) ? connectedRule : line)
+    .map((line) => line.includes(PANEL_RULE) ? connectedRule : line)
     .join('\n');
 }
 
-/** A preparation milestone that can be appended without redrawing prior logs. */
-export function renderTerminalStage(
-  label: string,
-  description: string,
-  tone: string = 'cyan',
-): string {
-  if (!supportsColor()) return `${label}: ${description}`;
-
-  return renderToString(
-    createElement(
-      Box,
-      { paddingLeft: 2 },
-      createElement(Text, { bold: true, color: tone }, '◆'),
-      createElement(Text, { dimColor: true }, `  ${label.padEnd(10)} `),
-      createElement(Text, { color: tone === 'green' ? 'green' : undefined }, description),
-    ),
-    { columns: getMaxWidth() },
-  );
-}
-
-/** A connected, append-only pipeline row for test preparation. */
-export function renderTerminalPreparationStage(
-  label: string,
-  description: string,
-  tone: string = 'cyan',
-): string {
-  if (!supportsColor()) return `${label}: ${description}`;
-
-  return renderToString(
-    createElement(
-      Box,
-      { paddingLeft: 1 },
-      createElement(Text, { color: tone }, '├─'),
-      createElement(Text, { bold: true, color: tone }, ` ${label.padEnd(11)}`),
-      createElement(Text, { dimColor: true }, description),
-    ),
-    { columns: getMaxWidth() },
-  );
-}
-
-/** A small persistent Ink surface for reporter-owned live output. */
+/** A small persistent terminal surface for reporter-owned live output. */
 export interface LiveTerminalView {
   update(text: string): void;
+  replace(text: string): void;
   stop(preserve?: boolean): void;
 }
 
+const CURSOR_SAVE = '\x1b[s';
+const CURSOR_RESTORE = '\x1b[u';
+const CLEAR_LINE = '\x1b[2K';
+
+function cursorUp(lines: number): string {
+  return lines > 0 ? `\x1b[${lines}A` : '';
+}
+
+function moveRight(columns: number): string {
+  return columns > 0 ? `\x1b[${columns}C` : '';
+}
+
+/**
+ * Keeps a rendered panel on screen without asking Ink/React to reconcile the
+ * entire tree for every spec result. Same-height updates are diffed by row.
+ * When a row only grows (the common suite-glyph case), only the appended
+ * suffix is written. Other changed rows are replaced in place. A structural
+ * height change falls back to replacing the live surface once.
+ */
 export function startLiveTerminalView(initialText: string): LiveTerminalView {
-  const renderText = (text: string) =>
-    createElement(Text, { wrap: 'truncate-end' }, text);
-  const instance: any = render(renderText(initialText), {
-    exitOnCtrlC: false,
-    patchConsole: false,
-    // Reporter callbacks are synchronous; render updates immediately so the
-    // completed report can replace the live table in the same terminal area.
-    concurrent: false,
-  });
+  let previousText = initialText;
+  let previousLines = initialText.split('\n');
+  process.stdout.write(initialText);
+
+  const replaceSurface = (nextText: string, nextLines: string[]) => {
+    const up = Math.max(0, previousLines.length - 1);
+    process.stdout.write(
+      `\r${cursorUp(up)}\x1b[J${nextText}`,
+    );
+    previousText = nextText;
+    previousLines = nextLines;
+  };
 
   return {
-    update: (text) => instance.rerender(renderText(text)),
+    update: (nextText) => {
+      if (nextText === previousText) return;
+
+      const nextLines = nextText.split('\n');
+      if (nextLines.length !== previousLines.length) {
+        replaceSurface(nextText, nextLines);
+        return;
+      }
+
+      const lastLineIndex = previousLines.length - 1;
+      let output = CURSOR_SAVE;
+      let changed = false;
+
+      for (let index = 0; index < nextLines.length; index++) {
+        const previous = previousLines[index];
+        const next = nextLines[index];
+        if (previous === next) continue;
+
+        changed = true;
+        output += CURSOR_RESTORE;
+        output += `\r${cursorUp(lastLineIndex - index)}`;
+
+        if (next.startsWith(previous)) {
+          output += moveRight(visibleWidth(previous));
+          output += next.slice(previous.length);
+        } else {
+          output += `${CLEAR_LINE}\r${next}`;
+        }
+      }
+
+      if (changed) {
+        output += CURSOR_RESTORE;
+        process.stdout.write(output);
+      }
+
+      previousText = nextText;
+      previousLines = nextLines;
+    },
+    replace: (nextText) => replaceSurface(nextText, nextText.split('\n')),
     stop: (preserve = false) => {
       if (!preserve) {
-        instance.rerender(renderText(''));
+        const up = Math.max(0, previousLines.length - 1);
+        process.stdout.write(`\r${cursorUp(up)}\x1b[J`);
       }
-      instance.unmount();
     },
   };
 }

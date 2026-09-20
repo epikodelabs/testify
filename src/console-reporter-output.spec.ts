@@ -28,7 +28,7 @@ describe('ConsoleReporter output sink', () => {
     expect(
       messages.join(''),
     ).toContain(
-        'Test Run',
+        'TEST RESULTS',
     );
   });
 

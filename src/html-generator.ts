@@ -3,7 +3,6 @@ import * as path from 'path';
 import type { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
 import type { FileDiscoveryService } from './file-discovery-service';
-import { logger } from './logger';
 import { HtmlMessages } from './log-messages';
 import { BrowserPageBuilder } from './browser-page-builder';
 import {
@@ -98,15 +97,9 @@ export class HtmlGenerator {
       htmlContent,
     );
 
-    logger.println(
-      messageFactory(
-        norm(
-          path.relative(
-            this.config.outDir,
-            htmlPath,
-          ),
-        ),
-      ),
-    );
+    // The runner presents page generation as a PAGE preparation milestone.
+    // Keep this reusable generator silent to avoid a duplicate prompt outside
+    // the preparation card.
+    void messageFactory;
   }
 }

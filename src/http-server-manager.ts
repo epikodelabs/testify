@@ -287,7 +287,6 @@ export class HttpServerManager {
     return new Promise((resolve, reject) => {
       const tryListen = (attempt = 1) => {
         this.server!.listen(port, () => {
-          logger.println(HttpServerMessages.serverRunning(port));
           resolve(this.server!);
         });
 

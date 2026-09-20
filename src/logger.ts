@@ -4,7 +4,6 @@ import { replacePlaceholders } from './symbols';
 import {
   InkTextStyle,
   renderTerminalPanel,
-  renderTerminalStage,
   renderTerminalText,
 } from './ink-output';
 
@@ -143,16 +142,14 @@ export class Logger {
   }
 
   /** Collect setup messages so Ink can render one bounded preparation panel. */
-  preparationStart(message: string) {
+  preparationStart(_message: string) {
     if (areTestLogsSuppressed()) return true;
-    if (!supportsColor()) return this.println(message);
     this.preparationLines = [];
     return true;
   }
 
-  preparationStep(label: string, message: string, complete = false) {
+  preparationStep(label: string, message: string, _complete = false) {
     if (areTestLogsSuppressed()) return true;
-    if (!supportsColor()) return this.println(message);
     this.preparationLines ??= [];
     this.preparationLines.push(
       `${label.padEnd(12)} ${this.cleanPreparationMessage(message)}`,
@@ -163,12 +160,13 @@ export class Logger {
   /** Print the preparation card once, immediately before execution begins. */
   flushPreparation() {
     if (areTestLogsSuppressed() || !this.preparationLines) return true;
-    if (!supportsColor()) return true;
 
     this.printRaw(
       renderTerminalPanel(
         'PREPARING TEST ENVIRONMENT',
         this.preparationLines,
+        'cyan',
+        supportsColor(),
       ) + '\n',
     );
     this.preparationLines = null;

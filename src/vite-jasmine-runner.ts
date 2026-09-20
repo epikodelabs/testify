@@ -328,7 +328,7 @@ export class ViteJasmineRunner extends EventEmitter {
         }
         logger.preparationStep('PAGE', RunnerMessages.generatedTestPage());
       } else if (preserveHtml) {
-        logger.println(RunnerMessages.preservingExistingHtml());
+        logger.preparationStep('PAGE', RunnerMessages.preservingExistingHtml());
       }
 
       const runnerPath = path.join(this.config.outDir, 'test-runner.mjs');
@@ -336,7 +336,7 @@ export class ViteJasmineRunner extends EventEmitter {
       if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
         this.nodeTestRunner.generateTestRunner();
       } else if (this.config.headless && this.config.browser === 'node' && preserveRunner) {
-        logger.println(RunnerMessages.preservingExistingRunner());
+        logger.preparationStep('RUNNER', RunnerMessages.preservingExistingRunner());
       }
 
       return 'built';
@@ -565,9 +565,6 @@ export class ViteJasmineRunner extends EventEmitter {
     let testHasPending = false;
     let finishHeadedRunPromise: Promise<void> | undefined;
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
-
-    logger.println(RunnerMessages.webSocketReadyWithReporting());
-    logger.println(RunnerMessages.pressCtrlCToStop());
 
     const finishHeadedRun = async (coverage: Record<string, any> | undefined): Promise<void> => {
       await this.coverageHost.generate(
