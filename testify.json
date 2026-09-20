@@ -21,7 +21,6 @@
       "rolldownOptions": {
         "external": [
           "playwright",
-          "playwright-core",
           "chromium-bidi"
         ]
       }
@@ -29,8 +28,7 @@
   },
   "jasmineConfig": {
     "env": {
-      "random": false,
-      "seed": 0,
+      "random": true,
       "stopSpecOnExpectationFailure": false,
       "timeout": 120000
     }
