@@ -348,7 +348,7 @@ function installTestifyPlaygroundFormatters() {
         const detailParts = [
           value.passed + ' passed',
           value.failed + ' failed',
-          value.pending + ' pending',
+          value.pending + ' skipped',
         ];
 
         if (globalErrors > 0) {

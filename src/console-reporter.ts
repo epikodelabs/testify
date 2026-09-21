@@ -109,6 +109,11 @@ export class ConsoleReporter {
   /** Counts captured by printSummary for the final status box recap. */
   private summaryStats: { passed: number; failed: number; pending: number; totalTime: number } | null = null;
 
+  /** Keep output readable in a terminal while preserving ASCII-only --ansi output. */
+  private get separator(): string {
+    return isAnsiMode() ? '*' : '•';
+  }
+
   constructor(options: ConsoleReporterOptions = {}) {
     this.usesDefaultPrint = options.print === undefined;
     this.print =
@@ -365,10 +370,10 @@ export class ConsoleReporter {
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
 
-    const scope = `${specCount} spec${specCount === 1 ? '' : 's'} . ${suiteCount} suite${suiteCount === 1 ? '' : 's'}`;
+    const scope = `${specCount} spec${specCount === 1 ? '' : 's'} ${this.separator} ${suiteCount} suite${suiteCount === 1 ? '' : 's'}`;
     return [
       this.colored('white', scope),
-      this.colored('gray', [order, seed, `started at ${startedAt}`].filter(Boolean).join('  .  ')),
+      this.colored('gray', [order, seed, `started at ${startedAt}`].filter(Boolean).join(`  ${this.separator}  `)),
     ];
   }
 
@@ -974,14 +979,14 @@ export class ConsoleReporter {
     const status = [
       `${SYMBOLS.checked} ${Math.max(0, this.executableSpecCount - this.failureCount - this.pendingSpecs.length)} passed`,
       `${SYMBOLS.cross} ${this.failureCount} failed`,
-      `${SYMBOLS.pending} ${this.pendingSpecs.length} pending`,
+      `${SYMBOLS.skip} ${this.pendingSpecs.length} skipped`,
     ].join('  ');
     const lines = [
       ...this.runMetadataLines(this.config),
       PANEL_RULE,
       ...this.getLiveSuiteLines(),
       PANEL_RULE,
-      this.colored('white', `RUNNING  ${progress}`) + this.colored('gray', `  .  ${status}`),
+      this.colored('white', `RUNNING  ${progress}`) + this.colored('gray', `  ${this.separator}  ${status}`),
     ];
     return renderTerminalPanel(
       'TEST RUN',
@@ -1028,7 +1033,7 @@ export class ConsoleReporter {
   private getLiveSuiteLine(suite: TestSuite): string {
     const symbols = this.getSpecDots(suite);
     const suffix = suite.specs.length > 0
-      ? this.colored('gray', ` . ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
+      ? this.colored('gray', ` ${this.separator} ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
       : '';
     // Leave one spare cell: Ink may wrap a Text node that lands exactly on
     // its content boundary in Windows terminals.
@@ -1086,14 +1091,14 @@ export class ConsoleReporter {
   private printPendingSpecs() {
     const lines = this.pendingSpecs.flatMap((spec, index) => {
       const headerLines = wrapLine(`${index + 1}. ${spec.fullName}`, this.lineWidth - 6, 0)
-        .map(line => this.colored('brightYellow', `${SYMBOLS.pending} ${line}`));
+        .map(line => this.colored('brightYellow', `${SYMBOLS.skip} ${line}`));
       const reason = this.pendingReasonText(spec);
       const reasonLines = wrapLine(reason, this.lineWidth - 8, 0)
         .map(line => this.colored('dim', `    ${line}`));
       return [...headerLines, ...reasonLines];
     });
-    if (this.appendResultSection('PENDING', lines, 'yellow')) return;
-    this.print(renderTerminalPanel('PENDING', lines, 'yellow', this.showColors) + '\n');
+    if (this.appendResultSection('SKIPPED', lines, 'yellow')) return;
+    this.print(renderTerminalPanel('SKIPPED', lines, 'yellow', this.showColors) + '\n');
   }
 
   private pendingReasonText(spec: any): string {
@@ -1175,10 +1180,10 @@ export class ConsoleReporter {
     const counts: string[] = [];
     if (stats.passed > 0) counts.push(`${stats.passed} passed`);
     if (stats.failed > 0) counts.push(`${stats.failed} failed`);
-    if (stats.pending > 0) counts.push(`${stats.pending} pending`);
+    if (stats.pending > 0) counts.push(`${stats.pending} skipped`);
 
     return [
-      ...(counts.length > 0 ? [this.colored('white', counts.join(' . '))] : []),
+      ...(counts.length > 0 ? [this.colored('white', counts.join(` ${this.separator} `))] : []),
       this.colored('gray', `finished in ${stats.totalTime.toFixed(3)}s`),
     ];
   }
@@ -1320,7 +1325,7 @@ export class ConsoleReporter {
       parts.push(this.colored('brightRed', `${SYMBOLS.cross} Failed: ${failed}`));
 
     if (pending > 0)
-      parts.push(this.colored('brightYellow', `${SYMBOLS.pending} Pending: ${pending}`));
+      parts.push(this.colored('brightYellow', `${SYMBOLS.skip} Skipped: ${pending}`));
 
     if (incomplete > 0)
       parts.push(this.colored('cyan', `${SYMBOLS.incomplete} Incomplete: ${incomplete}`));
@@ -1334,12 +1339,12 @@ export class ConsoleReporter {
     const completionRecap = [
       `${passed} passed`,
       ...(failed > 0 ? [`${failed} failed`] : []),
-      ...(pending > 0 ? [`${pending} pending`] : []),
+      ...(pending > 0 ? [`${pending} skipped`] : []),
       `finished in ${duration}`,
-    ].join(' . ');
+    ].join(` ${this.separator} `);
 
     const summaryLines = [
-      ...(statsParts.length > 0 ? [statsParts.join('  .  ')] : []),
+      ...(statsParts.length > 0 ? [statsParts.join(`  ${this.separator}  `)] : []),
       this.colored('gray', completionRecap),
       ...(slowestLine ? [this.colored('gray', slowestLine)] : []),
     ];
@@ -1428,7 +1433,8 @@ export class ConsoleReporter {
       this.factPair('Node.js', this.envInfo.node, 'Jasmine', this.envInfo.jasmine),
       this.factPair('Platform', this.envInfo.platform, 'Architecture', this.envInfo.arch),
       this.factPair('Process', String(this.envInfo.pid), 'Uptime', this.envInfo.uptime),
-      this.factPair('Memory', `${this.envInfo.memory} heap`, 'Directory', this.envInfo.cwd),
+      this.factRow('Memory', `${this.envInfo.memory} heap`),
+      this.factRow('Directory', this.envInfo.cwd),
     ];
     this.print(renderTerminalPanel('ENVIRONMENT', lines, 'blue', this.showColors) + '\n');
     if (this.envInfo.userAgent) this.printUserAgentInfo(this.envInfo.userAgent);
@@ -1499,7 +1505,7 @@ export class ConsoleReporter {
     const suiteLines = includeSuites ? this.getSuiteSummaryLines() : [];
     const lines = [
       ...this.runMetadataLines(config),
-      ...(parts.length > 0 ? [parts.join('  .  ')] : []),
+      ...(parts.length > 0 ? [parts.join(`  ${this.separator}  `)] : []),
       ...(suiteLines.length > 0 ? [PANEL_RULE, ...suiteLines] : []),
     ];
 
@@ -1519,7 +1525,7 @@ export class ConsoleReporter {
         const tone = status === 'incomplete' ? 'cyan' : 'gray';
         const label = status === 'incomplete' ? 'INCOMPLETE' : status.toUpperCase();
         const counts = suite.specs.length > 0
-          ? ` . ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`
+          ? ` ${this.separator} ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`
           : '';
         lines.push(`${'  '.repeat(Math.min(depth, 6))}${this.colored(tone, label.padEnd(10))} ${this.suiteDisplayName(suite)}${this.colored('gray', counts)}`);
       }
@@ -1544,7 +1550,7 @@ export class ConsoleReporter {
       const indent = '  '.repeat(Math.min(depth, 6));
       const prefix = indent;
       const specCountSuffix = suiteSpecs.length > 0
-        ? this.colored('gray', ` . ${suiteSpecs.length} spec${suiteSpecs.length === 1 ? '' : 's'}`)
+        ? this.colored('gray', ` ${this.separator} ${suiteSpecs.length} spec${suiteSpecs.length === 1 ? '' : 's'}`)
         : '';
       const symbolWidth = visibleWidth(symbols);
       const availableNameWidth = Math.max(

@@ -236,7 +236,7 @@ export const ReporterMessages = {
     `[OK] ALL TESTS PASSED`,
 
   allTestsPassedWithPending: (pendingCount: number) =>
-    `[OK] ALL TESTS PASSED (${pendingCount} pending)`,
+    `[OK] ALL TESTS PASSED (${pendingCount} skipped)`,
 
   testsFailed: (count: number) =>
     `[ERROR] ${count} TEST${count === 1 ? '' : 'S'} FAILED`,

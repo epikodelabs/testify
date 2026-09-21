@@ -1,5 +1,5 @@
 import { renderTerminalPanel, renderTerminalText } from './ink-output';
-import { supportsColor } from './ansi-constants';
+import { isAnsiMode, supportsColor } from './ansi-constants';
 
 export interface ConsoleReporterOptions {
   print?: (message: string) => void;
@@ -32,6 +32,10 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   private failedSpecs: jasmine.SpecResult[] = [];
   private pendingSpecs: jasmine.SpecResult[] = [];
   private alwaysListPendingSpecs = true;
+
+  private get separator(): string {
+    return isAnsiMode() ? '*' : '•';
+  }
   private failedSuites: jasmine.SuiteResult[] = [];
   private stackFilter: (stack: string) => string = (stack) => stack;
   private slowSpecs: Array<{ fullName: string; duration: number }> = [];
@@ -105,7 +109,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
 
     if (this.alwaysListPendingSpecs || result.overallStatus === 'passed') {
       if (this.pendingSpecs.length > 0) {
-        this.print('Pending:');
+        this.print('Skipped:');
       }
       for (let i = 0; i < this.pendingSpecs.length; i++) {
         this.pendingSpecDetails(this.pendingSpecs[i], i + 1);
@@ -144,7 +148,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
         specCounts +=
           ', ' +
           this.pendingSpecs.length +
-          ' pending ' +
+          ' skipped ' +
           this.plural('spec', this.pendingSpecs.length);
       }
 
@@ -350,7 +354,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
       this.flush(true);
       const reason = result.pendingReason || 'No reason given';
       this.print(renderTerminalPanel(
-        `◌ Pending . ${pendingSpecNumber}`,
+        `◌ Skipped ${this.separator} ${pendingSpecNumber}`,
         [result.fullName, renderTerminalText(reason, { dimColor: true })],
         'yellow',
       ) + '\n');
@@ -375,7 +379,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
     const seconds = result.totalTime / 1000;
     const lines = [
-      `${this.colored('green', `✓ ${Math.max(0, passed)} passed`)}  ${this.colored('red', `✕ ${this.failureCount} failed`)}  ${this.colored('yellow', `◌ ${this.pendingSpecs.length} pending`)}`,
+      `${this.colored('green', `✓ ${Math.max(0, passed)} passed`)}  ${this.colored('red', `✕ ${this.failureCount} failed`)}  ${this.colored('yellow', `◌ ${this.pendingSpecs.length} skipped`)}`,
     ];
 
     const slowest = [...this.slowSpecs].sort((a, b) => b.duration - a.duration).slice(0, 3);
@@ -387,7 +391,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
     }
     if (result.overallStatus === 'incomplete') lines.push(this.colored('yellow', `Incomplete: ${result.incompleteReason}`));
 
-    this.print(renderTerminalPanel(`TEST RUN . ${seconds.toFixed(3)}s`, lines, this.failureCount > 0 ? 'red' : 'green') + '\n');
+    this.print(renderTerminalPanel(`TEST RUN ${this.separator} ${seconds.toFixed(3)}s`, lines, this.failureCount > 0 ? 'red' : 'green') + '\n');
   }
 }
 
