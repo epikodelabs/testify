@@ -102,8 +102,12 @@ export class ConsoleReporter {
   private orderedSpecs: any[] | null = null;
   private isTTY: boolean;
   private resultPanelLines: string[] | null = null;
-  private liveRunView: LiveTerminalView | null = null;
-  private liveUpdateTimer: NodeJS.Timeout | null = null;
+  /** The result panel is redrawn in place while the run is in progress. */
+  private resultView: LiveTerminalView | null = null;
+  private resultUpdateTimer: NodeJS.Timeout | null = null;
+  /** An append-only table remains reliable after it has scrolled off-screen. */
+  private appendOnlyResultTable = false;
+  private appendedResultSuiteIds = new Set<string>();
   private runCompleted = false;
   private readonly usesDefaultPrint: boolean;
   /** Counts captured by printSummary for the final status box recap. */
@@ -327,6 +331,10 @@ export class ConsoleReporter {
   }
 
   jasmineStarted(config: any) {
+    // Watch/HMR can start a replacement Jasmine run before the preceding run
+    // reached jasmineDone. Never let its metadata become rows of that older
+    // result table.
+    this.closeAppendOnlyResultTable();
     this.startTime = Date.now();
     this.runStartedAt = new Date().toLocaleTimeString([], {
       hour: '2-digit',
@@ -350,12 +358,14 @@ export class ConsoleReporter {
     this.resultPanelLines = null;
     this.summaryStats = null;
     this.completedSuiteIds = new Set();
+    this.appendOnlyResultTable = false;
+    this.appendedResultSuiteIds.clear();
 
     this.buildSuiteTree(config);
     this.setupInterruptHandler();
 
     this.printEnvironmentInfo();
-    this.startLiveRun();
+    this.startResultView();
   }
 
   /** Facts shown under the "Test Runner Started" title: scope, order, start time. */
@@ -494,14 +504,18 @@ export class ConsoleReporter {
     suite.status = this.determineSuiteStatusFromInternal(suite);
     this.completedSuiteIds.add(suite.id);
 
-    // Preserve live feedback while the final report is assembled separately.
+    // Preserve interactive feedback while the final report is assembled.
     // Passing suites are intentionally silent here — they're already listed
     // once, correctly, in the final SUITES summary panel. Printing a line per
     // passing suite here just duplicates that and drowns out real signal.
     // Pop from stack
     this.suiteStack.pop();
     this.currentSuite = this.suiteStack[this.suiteStack.length - 1] ?? null;
-    this.scheduleLiveRunUpdate();
+    if (this.appendOnlyResultTable) {
+      this.appendCompletedResultSuite(suite);
+    } else {
+      this.scheduleResultViewUpdate();
+    }
   }
 
   jasmineDone(result?: any) {
@@ -609,10 +623,11 @@ export class ConsoleReporter {
       return message === 'SIGTERM' ? EXIT_CODES.SIGTERM : EXIT_CODES.SIGINT;
     }
     this.interrupted = true;
-    const hadLiveRun = this.liveRunView !== null;
-    this.stopLiveRun();
+    const hadResultView = this.resultView !== null;
+    this.stopResultView();
+    this.closeAppendOnlyResultTable();
 
-    if (this.isTTY && hadLiveRun) {
+    if (this.isTTY && hadResultView) {
       // Clear the status line (which is on the line above)
       this.print('\r\x1b[1A'); // Move up one line
       this.clearCurrentLine();  // Clear that line
@@ -678,8 +693,12 @@ export class ConsoleReporter {
   }
 
   private updateStatusLine() {
-    if (this.liveRunView) {
-      this.scheduleLiveRunUpdate();
+    if (this.appendOnlyResultTable) return;
+    if (this.resultView) {
+      // The interactive result table grows on completed suites only. Keeping
+      // mutable per-spec counters outside this frame lets the terminal append
+      // a row exactly as the PREPARING panel does, instead of repainting a
+      // full table for every spec callback.
       return;
     }
     if (!this.isTTY || !this.currentSuite) return;
@@ -843,26 +862,34 @@ export class ConsoleReporter {
 
   private appendResultSection(title: string, lines: string[], color: string): boolean {
     if (!this.resultPanelLines || lines.length === 0) return false;
-    if (this.resultPanelLines.length > 0) this.resultPanelLines.push('', this.resultRule(), '');
+    if (this.resultPanelLines.length > 0) this.resultPanelLines.push(this.resultRule());
     this.resultPanelLines.push(this.colored(['bold', color], title), ...lines);
     return true;
   }
 
   private flushResultPanel(): void {
     if (!this.resultPanelLines) return;
-    const panel = renderTerminalPanel(
-      'TEST RESULTS',
-      this.resultPanelLines,
-      this.getRunTone(),
-      this.showColors,
-    );
-    if (this.liveRunView) {
-      // End the dynamic surface before emitting the fixed report. In
-      // particular, do not attempt to paint a taller final report over a
-      // diff-managed panel: terminals can leave the previous tail visible.
-      this.stopLiveRun();
-      this.print(panel + '\n');
+    if (this.appendOnlyResultTable) {
+      this.appendResultTableTrailer(this.resultPanelLines);
+      this.appendOnlyResultTable = false;
+      process.stdout.write('\n');
+      this.resultPanelLines = null;
+      return;
+    }
+    if (this.resultView) {
+      // Do not repaint an indefinitely growing table at completion: cursor-up
+      // sequences cannot reach rows that have scrolled out of the terminal's
+      // viewport. Appending the final sections preserves one continuous table.
+      this.resultView.update(this.getResultViewText(this.resultPanelLines));
+      this.stopResultView(true);
+      process.stdout.write('\n');
     } else {
+      const panel = renderTerminalPanel(
+        'TEST RESULTS',
+        this.resultPanelLines,
+        this.getRunTone(),
+        this.showColors,
+      );
       this.print(panel + '\n');
     }
     this.resultPanelLines = null;
@@ -945,92 +972,142 @@ export class ConsoleReporter {
     return this.runHeaderLines(config);
   }
 
-  private startLiveRun(): void {
-    if (!this.showColors || !this.isTTY || !this.usesDefaultPrint) return;
-    this.liveRunView = startLiveTerminalView(this.getLiveRunText());
+  private startResultView(): void {
+    // Browser and isolated Node runners can forward output through a pipe.
+    // That stream is not marked as a TTY even though the receiving terminal
+    // supports ANSI and Ink panels, so do not let the intermediate isTTY flag
+    // suppress the result table.
+    if (!this.showColors || !this.usesDefaultPrint) return;
+    // Unlike preparation, this table can contain hundreds of suites. Once a
+    // table is taller than the viewport, ANSI cursor-up cannot reliably reach
+    // its first row. Keep it append-only rather than emitting replacement
+    // frames that become duplicate tables in scrollback.
+    this.appendOnlyResultTable = true;
+    this.appendedResultSuiteIds.clear();
+    const panelLines = renderTerminalPanel(
+      'TEST RESULTS',
+      [...this.runMetadataLines(this.config), PANEL_RULE],
+      this.getRunTone(),
+      this.showColors,
+    ).split('\n');
+    const bottom = this.lastRenderedPanelLine(panelLines);
+    const bottomIndex = panelLines.lastIndexOf(bottom);
+    // Leave the bottom border at the cursor. Each appended suite replaces
+    // only this line, exactly like the growing PREPARING panel.
+    process.stdout.write(panelLines.slice(0, bottomIndex + 1).join('\n'));
   }
 
-  private updateLiveRun(): void {
-    this.liveRunView?.update(this.getLiveRunText());
+  private appendCompletedResultSuite(suite: TestSuite): void {
+    if (this.appendedResultSuiteIds.has(suite.id)) return;
+    this.appendedResultSuiteIds.add(suite.id);
+    this.replaceResultTableBottom([this.getResultSuiteLine(suite)]);
+  }
+
+  private appendResultTableTrailer(lines: readonly string[]): void {
+    const nonEmptyLines = lines.filter((line) => line !== '');
+    const trailer = nonEmptyLines.length > 0 && nonEmptyLines[0] !== PANEL_RULE
+      ? [PANEL_RULE, ...nonEmptyLines]
+      : nonEmptyLines;
+    this.replaceResultTableBottom(trailer);
+  }
+
+  private closeAppendOnlyResultTable(): void {
+    if (!this.appendOnlyResultTable) return;
+    process.stdout.write(`\r\x1b[2K\r${this.resultTableBottom()}\n`);
+    this.appendOnlyResultTable = false;
+  }
+
+  private replaceResultTableBottom(lines: readonly string[]): void {
+    const rows = lines.map((line) => this.renderResultTableRow(line)).join('\n');
+    process.stdout.write(`\r\x1b[2K\r${rows}\n${this.resultTableBottom()}`);
+  }
+
+  private resultTableBottom(): string {
+    const frame = renderTerminalPanel(' ', [], this.getRunTone(), this.showColors).split('\n');
+    return this.lastRenderedPanelLine(frame);
+  }
+
+  private lastRenderedPanelLine(lines: readonly string[]): string {
+    for (let index = lines.length - 1; index >= 0; index--) {
+      if (lines[index] !== '') return lines[index];
+    }
+    return '';
+  }
+
+  private renderResultTableRow(line: string): string {
+    // The third body row has the exact same width, borders, and ANSI styling
+    // as a row in the full table; it avoids duplicating Ink's layout rules.
+    // Ink omits an empty Text node. A space keeps separator rows in the body
+    // so index 3 remains a content row rather than the panel's bottom border.
+    const content = line === '' ? ' ' : line;
+    const frame = renderTerminalPanel(' ', [' ', content], this.getRunTone(), this.showColors).split('\n');
+    return frame[3] ?? line;
+  }
+
+  private updateResultView(): void {
+    this.resultView?.update(this.getResultViewText());
   }
 
   /** Coalesce per-spec callbacks into a responsive, bounded redraw rate. */
-  private scheduleLiveRunUpdate(): void {
-    if (!this.liveRunView || this.liveUpdateTimer) return;
-    this.liveUpdateTimer = setTimeout(() => {
-      this.liveUpdateTimer = null;
-      this.updateLiveRun();
+  private scheduleResultViewUpdate(): void {
+    if (!this.resultView || this.resultUpdateTimer) return;
+    this.resultUpdateTimer = setTimeout(() => {
+      this.resultUpdateTimer = null;
+      this.updateResultView();
     }, 75);
   }
 
-  private stopLiveRun(preserve = false): void {
-    if (this.liveUpdateTimer) {
-      clearTimeout(this.liveUpdateTimer);
-      this.liveUpdateTimer = null;
+  private stopResultView(preserve = false): void {
+    if (this.resultUpdateTimer) {
+      clearTimeout(this.resultUpdateTimer);
+      this.resultUpdateTimer = null;
     }
-    if (!this.liveRunView) return;
-    this.liveRunView.stop(preserve);
-    this.liveRunView = null;
+    if (!this.resultView) return;
+    this.resultView.stop(preserve);
+    this.resultView = null;
   }
 
-  private getLiveRunText(): string {
-    const total = this.specById.size;
-    const progress = total > 0 ? `${this.specCount}/${total} specs` : 'discovering specs';
-    const status = [
-      `${SYMBOLS.checked} ${Math.max(0, this.executableSpecCount - this.failureCount - this.pendingSpecs.length)} passed`,
-      `${SYMBOLS.cross} ${this.failureCount} failed`,
-      `${SYMBOLS.skip} ${this.pendingSpecs.length} skipped`,
-    ].join('  ');
+  private getResultViewText(trailer: readonly string[] = []): string {
+    const nonEmptyTrailer = trailer.filter((line) => line !== '');
+    const separatedTrailer =
+      nonEmptyTrailer.length > 0 && nonEmptyTrailer[0] !== PANEL_RULE
+        ? [PANEL_RULE, ...nonEmptyTrailer]
+        : nonEmptyTrailer;
     const lines = [
       ...this.runMetadataLines(this.config),
       PANEL_RULE,
-      ...this.getLiveSuiteLines(),
-      PANEL_RULE,
-      this.colored('white', `RUNNING  ${progress}`) + this.colored('gray', `  ${this.separator}  ${status}`),
+      ...this.getResultSuiteLines(),
+      ...separatedTrailer,
     ];
     return renderTerminalPanel(
-      'TEST RUN',
+      'TEST RESULTS',
       lines,
       this.getRunTone(),
     );
   }
 
-  /** The live frame is itself a compact result signal. */
+  /** The interactive frame is itself a compact result signal. */
   private getRunTone(): 'green' | 'yellow' | 'red' {
     if (this.failureCount > 0 || this.globalFailures.length > 0) return 'red';
     if (this.pendingSpecs.length > 0) return 'yellow';
     return 'green';
   }
 
-  private getLiveSuiteLines(): string[] {
-    const completedIds = [...this.completedSuiteIds]
-      .filter((id) => id !== this.currentSuite?.id);
-    const rowLimit = this.getLiveSuiteRowLimit();
-    const completedCapacity = rowLimit - (this.currentSuite ? 1 : 0);
-    const visibleIds = [
-      ...completedIds.slice(-completedCapacity),
-      ...(this.currentSuite ? [this.currentSuite.id] : []),
-    ];
+  private getResultSuiteLines(): string[] {
+    const completedIds = [...this.completedSuiteIds];
 
-    if (visibleIds.length === 0) {
+    if (completedIds.length === 0) {
       return [this.colored('gray', 'Waiting for the first test result...')];
     }
 
-    const lines = visibleIds.flatMap((id) => {
+    const lines = completedIds.flatMap((id) => {
       const suite = this.suiteById.get(id);
-      return suite ? [this.getLiveSuiteLine(suite)] : [];
+      return suite ? [this.getResultSuiteLine(suite)] : [];
     });
-    return [...lines, ...Array(Math.max(0, rowLimit - lines.length)).fill('')];
+    return lines;
   }
 
-  private getLiveSuiteRowLimit(): number {
-    const terminalRows = process.stdout.rows || 24;
-    // Keep the live surface entirely in the active screen buffer. Terminal
-    // scrollback cannot be erased, so an unbounded table cannot be replaced.
-    return Math.max(2, Math.min(5, terminalRows - 10));
-  }
-
-  private getLiveSuiteLine(suite: TestSuite): string {
+  private getResultSuiteLine(suite: TestSuite): string {
     const symbols = this.getSpecDots(suite);
     const suffix = suite.specs.length > 0
       ? this.colored('gray', ` ${this.separator} ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
@@ -1502,15 +1579,25 @@ export class ConsoleReporter {
       parts.push(`No Expect: ${config.failSpecWithNoExpectations ? `${SYMBOLS.checked} fail` : `${SYMBOLS.cross} pass`}`);
     }
 
-    const suiteLines = includeSuites ? this.getSuiteSummaryLines() : [];
+    // The interactive result table already owns the run metadata and suite
+    // rows. Repeating them here would turn the completion update into a
+    // second copy of the table.
+    const liveResultTable = this.resultView !== null || this.appendOnlyResultTable;
+    const suiteLines = includeSuites && !liveResultTable
+      ? this.getSuiteSummaryLines()
+      : [];
     const lines = [
-      ...this.runMetadataLines(config),
+      ...(liveResultTable ? [] : this.runMetadataLines(config)),
       ...(parts.length > 0 ? [parts.join(`  ${this.separator}  `)] : []),
       ...(suiteLines.length > 0 ? [PANEL_RULE, ...suiteLines] : []),
     ];
 
     if (this.resultPanelLines) {
-      this.resultPanelLines.push(...lines);
+      if (liveResultTable && lines.length > 0) {
+        this.resultPanelLines.push(PANEL_RULE, ...lines);
+      } else {
+        this.resultPanelLines.push(...lines);
+      }
       return;
     }
     this.print(renderTerminalPanel('TEST RUN', lines, 'magenta', this.showColors) + '\n');
