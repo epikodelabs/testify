@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.53 - 2026-09-23
+
+### Improved
+
+* Added a live, color-coded test progress meter for interactive terminals at the bottom of the results panel, with a divider and the same bar style used by coverage output.
+
 ## 1.0.52 - 2026-09-20
 
 ### Improved

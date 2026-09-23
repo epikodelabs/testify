@@ -34,7 +34,7 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   private alwaysListPendingSpecs = true;
 
   private get separator(): string {
-    return isAnsiMode() ? '*' : '•';
+    return isAnsiMode() || !process.stdout.isTTY ? '*' : '•';
   }
   private failedSuites: jasmine.SuiteResult[] = [];
   private stackFilter: (stack: string) => string = (stack) => stack;

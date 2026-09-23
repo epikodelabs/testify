@@ -13,6 +13,7 @@ import {
   startLiveTerminalView,
   type LiveTerminalView,
 } from './ink-output';
+import { renderTerminalProgressBar } from './terminal-progress-bar';
 
 export interface EnvironmentInfo {
   node: string;
@@ -115,7 +116,7 @@ export class ConsoleReporter {
 
   /** Keep output readable in a terminal while preserving ASCII-only --ansi output. */
   private get separator(): string {
-    return isAnsiMode() ? '*' : '•';
+    return isAnsiMode() || !process.stdout.isTTY ? '*' : '•';
   }
 
   constructor(options: ConsoleReporterOptions = {}) {
@@ -693,7 +694,10 @@ export class ConsoleReporter {
   }
 
   private updateStatusLine() {
-    if (this.appendOnlyResultTable) return;
+    if (this.appendOnlyResultTable) {
+      this.updateResultTableProgress();
+      return;
+    }
     if (this.resultView) {
       // The interactive result table grows on completed suites only. Keeping
       // mutable per-spec counters outside this frame lets the terminal append
@@ -973,11 +977,10 @@ export class ConsoleReporter {
   }
 
   private startResultView(): void {
-    // Browser and isolated Node runners can forward output through a pipe.
-    // That stream is not marked as a TTY even though the receiving terminal
-    // supports ANSI and Ink panels, so do not let the intermediate isTTY flag
-    // suppress the result table.
-    if (!this.showColors || !this.usesDefaultPrint) return;
+    // A redirected stdout must stay append-only and free of cursor movement.
+    // Browser and isolated Node runners forward events internally, but that
+    // does not change the host process's stdout TTY status.
+    if (!this.showColors || !this.usesDefaultPrint || !process.stdout.isTTY) return;
     // Unlike preparation, this table can contain hundreds of suites. Once a
     // table is taller than the viewport, ANSI cursor-up cannot reliably reach
     // its first row. Keep it append-only rather than emitting replacement
@@ -986,21 +989,33 @@ export class ConsoleReporter {
     this.appendedResultSuiteIds.clear();
     const panelLines = renderTerminalPanel(
       'TEST RESULTS',
-      [...this.runMetadataLines(this.config), PANEL_RULE],
+      [
+        ...this.runMetadataLines(this.config),
+        PANEL_RULE,
+        ...this.getResultSuiteLines(),
+        PANEL_RULE,
+        this.getProgressLine(),
+      ],
       this.getRunTone(),
       this.showColors,
     ).split('\n');
     const bottom = this.lastRenderedPanelLine(panelLines);
     const bottomIndex = panelLines.lastIndexOf(bottom);
-    // Leave the bottom border at the cursor. Each appended suite replaces
-    // only this line, exactly like the growing PREPARING panel.
+    // Leave the bottom border at the cursor. Appended suites replace the
+    // placeholder or pinned footer without disturbing the header separator.
     process.stdout.write(panelLines.slice(0, bottomIndex + 1).join('\n'));
   }
 
   private appendCompletedResultSuite(suite: TestSuite): void {
     if (this.appendedResultSuiteIds.has(suite.id)) return;
+    const replacesWaitingRow = this.appendedResultSuiteIds.size === 0;
     this.appendedResultSuiteIds.add(suite.id);
-    this.replaceResultTableBottom([this.getResultSuiteLine(suite)]);
+    this.replaceResultTableBottom(
+      [this.getResultSuiteLine(suite)],
+      true,
+      true,
+      replacesWaitingRow,
+    );
   }
 
   private appendResultTableTrailer(lines: readonly string[]): void {
@@ -1008,7 +1023,14 @@ export class ConsoleReporter {
     const trailer = nonEmptyLines.length > 0 && nonEmptyLines[0] !== PANEL_RULE
       ? [PANEL_RULE, ...nonEmptyLines]
       : nonEmptyLines;
-    this.replaceResultTableBottom(trailer);
+    // The final report supersedes the live row, so remove it before adding
+    // the permanent trailer instead of preserving a stale 100% indicator.
+    this.replaceResultTableBottom(
+      trailer,
+      true,
+      false,
+      this.appendedResultSuiteIds.size === 0,
+    );
   }
 
   private closeAppendOnlyResultTable(): void {
@@ -1017,9 +1039,55 @@ export class ConsoleReporter {
     this.appendOnlyResultTable = false;
   }
 
-  private replaceResultTableBottom(lines: readonly string[]): void {
+  /** Replace the pinned progress row, keeping the panel's bottom border in place. */
+  private updateResultTableProgress(): void {
+    if (!this.appendOnlyResultTable) return;
+    process.stdout.write(
+      `\r\x1b[1A\x1b[2K\r${this.renderResultTableRow(this.getProgressLine())}\n${this.resultTableBottom()}`,
+    );
+  }
+
+  private replaceResultTableBottom(
+    lines: readonly string[],
+    removeProgress = false,
+    addProgress = removeProgress,
+    removeWaitingRow = false,
+  ): void {
     const rows = lines.map((line) => this.renderResultTableRow(line)).join('\n');
-    process.stdout.write(`\r\x1b[2K\r${rows}\n${this.resultTableBottom()}`);
+    // The live progress row sits directly above the bottom border. When the
+    // table grows or receives its final trailer, replace that row first so it
+    // remains pinned at the actual bottom instead of being left in the middle.
+    // The pinned footer includes both a rule and the progress row.
+    const rowsToReplace = removeProgress
+      ? removeWaitingRow ? 3 : 2
+      : 0;
+    const cursorUp = rowsToReplace > 0 ? `\x1b[${rowsToReplace}A` : '';
+    const progress = addProgress
+      ? `\n${this.renderResultTableRow(PANEL_RULE)}\n${this.renderResultTableRow(this.getProgressLine())}`
+      : '';
+    process.stdout.write(
+      `\r${cursorUp}\x1b[2K\r${rows}${progress}\n${this.resultTableBottom()}`,
+    );
+  }
+
+  private getProgressLine(): string {
+    const total = this.orderedSpecs?.length ?? this.specById.size;
+    const completed = this.specCount;
+    const safeTotal = Math.max(total, completed, 1);
+    const percent = Math.min(100, Math.round((completed / safeTotal) * 100));
+    const bar = renderTerminalProgressBar(
+      percent,
+      Math.max(8, Math.min(20, this.lineWidth - 41)),
+    );
+    const passed = this.executableSpecCount - this.failureCount - this.pendingSpecs.length;
+    const counts = [
+      this.colored('brightGreen', `${SYMBOLS.passed} ${Math.max(0, passed)}`),
+      this.colored('brightRed', `${SYMBOLS.failed} ${this.failureCount}`),
+    ];
+    if (this.pendingSpecs.length > 0) {
+      counts.push(this.colored('brightYellow', `${SYMBOLS.pending} ${this.pendingSpecs.length}`));
+    }
+    return `${this.colored(['bold', 'white'], 'PROGRESS')} ${completed}/${total || '?'} ${this.colored('brightCyan', bar)} ${percent}%  ${counts.join('  ')}`;
   }
 
   private resultTableBottom(): string {

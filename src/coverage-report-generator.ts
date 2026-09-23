@@ -9,6 +9,7 @@ import { logger } from './logger';
 import { norm } from './utils';
 import { CoverageMessages } from './log-messages';
 import { renderTerminalPanel } from './ink-output';
+import { renderTerminalProgressBar } from './terminal-progress-bar';
 
 export class CoverageReportGenerator {
   private reportDir: string;
@@ -96,9 +97,9 @@ export class CoverageReportGenerator {
       metric: { pct: number; covered: number; total: number },
     ) => {
       const cells = 20;
-      const filled = Math.round(Math.max(0, Math.min(100, metric.pct)) / 100 * cells);
-      const meter = `${'━'.repeat(filled)}${'─'.repeat(cells - filled)}`;
-      const prefix = `${label.padEnd(11)} ${String(metric.pct).padStart(6)}%  ${meter}`;
+      // Keep the coverage report on the shared meter used by live results.
+      const terminalMeter = renderTerminalProgressBar(metric.pct, cells);
+      const prefix = `${label.padEnd(11)} ${String(metric.pct).padStart(6)}%  ${terminalMeter}`;
       const total = `${metric.covered}/${metric.total}`;
       return `${prefix}  ${total.padStart(countWidth)}`;
     };
