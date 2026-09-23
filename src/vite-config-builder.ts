@@ -41,6 +41,9 @@ export class ViteConfigBuilder {
   private nodeExternalPackages:
     Set<string> | null = null;
 
+  private pathAliases:
+    Record<string, string> | null = null;
+
   private static readonly DEFAULT_EXCLUDED_DIRS = new Set([
     'node_modules',
     'dist',
@@ -135,10 +138,23 @@ export class ViteConfigBuilder {
       return true;
     }
 
+    // TypeScript path aliases are project source, not installed packages.
+    // Keep them inside Vite's module graph so resolve.alias can replace the
+    // bare specifier before the generated Node runner reaches it.
+    if (this.isPathAlias(id)) {
+      return false;
+    }
+
     // Any remaining bare specifier is a package import.
     // In Node mode, Node owns package resolution. Bundling these is what
     // allowed Vite to substitute browser stubs such as __vite-browser-external.
     return true;
+  }
+
+  private isPathAlias(id: string): boolean {
+    return Object.keys(this.createPathAliases()).some(
+      (alias) => id === alias || id.startsWith(`${alias}/`),
+    );
   }
 
   private preserveRoot(): string {
@@ -655,10 +671,15 @@ export class ViteConfigBuilder {
   }
 
   private createPathAliases(): Record<string, string> {
-    return {
+    if (this.pathAliases) {
+      return this.pathAliases;
+    }
+
+    this.pathAliases = {
       ...(this.loadResolvedTsconfigData()?.aliases ?? {}),
       ...this.createProjectBuildAliases(),
     };
+    return this.pathAliases;
   }
 
   private createProjectBuildAliases(): Record<string, string> {

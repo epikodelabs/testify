@@ -23,7 +23,7 @@ describe('ViteJasmineRunner empty test discovery UX', () => {
   it('maps the no-specs preprocess result to a success exit code', () => {
     const successBranches =
       source.match(
-        /if \(preprocessResult === 'no-specs'\) \{\s*return EXIT_CODES\.SUCCESS;\s*\}/g,
+        /if \(preprocessResult === 'no-specs'\) \{\s*(?:logger\.flushPreparation\(\);\s*)?return EXIT_CODES\.SUCCESS;\s*\}/g,
       ) ?? [];
 
     expect(
