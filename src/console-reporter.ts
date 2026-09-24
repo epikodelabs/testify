@@ -894,7 +894,17 @@ export class ConsoleReporter {
   private flushResultPanel(): void {
     if (!this.resultPanelLines) return;
     if (this.appendOnlyResultTable) {
-      this.appendResultTableTrailer(this.resultPanelLines, this.resultPanelLineTones ?? []);
+      // Once the final run tone is known, repaint the complete visible result
+      // frame in that tone. During execution the append-only table stays green
+      // to avoid expensive per-spec redraws; completion is the single point at
+      // which green/yellow/red can be applied consistently to every border.
+      const repainted = this.repaintCompletedResultTable(this.resultPanelLines);
+      if (!repainted) {
+        // A table taller than the terminal viewport cannot be addressed safely
+        // with cursor-up sequences (its top is already in scrollback). Preserve
+        // the append-only table in that case instead of duplicating it.
+        this.appendResultTableTrailer(this.resultPanelLines, this.resultPanelLineTones ?? []);
+      }
       this.appendOnlyResultTable = false;
       process.stdout.write('\n');
       this.resultPanelLines = null;
@@ -1034,6 +1044,40 @@ export class ConsoleReporter {
       true,
       replacesWaitingRow,
     );
+  }
+
+  private repaintCompletedResultTable(trailer: readonly string[]): boolean {
+    if (!this.appendOnlyResultTable || !process.stdout.isTTY) return false;
+
+    const currentPanel = this.renderLiveResultTable();
+    const currentRows = currentPanel.split('\n').filter((line) => line !== '').length;
+    const viewportRows = process.stdout.rows ?? 0;
+    if (viewportRows <= 0 || currentRows > viewportRows) return false;
+
+    const nonEmptyTrailer = trailer.filter((line) => line !== '');
+    const separatedTrailer =
+      nonEmptyTrailer.length > 0 && nonEmptyTrailer[0] !== PANEL_RULE
+        ? [PANEL_RULE, ...nonEmptyTrailer]
+        : nonEmptyTrailer;
+    const finalPanel = renderTerminalPanel(
+      'TEST RESULTS',
+      [
+        ...this.runMetadataLines(this.config),
+        PANEL_RULE,
+        ...this.getResultSuiteLines(),
+        ...separatedTrailer,
+      ],
+      this.getRunTone(),
+      this.showColors,
+    );
+
+    // The cursor is on the current bottom border. Move to the first row of
+    // the visible table, clear that frame, and write one final coherent panel.
+    // This recolors top/bottom borders, separators, and both side borders in
+    // one operation without bringing back per-spec repainting.
+    const up = Math.max(0, currentRows - 1);
+    process.stdout.write(`${up > 0 ? `\x1b[${up}A` : ''}\r\x1b[0J${finalPanel}`);
+    return true;
   }
 
   private appendResultTableTrailer(
@@ -1197,7 +1241,7 @@ export class ConsoleReporter {
     return renderTerminalPanel(
       'TEST RESULTS',
       lines,
-      'green',
+      trailer.length > 0 ? this.getRunTone() : 'green',
     );
   }
 

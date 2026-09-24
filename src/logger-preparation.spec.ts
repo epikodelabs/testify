@@ -73,3 +73,38 @@ describe('Logger preparation pipeline', () => {
     (globalThis as any).__testifySuppressLogs = previousSuppression;
   });
 });
+
+// Redirected output must never depend on Unicode terminal glyphs. This is a
+// renderer contract: generate ASCII in the first place instead of stripping
+// rich output after it has crossed a Windows code-page boundary.
+describe('Logger redirected preparation output', () => {
+  it('renders an ASCII-only, non-interactive preparation section', () => {
+    const logger = new Logger({ output: false });
+    const internal = logger as any;
+
+    logger.preparationStart('');
+    logger.preparationContextLabel('HEADED · CHROME');
+    logger.preparationPlan([
+      { label: 'DISCOVER', message: 'Discover test files' },
+      { label: 'EXECUTE', message: 'Start browser test session' },
+    ]);
+    logger.preparationStep('DISCOVER', 'Found 32 spec files and 37 source files.', true);
+    logger.preparationStep('EXECUTE', 'Starting browser test session...', true);
+
+    const rendered = internal.renderPreparationPanel();
+    expect(rendered).toContain('PREPARING TEST ENVIRONMENT - HEADED - CHROME');
+    expect(rendered).toContain('[OK]  DISCOVER');
+    expect(rendered).toContain('[OK]  EXECUTE');
+    expect(rendered).not.toContain('✓');
+    expect(rendered).not.toContain('·');
+    expect(rendered).toMatch(/^\+-+\+$/m);
+    expect(rendered).toContain('| PREPARING TEST ENVIRONMENT - HEADED - CHROME');
+    expect(rendered).toMatch(/\+-+\+$/);
+    expect(rendered).not.toContain('╭');
+    expect(rendered).not.toContain('│');
+    expect(rendered).not.toContain('─');
+    expect(rendered).not.toContain('\\x1b');
+    expect(rendered).not.toContain('\\r');
+    expect(/^[\\x00-\\x7F]*$/.test(rendered)).toBeTrue();
+  });
+});

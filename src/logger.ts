@@ -567,14 +567,27 @@ export class Logger {
   }
 
   private renderPreparationItem(item: PreparationItem): string {
-    const symbols: Record<PreparationStatus, string> = {
-      pending: '○',
-      running: '●',
-      complete: '✓',
-      warning: '!',
-      failed: '×',
-      skipped: '–',
-    };
+    // Redirected/file output must be ASCII-safe. Do not generate rich Unicode
+    // and try to sanitize it afterwards: on Windows the bytes may already have
+    // been decoded with the active code page by then (for example ✓ -> тЬУ).
+    const rich = this.outputEnabled && process.stdout.isTTY && supportsColor();
+    const symbols: Record<PreparationStatus, string> = rich
+      ? {
+          pending: '○',
+          running: '●',
+          complete: '✓',
+          warning: '!',
+          failed: '×',
+          skipped: '–',
+        }
+      : {
+          pending: '[ ]',
+          running: '[..]',
+          complete: '[OK]',
+          warning: '[WARN]',
+          failed: '[FAIL]',
+          skipped: '[SKIP]',
+        };
     const colors: Partial<Record<PreparationStatus, InkTextStyle['color']>> = {
       running: 'cyan',
       complete: 'green',
@@ -583,18 +596,19 @@ export class Logger {
       skipped: 'gray',
       pending: 'gray',
     };
-    const symbol = renderTerminalText(symbols[item.status], {
+    const symbol = rich ? renderTerminalText(symbols[item.status], {
       bold: item.status === 'running' || item.status === 'failed',
       color: colors[item.status],
-    });
-    const label = renderTerminalText(item.label.padEnd(12), {
+    }) : symbols[item.status];
+    const labelText = item.label.padEnd(12);
+    const label = rich ? renderTerminalText(labelText, {
       bold: item.status === 'running',
       color: item.status === 'running' ? 'cyan' : item.status === 'failed' ? 'red' : undefined,
-    });
-    const message = renderTerminalText(item.message, {
+    }) : labelText;
+    const message = rich ? renderTerminalText(item.message, {
       color: item.status === 'pending' || item.status === 'skipped' ? 'gray' : undefined,
       dimColor: item.status === 'pending' || item.status === 'skipped',
-    });
+    }) : item.message;
     return `${symbol}  ${label} ${message}`;
   }
 
@@ -617,13 +631,32 @@ export class Logger {
   }
 
   private renderPreparationPanel(): string {
+    const rich = this.outputEnabled && process.stdout.isTTY && supportsColor();
+    const context = rich
+      ? this.preparationContext
+      : this.preparationContext.replace(/\s*·\s*/g, ' - ');
+    const title = context
+      ? `PREPARING TEST ENVIRONMENT${rich ? '  ·  ' : ' - '}${context}`
+      : 'PREPARING TEST ENVIRONMENT';
+
+    // Files, pipes and CI captures keep the section boundary, but render it
+    // with the plain ASCII panel. This preserves structure without leaking
+    // Unicode box drawing, ANSI styling, or interactive cursor controls.
+    if (!rich) {
+      return renderTerminalPanel(
+        title,
+        this.preparationLines ?? [],
+        'magenta',
+        false,
+        true,
+      );
+    }
+
     return renderTerminalPanel(
-      this.preparationContext
-        ? `PREPARING TEST ENVIRONMENT  ·  ${this.preparationContext}`
-        : 'PREPARING TEST ENVIRONMENT',
+      title,
       this.preparationLines ?? [],
       'magenta',
-      supportsColor(),
+      true,
       true,
     );
   }
