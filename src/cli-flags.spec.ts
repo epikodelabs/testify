@@ -36,6 +36,8 @@ function stubSuccessfulRunner() {
 
 describe('Testify CLI flags', () => {
   let originalArgv: string[];
+  const originalColumns = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+  const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
 
   beforeEach(() => {
     originalArgv = process.argv;
@@ -48,6 +50,16 @@ describe('Testify CLI flags', () => {
 
   afterEach(() => {
     process.argv = originalArgv;
+    if (originalColumns) {
+      Object.defineProperty(process.stdout, 'columns', originalColumns);
+    } else {
+      delete (process.stdout as { columns?: number }).columns;
+    }
+    if (originalIsTTY) {
+      Object.defineProperty(process.stdout, 'isTTY', originalIsTTY);
+    } else {
+      delete (process.stdout as { isTTY?: boolean }).isTTY;
+    }
   });
 
   it('prints a version string for --version and -v without starting a run', async () => {
@@ -70,6 +82,28 @@ describe('Testify CLI flags', () => {
     await CLIHandler.run();
 
     expect(ConfigManager.loadViteJasmineBrowserConfig).toHaveBeenCalledWith('ci.testify.json');
+  });
+
+  it('does not print the visual banner for programmatic CLIHandler.run calls', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
+    Object.defineProperty(process.stdout, 'columns', {
+      value: 140,
+      configurable: true,
+    });
+    process.argv = ['node', 'testify', '--config', 'ci.testify.json'];
+    stubSuccessfulRunner();
+    const writes: string[] = [];
+    const write = spyOn(process.stdout, 'write').and.callFake((chunk: string | Uint8Array) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    await CLIHandler.run();
+
+    expect(writes.join('')).not.toContain('████████╗');
   });
 
   it('returns INVALID_USAGE with a clear message when --config has no value', async () => {

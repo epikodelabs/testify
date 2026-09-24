@@ -84,6 +84,16 @@ export function renderTerminalText(
     : text;
 }
 
+/**
+ * Usable text width inside a full-width panel. Ink's `width` includes the
+ * border pair and one cell of horizontal padding on each side, so a row wider
+ * than this budget wraps and its overflow lands on a second visual row that
+ * row-by-row consumers (the live result table) never read.
+ */
+export function panelContentWidth(): number {
+  return Math.max(1, getMaxWidth() - 11);
+}
+
 function renderPlainPanel(
   title: string,
   lines: readonly string[],
@@ -136,7 +146,10 @@ export function renderTerminalPanel(
         borderColor: tone,
         flexDirection: 'column',
         paddingX: 1,
-        ...(fullWidth ? { width: getMaxWidth() - 3 } : {}),
+        // Ink's declared width includes the border differently from our plain
+        // renderer. Reserve a full five-cell margin so the right border never
+        // autowraps and invalidates cursor-up live footer updates.
+        ...(fullWidth ? { width: getMaxWidth() - 7 } : {}),
       },
       createElement(Text, { bold: true, color: tone }, title),
       ...lines.map((line, index) =>

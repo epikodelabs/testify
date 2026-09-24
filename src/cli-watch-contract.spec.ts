@@ -129,7 +129,7 @@ describe('Testify CLI watch contract', () => {
       );
 
     expect(runnerSource).toContain(
-      "logger.preparationStep('WATCH', RunnerMessages.startingWatchMode())",
+      "return `WATCH · ${browser}`",
     );
     expect(runnerSource).toContain(
       '? RunnerMessages.generatedHmrTestPage()',
@@ -138,13 +138,13 @@ describe('Testify CLI watch contract', () => {
       "logger.preparationStep('HMR', RunnerMessages.startingHmrWatcher())",
     );
     expect(runnerSource).toContain(
-      "logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!))",
+      "logger.preparationStep('SERVER', RunnerMessages.testServerRunning(this.config.port!)",
     );
     expect(runnerSource).toContain(
-      "logger.preparationStep('WS', RunnerMessages.webSocketReady())",
+      "logger.preparationStep('WS', RunnerMessages.webSocketReady()",
     );
     expect(runnerSource).toContain(
-      "logger.preparationStep('READY', RunnerMessages.pressCtrlCToStop())",
+      "logger.preparationStep('READY', RunnerMessages.pressCtrlCToStop()",
     );
     expect(serverSource).toContain(
       "logger.preparationStep('PORT', HttpServerMessages.portBusyRetrying(port))",

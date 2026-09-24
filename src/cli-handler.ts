@@ -11,6 +11,7 @@ import { EXIT_CODES, ExitCodeError, getExitCode } from "./exit-codes";
 import { CLIMessages } from "./log-messages";
 import { setAnsiMode } from "./symbols";
 import { ProjectSetup } from "./project-setup";
+import { printTestifyConsoleBanner } from './console-banner';
 
 export function createViteJasmineRunner(config: ViteJasmineConfig): ViteJasmineRunner {
   return new ViteJasmineRunner(config);
@@ -49,6 +50,10 @@ interface ParsedCli {
   timeoutValue?: number;
   fileValue?: string;
   suiteValue?: string;
+}
+
+interface CLIRunOptions {
+  printBanner?: boolean;
 }
 
 /**
@@ -233,7 +238,7 @@ export class CLIHandler {
     }
   }
 
-  static async run(): Promise<number> {
+  static async run(options: CLIRunOptions = {}): Promise<number> {
     let shuttingDown = false;
     let sigintCount = 0;
     process.on('SIGINT', async () => {
@@ -412,6 +417,10 @@ export class CLIHandler {
             ...(timeoutValue !== undefined ? { timeout: timeoutValue } : {}),
           },
         };
+      }
+
+      if (options.printBanner === true) {
+        await printTestifyConsoleBanner();
       }
 
       // Begin this before the process lock is acquired so any ordinary setup

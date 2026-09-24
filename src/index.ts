@@ -28,7 +28,7 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  CLIHandler.run().then((code) => process.exit(code)).catch((error) => {
+  CLIHandler.run({ printBanner: true }).then((code) => process.exit(code)).catch((error) => {
     logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     process.exit(1);
   });

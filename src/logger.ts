@@ -27,13 +27,38 @@ interface LoggedLine {
   hasPrompt?: boolean;
 }
 
+type PreparationStatus = 'pending' | 'running' | 'complete' | 'warning' | 'failed' | 'skipped';
+
+interface PreparationItem {
+  label: string;
+  message: string;
+  status: PreparationStatus;
+}
+
+export interface PreparationPlanStep {
+  label: string;
+  message: string;
+}
+
+export interface LoggerOptions {
+  /** Disable terminal side effects while retaining the full logger state machine. */
+  output?: boolean;
+}
+
 export class Logger {
   private previousLines: LoggedLine[] = [];
   private showPrompt = true;
   private plainPrompt = '> ';
   private preparationLines: string[] | null = null;
+  private preparationItems: PreparationItem[] | null = null;
   private preparationFlushed = false;
   private preparationView: LiveTerminalView | null = null;
+  private preparationContext = '';
+  private readonly outputEnabled: boolean;
+
+  constructor(options: LoggerOptions = {}) {
+    this.outputEnabled = options.output !== false;
+  }
 
   // ─── New API: structured log messages ────────────────────
 
@@ -157,48 +182,123 @@ export class Logger {
     return true;
   }
 
-  /** Collect setup messages so Ink can render one bounded preparation panel. */
+  /** Start one live preparation surface. The banner remains completely separate. */
   preparationStart(_message: string) {
-    if (areTestLogsSuppressed()) return true;
+    if (areTestLogsSuppressed() && this.outputEnabled) return true;
+    // Preparation has single ownership of the terminal before execution. Once
+    // flushed, later runner/mode activity must never reopen the live surface.
+    if (this.preparationFlushed) return true;
     this.preparationLines ??= [];
-    this.preparationFlushed = false;
-    if (!this.preparationView && supportsColor() && process.stdout.isTTY) {
+    this.preparationItems ??= [];
+    if (this.outputEnabled && !this.preparationView && supportsColor() && process.stdout.isTTY) {
       this.preparationView = startLiveTerminalView(this.renderPreparationPanel());
     }
     return true;
   }
 
-  preparationStep(label: string, message: string, _complete = false) {
-    if (areTestLogsSuppressed()) return true;
-    if (!this.preparationLines && this.preparationFlushed) {
+  /**
+   * Declare the complete preparation pipeline before any work starts.
+   * Every execution branch uses this same list; steps that do not apply to the
+   * selected branch remain visible and are marked skipped when preparation ends.
+   */
+  preparationContextLabel(context: string) {
+    if ((areTestLogsSuppressed() && this.outputEnabled) || this.preparationFlushed) return true;
+    this.preparationContext = context.trim().toUpperCase();
+    this.preparationView?.update(this.renderPreparationPanel());
+    return true;
+  }
+
+  preparationPlan(steps: readonly PreparationPlanStep[]) {
+    if ((areTestLogsSuppressed() && this.outputEnabled) || this.preparationFlushed) return true;
+    const previous = new Map(
+      (this.preparationItems ?? []).map((item) => [item.label, item] as const),
+    );
+    this.preparationItems = steps.map((step) => {
+      const label = step.label.trim();
+      const existing = previous.get(label);
+      return {
+        label,
+        message: existing?.status === 'complete' || existing?.status === 'warning' || existing?.status === 'failed'
+          ? existing.message
+          : step.message,
+        status: existing?.status ?? 'pending' as const,
+      };
+    });
+    this.syncPreparationLines();
+    return true;
+  }
+
+  preparationStep(label: string, message: string, complete = false) {
+    if (areTestLogsSuppressed() && this.outputEnabled) return true;
+    if (!this.preparationItems && this.preparationFlushed) {
       this.printRuntimePanel(label, message, 'cyan');
       return true;
     }
-    this.preparationLines ??= [];
-    const severity = /^%(error|warn)%\s*/i.exec(message)?.[1]?.toLowerCase();
+
+    this.preparationItems ??= [];
     const labelText = label.trim();
-    const badge = ` ${labelText} `;
-    const columnPadding = ' '.repeat(Math.max(0, 12 - badge.length));
-    const normalColumn =
-      renderTerminalText(labelText, { color: 'white', backgroundColor: 'black' }) +
-      ' '.repeat(Math.max(0, 12 - labelText.length));
-    const styledColumn = severity === 'error'
-      ? renderTerminalText(badge, { bold: true, color: 'white', backgroundColor: 'red' }) + columnPadding
+    const severity = /^%(error|warn)%\s*/i.exec(message)?.[1]?.toLowerCase();
+
+    // A newly active step closes the previous active row. This keeps callers
+    // lightweight while still making the list behave as a real stage tracker.
+    for (const item of this.preparationItems) {
+      if (item.status === 'running' && item.label !== labelText) item.status = 'complete';
+    }
+
+    let item = this.preparationItems.find((candidate) => candidate.label === labelText);
+    if (!item) {
+      item = { label: labelText, message: '', status: 'pending' };
+      this.preparationItems.push(item);
+    }
+    item.message = this.cleanPreparationMessage(message);
+    item.status = severity === 'error'
+      ? 'failed'
       : severity === 'warn'
-        ? renderTerminalText(badge, { bold: true, color: 'black', backgroundColor: 'yellow' }) + columnPadding
-        : normalColumn;
-    this.preparationLines.push(
-      `${styledColumn} ${this.cleanPreparationMessage(message)}`,
-    );
-    this.preparationView?.update(this.renderPreparationPanel());
+        ? 'warning'
+        : complete
+          ? 'complete'
+          : 'running';
+
+    this.syncPreparationLines();
+    return true;
+  }
+
+  preparationComplete(label: string, message?: string) {
+    if ((areTestLogsSuppressed() && this.outputEnabled) || this.preparationFlushed) return true;
+    const item = this.preparationItems?.find((candidate) => candidate.label === label.trim());
+    if (!item) return true;
+    if (message) item.message = this.cleanPreparationMessage(message);
+    item.status = 'complete';
+    this.syncPreparationLines();
+    return true;
+  }
+
+  preparationSkip(label: string, message?: string) {
+    if ((areTestLogsSuppressed() && this.outputEnabled) || this.preparationFlushed) return true;
+    const item = this.preparationItems?.find((candidate) => candidate.label === label.trim());
+    if (!item) return true;
+    if (message) item.message = this.cleanPreparationMessage(message);
+    item.status = 'skipped';
+    this.syncPreparationLines();
     return true;
   }
 
   /** Print the preparation card once, immediately before execution begins. */
   flushPreparation() {
-    if (areTestLogsSuppressed() || !this.preparationLines) return true;
+    if ((areTestLogsSuppressed() && this.outputEnabled) || !this.preparationLines) return true;
 
-    if (this.preparationView) {
+    if (this.preparationItems) {
+      for (const item of this.preparationItems) {
+        if (item.status === 'running') item.status = 'complete';
+        else if (item.status === 'pending') item.status = 'skipped';
+      }
+      this.syncPreparationLines();
+    }
+
+    if (!this.outputEnabled) {
+      // State-only loggers are used by contract tests and embedders. They run
+      // the exact preparation lifecycle without ever taking terminal ownership.
+    } else if (this.preparationView) {
       // The interactive view is already in the terminal; retain its final
       // frame and let the following section start on the next line.
       this.preparationView.stop(true);
@@ -208,6 +308,7 @@ export class Logger {
       this.printRaw(this.renderPreparationPanel() + '\n');
     }
     this.preparationLines = null;
+    this.preparationItems = null;
     this.preparationFlushed = true;
     return true;
   }
@@ -459,6 +560,44 @@ export class Logger {
       .join('\n');
   }
 
+  private syncPreparationLines(): void {
+    if (!this.preparationItems) return;
+    this.preparationLines = this.preparationItems.map((item) => this.renderPreparationItem(item));
+    this.preparationView?.update(this.renderPreparationPanel());
+  }
+
+  private renderPreparationItem(item: PreparationItem): string {
+    const symbols: Record<PreparationStatus, string> = {
+      pending: '○',
+      running: '●',
+      complete: '✓',
+      warning: '!',
+      failed: '×',
+      skipped: '–',
+    };
+    const colors: Partial<Record<PreparationStatus, InkTextStyle['color']>> = {
+      running: 'cyan',
+      complete: 'green',
+      warning: 'yellow',
+      failed: 'red',
+      skipped: 'gray',
+      pending: 'gray',
+    };
+    const symbol = renderTerminalText(symbols[item.status], {
+      bold: item.status === 'running' || item.status === 'failed',
+      color: colors[item.status],
+    });
+    const label = renderTerminalText(item.label.padEnd(12), {
+      bold: item.status === 'running',
+      color: item.status === 'running' ? 'cyan' : item.status === 'failed' ? 'red' : undefined,
+    });
+    const message = renderTerminalText(item.message, {
+      color: item.status === 'pending' || item.status === 'skipped' ? 'gray' : undefined,
+      dimColor: item.status === 'pending' || item.status === 'skipped',
+    });
+    return `${symbol}  ${label} ${message}`;
+  }
+
   private cleanPreparationMessage(message: string): string {
     return replacePlaceholders(
       message.replace(/^%[a-z_]+%\s*/i, ''),
@@ -479,9 +618,11 @@ export class Logger {
 
   private renderPreparationPanel(): string {
     return renderTerminalPanel(
-      'PREPARING TEST ENVIRONMENT',
+      this.preparationContext
+        ? `PREPARING TEST ENVIRONMENT  ·  ${this.preparationContext}`
+        : 'PREPARING TEST ENVIRONMENT',
       this.preparationLines ?? [],
-      'cyan',
+      'magenta',
       supportsColor(),
       true,
     );

@@ -1,10 +1,23 @@
 # Changelog
 
+## 1.0.54 - 2026-09-24
+
+### Fixed
+
+- Refined terminal output with mode-aware preparation stages and stable live results.
+- Added Testify version and compact two-column environment details.
+- Added responsive banner rendering for narrower terminals.
+- Fixed preparation/output overlap and terminal ownership issues.
+
 ## 1.0.53 - 2026-09-23
 
 ### Improved
 
 * Added a live, color-coded test progress meter for interactive terminals at the bottom of the results panel, with a divider and the same bar style used by coverage output.
+
+### Fixed
+
+* Restored per-spec execution dots in the live TEST RESULTS table: suite rows were four cells wider than the Ink panel body, so the right-aligned glyph column wrapped onto a row that the table never reads.
 
 ## 1.0.52 - 2026-09-20
 

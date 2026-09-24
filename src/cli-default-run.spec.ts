@@ -13,7 +13,7 @@ describe('testify CLI default behavior', () => {
       );
 
     expect(source).toContain(
-      'CLIHandler.run()',
+      'CLIHandler.run(',
     );
 
     expect(source).not.toContain(

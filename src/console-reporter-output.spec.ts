@@ -1,6 +1,9 @@
 import {
   ConsoleReporter,
 } from './console-reporter';
+import { ANSI_FULL_REGEX } from './utils';
+import { renderTerminalPanel } from './ink-output';
+import { SYMBOLS } from './symbols';
 import { setAnsiMode } from './ansi-constants';
 
 describe('ConsoleReporter output sink', () => {
@@ -222,4 +225,55 @@ describe('ConsoleReporter output sink', () => {
     expect(rendered).toContain('1 skipped');
     expect(rendered.toLowerCase()).not.toContain('pending');
   });
+
+  it('keeps execution dots on the live result row at the panel body width', () => {
+    const originalColumns = process.stdout.columns;
+    const originalForceColor = process.env.FORCE_COLOR;
+    const originalNoColor = process.env.NO_COLOR;
+    // Pin the terminal width so the row budget is deterministic, and force
+    // color so renderTerminalPanel takes Ink's wrapping path under test.
+    Object.defineProperty(process.stdout, 'columns', { value: 80, configurable: true });
+    process.env.FORCE_COLOR = '1';
+    delete process.env.NO_COLOR;
+
+    try {
+      const reporter = new ConsoleReporter({ showColors: true, print: () => {} });
+      const catalog = {
+        suites: [{ id: 'suite-nested', description: 'nested suite', fullName: 'nested suite' }],
+        specs: [
+          { id: 'nested-one', description: 'one', fullName: 'nested suite one', suiteId: 'suite-nested' },
+          { id: 'nested-two', description: 'two', fullName: 'nested suite two', suiteId: 'suite-nested' },
+        ],
+      };
+
+      reporter.setCatalog(catalog);
+      reporter.jasmineStarted({
+        totalSpecsDefined: catalog.specs.length,
+        order: { random: false },
+      });
+      reporter.suiteStarted(catalog.suites[0]);
+      for (const spec of catalog.specs) {
+        reporter.specStarted(spec);
+        reporter.specDone({ ...spec, status: 'passed', duration: 1 });
+      }
+
+      const internal = reporter as any;
+      const line = internal.getResultSuiteLine(internal.suiteById.get('suite-nested'));
+      const row = internal.renderResultTableRow(line).replace(ANSI_FULL_REGEX, '');
+
+      // The glyph column is right-aligned: a row wider than the panel body
+      // wraps, and the live table only reads frame[3] back, so wrapped
+      // execution dots disappeared from the TEST RESULTS table entirely.
+      expect(row).toContain('2 specs');
+      expect(row).toContain(`${SYMBOLS.passed}${SYMBOLS.passed}`);
+      expect(renderTerminalPanel(' ', [' ', line], 'green', true).split('\n').length).toBe(5);
+    } finally {
+      Object.defineProperty(process.stdout, 'columns', { value: originalColumns, configurable: true });
+      if (originalForceColor === undefined) delete process.env.FORCE_COLOR;
+      else process.env.FORCE_COLOR = originalForceColor;
+      if (originalNoColor === undefined) delete process.env.NO_COLOR;
+      else process.env.NO_COLOR = originalNoColor;
+    }
+  });
+
 });

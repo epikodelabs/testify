@@ -10,10 +10,12 @@ import {
   renderTerminalPanel,
   renderTerminalText,
   PANEL_RULE,
+  panelContentWidth,
   startLiveTerminalView,
   type LiveTerminalView,
 } from './ink-output';
 import { renderTerminalProgressBar } from './terminal-progress-bar';
+import { getTestifyVersion } from './testify-version';
 
 export interface EnvironmentInfo {
   node: string;
@@ -82,6 +84,7 @@ export class ConsoleReporter {
   private failedSpecs: any[];
   private globalFailures: any[];
   private pendingSpecs: any[];
+  private skippedSpecs: any[];
   private startTime: number;
   private runStartedAt = '';
   private config: any | null = null;
@@ -103,12 +106,15 @@ export class ConsoleReporter {
   private orderedSpecs: any[] | null = null;
   private isTTY: boolean;
   private resultPanelLines: string[] | null = null;
+  /** Border tone for each final result row; keeps appended sections visually coherent. */
+  private resultPanelLineTones: Array<'green' | 'yellow' | 'red' | undefined> | null = null;
   /** The result panel is redrawn in place while the run is in progress. */
   private resultView: LiveTerminalView | null = null;
   private resultUpdateTimer: NodeJS.Timeout | null = null;
   /** An append-only table remains reliable after it has scrolled off-screen. */
   private appendOnlyResultTable = false;
   private appendedResultSuiteIds = new Set<string>();
+  private resultTableUnavailable = false;
   private runCompleted = false;
   private readonly usesDefaultPrint: boolean;
   /** Counts captured by printSummary for the final status box recap. */
@@ -136,6 +142,7 @@ export class ConsoleReporter {
     this.failedSpecs = [];
     this.globalFailures = [];
     this.pendingSpecs = [];
+    this.skippedSpecs = [];
     this.startTime = 0;
 
     this.envInfo = null;
@@ -350,6 +357,7 @@ export class ConsoleReporter {
     this.failedSpecs = [];
     this.globalFailures = [];
     this.pendingSpecs = [];
+    this.skippedSpecs = [];
     this.rootSuite = this.createRootSuite();
     this.suiteStack = [this.rootSuite];
     this.currentSuite = null;
@@ -361,6 +369,7 @@ export class ConsoleReporter {
     this.completedSuiteIds = new Set();
     this.appendOnlyResultTable = false;
     this.appendedResultSuiteIds.clear();
+    this.resultTableUnavailable = false;
 
     this.buildSuiteTree(config);
     this.setupInterruptHandler();
@@ -487,6 +496,9 @@ export class ConsoleReporter {
         this.pendingSpecs.push(result);
         this.executableSpecCount++;
         break;
+      case 'skipped':
+        this.skippedSpecs.push(result);
+        break;
       default:
         break;
     }
@@ -541,6 +553,7 @@ export class ConsoleReporter {
     const totalTime = totalTimeMs / 1000;
 
     this.resultPanelLines = [];
+    this.resultPanelLineTones = [];
     this.printTestConfiguration(this.config, true);
 
     // Filter out stale specs (e.g., retried specs that later passed)
@@ -705,7 +718,7 @@ export class ConsoleReporter {
       // full table for every spec callback.
       return;
     }
-    if (!this.isTTY || !this.currentSuite) return;
+    if (this.resultTableUnavailable || !this.isTTY || !this.currentSuite) return;
 
     const total = this.specById.size;
     if (total === 0) return;
@@ -799,8 +812,9 @@ export class ConsoleReporter {
     }
   }
 
+  /** Every spec that ran under this suite, so nested suites still show glyphs. */
   private getSpecDots(suite: TestSuite): string {
-    return this.getSpecIndicators(suite.specs);
+    return this.getSpecIndicators(this.getSuiteSpecs(suite));
   }
 
   /**
@@ -866,18 +880,25 @@ export class ConsoleReporter {
 
   private appendResultSection(title: string, lines: string[], color: string): boolean {
     if (!this.resultPanelLines || lines.length === 0) return false;
-    if (this.resultPanelLines.length > 0) this.resultPanelLines.push(this.resultRule());
+    const tone = 'green' as const;
+    this.resultPanelLineTones ??= [];
+    if (this.resultPanelLines.length > 0) {
+      this.resultPanelLines.push(this.resultRule());
+      this.resultPanelLineTones.push(tone);
+    }
     this.resultPanelLines.push(this.colored(['bold', color], title), ...lines);
+    this.resultPanelLineTones.push(...Array(lines.length + 1).fill(tone));
     return true;
   }
 
   private flushResultPanel(): void {
     if (!this.resultPanelLines) return;
     if (this.appendOnlyResultTable) {
-      this.appendResultTableTrailer(this.resultPanelLines);
+      this.appendResultTableTrailer(this.resultPanelLines, this.resultPanelLineTones ?? []);
       this.appendOnlyResultTable = false;
       process.stdout.write('\n');
       this.resultPanelLines = null;
+      this.resultPanelLineTones = null;
       return;
     }
     if (this.resultView) {
@@ -897,6 +918,7 @@ export class ConsoleReporter {
       this.print(panel + '\n');
     }
     this.resultPanelLines = null;
+    this.resultPanelLineTones = null;
   }
 
   /**
@@ -980,25 +1002,21 @@ export class ConsoleReporter {
     // A redirected stdout must stay append-only and free of cursor movement.
     // Browser and isolated Node runners forward events internally, but that
     // does not change the host process's stdout TTY status.
-    if (!this.showColors || !this.usesDefaultPrint || !process.stdout.isTTY) return;
+    if (
+      !this.showColors
+      || !this.usesDefaultPrint
+      || !process.stdout.isTTY
+    ) {
+      this.resultTableUnavailable = true;
+      return;
+    }
     // Unlike preparation, this table can contain hundreds of suites. Once a
     // table is taller than the viewport, ANSI cursor-up cannot reliably reach
     // its first row. Keep it append-only rather than emitting replacement
     // frames that become duplicate tables in scrollback.
     this.appendOnlyResultTable = true;
     this.appendedResultSuiteIds.clear();
-    const panelLines = renderTerminalPanel(
-      'TEST RESULTS',
-      [
-        ...this.runMetadataLines(this.config),
-        PANEL_RULE,
-        ...this.getResultSuiteLines(),
-        PANEL_RULE,
-        this.getProgressLine(),
-      ],
-      this.getRunTone(),
-      this.showColors,
-    ).split('\n');
+    const panelLines = this.renderLiveResultTable().split('\n');
     const bottom = this.lastRenderedPanelLine(panelLines);
     const bottomIndex = panelLines.lastIndexOf(bottom);
     // Leave the bottom border at the cursor. Appended suites replace the
@@ -1018,18 +1036,25 @@ export class ConsoleReporter {
     );
   }
 
-  private appendResultTableTrailer(lines: readonly string[]): void {
-    const nonEmptyLines = lines.filter((line) => line !== '');
-    const trailer = nonEmptyLines.length > 0 && nonEmptyLines[0] !== PANEL_RULE
-      ? [PANEL_RULE, ...nonEmptyLines]
-      : nonEmptyLines;
-    // The final report supersedes the live row, so remove it before adding
-    // the permanent trailer instead of preserving a stale 100% indicator.
+  private appendResultTableTrailer(
+    lines: readonly string[],
+    tones: readonly ('green' | 'yellow' | 'red' | undefined)[] = [],
+  ): void {
+    const entries = lines
+      .map((line, index) => ({ line, tone: tones[index] }))
+      .filter(({ line }) => line !== '');
+    if (entries.length > 0 && entries[0].line !== PANEL_RULE) {
+      entries.unshift({ line: PANEL_RULE, tone: 'green' });
+    }
+    // The result table frame is deliberately stable: separators and side
+    // borders stay green regardless of individual result severity. Status
+    // remains visible in the result symbols and section content.
     this.replaceResultTableBottom(
-      trailer,
+      entries.map(({ line }) => line),
       true,
       false,
       this.appendedResultSuiteIds.size === 0,
+      entries.map(({ tone }) => tone),
     );
   }
 
@@ -1047,13 +1072,31 @@ export class ConsoleReporter {
     );
   }
 
+  private renderLiveResultTable(): string {
+    return renderTerminalPanel(
+      'TEST RESULTS',
+      [
+        ...this.runMetadataLines(this.config),
+        PANEL_RULE,
+        ...this.getResultSuiteLines(),
+        PANEL_RULE,
+        this.getProgressLine(),
+      ],
+      'green',
+      this.showColors,
+    );
+  }
+
   private replaceResultTableBottom(
     lines: readonly string[],
     removeProgress = false,
     addProgress = removeProgress,
     removeWaitingRow = false,
+    tones: readonly ('green' | 'yellow' | 'red' | undefined)[] = [],
   ): void {
-    const rows = lines.map((line) => this.renderResultTableRow(line)).join('\n');
+    const rows = lines
+      .map((line, index) => this.renderResultTableRow(line, tones[index]))
+      .join('\n');
     // The live progress row sits directly above the bottom border. When the
     // table grows or receives its final trailer, replace that row first so it
     // remains pinned at the actual bottom instead of being left in the middle.
@@ -1091,7 +1134,7 @@ export class ConsoleReporter {
   }
 
   private resultTableBottom(): string {
-    const frame = renderTerminalPanel(' ', [], this.getRunTone(), this.showColors).split('\n');
+    const frame = renderTerminalPanel(' ', [], 'green', this.showColors).split('\n');
     return this.lastRenderedPanelLine(frame);
   }
 
@@ -1102,13 +1145,17 @@ export class ConsoleReporter {
     return '';
   }
 
-  private renderResultTableRow(line: string): string {
+  private renderResultTableRow(
+    line: string,
+    tone?: 'green' | 'yellow' | 'red',
+  ): string {
     // The third body row has the exact same width, borders, and ANSI styling
     // as a row in the full table; it avoids duplicating Ink's layout rules.
     // Ink omits an empty Text node. A space keeps separator rows in the body
     // so index 3 remains a content row rather than the panel's bottom border.
     const content = line === '' ? ' ' : line;
-    const frame = renderTerminalPanel(' ', [' ', content], this.getRunTone(), this.showColors).split('\n');
+    const borderTone = 'green';
+    const frame = renderTerminalPanel(' ', [' ', content], borderTone, this.showColors).split('\n');
     return frame[3] ?? line;
   }
 
@@ -1150,14 +1197,14 @@ export class ConsoleReporter {
     return renderTerminalPanel(
       'TEST RESULTS',
       lines,
-      this.getRunTone(),
+      'green',
     );
   }
 
   /** The interactive frame is itself a compact result signal. */
   private getRunTone(): 'green' | 'yellow' | 'red' {
     if (this.failureCount > 0 || this.globalFailures.length > 0) return 'red';
-    if (this.pendingSpecs.length > 0) return 'yellow';
+    if (this.pendingSpecs.length > 0 || this.skippedSpecs.length > 0) return 'yellow';
     return 'green';
   }
 
@@ -1175,14 +1222,19 @@ export class ConsoleReporter {
     return lines;
   }
 
+  private getLiveResultTableTone(): 'green' {
+    return 'green';
+  }
+
   private getResultSuiteLine(suite: TestSuite): string {
+    const suiteSpecs = this.getSuiteSpecs(suite);
     const symbols = this.getSpecDots(suite);
-    const suffix = suite.specs.length > 0
-      ? this.colored('gray', ` ${this.separator} ${suite.specs.length} spec${suite.specs.length === 1 ? '' : 's'}`)
+    const suffix = suiteSpecs.length > 0
+      ? this.colored('gray', ` ${this.separator} ${suiteSpecs.length} spec${suiteSpecs.length === 1 ? '' : 's'}`)
       : '';
-    // Leave one spare cell: Ink may wrap a Text node that lands exactly on
-    // its content boundary in Windows terminals.
-    const contentWidth = Math.max(31, this.lineWidth - 5);
+    // Never exceed the Ink panel body: a Text node that lands past it is
+    // wrapped, and this row is read back line by line, which drops the glyphs.
+    const contentWidth = panelContentWidth();
     const availableName = Math.max(1, contentWidth - visibleWidth(suffix) - visibleWidth(symbols) - 1);
     const name = visibleWidth(this.suiteDisplayName(suite)) > availableName
       ? this.truncateString(this.suiteDisplayName(suite), availableName)
@@ -1537,7 +1589,7 @@ export class ConsoleReporter {
     return {
       node: process.version,
       jasmine: getJasmineVersion(),
-      platform: `${process.platform} ${process.arch}`,
+      platform: process.platform,
       arch: process.arch,
       cwd: process.cwd(),
       memory: `${memTotal} MB`,
@@ -1575,10 +1627,10 @@ export class ConsoleReporter {
   private printEnvironmentInfo() {
     if (!this.envInfo) this.envInfo = this.gatherEnvironmentInfo();
     const lines = [
-      this.factPair('Node.js', this.envInfo.node, 'Jasmine', this.envInfo.jasmine),
-      this.factPair('Platform', this.envInfo.platform, 'Architecture', this.envInfo.arch),
-      this.factPair('Process', String(this.envInfo.pid), 'Uptime', this.envInfo.uptime),
-      this.factRow('Memory', `${this.envInfo.memory} heap`),
+      this.factPair('Testify', getTestifyVersion(), 'Node.js', this.envInfo.node),
+      this.factPair('Jasmine', this.envInfo.jasmine, 'Platform', this.envInfo.platform),
+      this.factPair('Architecture', this.envInfo.arch, 'Process', String(this.envInfo.pid)),
+      this.factPair('Uptime', this.envInfo.uptime, 'Memory', `${this.envInfo.memory} heap`),
       this.factRow('Directory', this.envInfo.cwd),
     ];
     this.print(renderTerminalPanel('ENVIRONMENT', lines, 'blue', this.showColors) + '\n');
@@ -1663,8 +1715,10 @@ export class ConsoleReporter {
     if (this.resultPanelLines) {
       if (liveResultTable && lines.length > 0) {
         this.resultPanelLines.push(PANEL_RULE, ...lines);
+        this.resultPanelLineTones?.push(undefined, ...Array(lines.length).fill(undefined));
       } else {
         this.resultPanelLines.push(...lines);
+        this.resultPanelLineTones?.push(...Array(lines.length).fill(undefined));
       }
       return;
     }
@@ -1696,7 +1750,7 @@ export class ConsoleReporter {
     // The Ink panel consumes two border columns and two padding columns.
     // Keep the suite glyph column on this same line rather than relying on
     // Ink's edge-of-cell wrapping behavior.
-    const contentWidth = Math.max(31, this.lineWidth - 5);
+    const contentWidth = panelContentWidth();
     const visit = (suite: TestSuite, depth: number) => {
       const suiteSpecs = this.getSuiteSpecs(suite);
       const symbols = this.getSpecIndicators(suiteSpecs);
