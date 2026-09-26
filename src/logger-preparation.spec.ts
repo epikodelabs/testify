@@ -103,8 +103,8 @@ describe('Logger redirected preparation output', () => {
     expect(rendered).not.toContain('╭');
     expect(rendered).not.toContain('│');
     expect(rendered).not.toContain('─');
-    expect(rendered).not.toContain('\\x1b');
-    expect(rendered).not.toContain('\\r');
-    expect(/^[\\x00-\\x7F]*$/.test(rendered)).toBeTrue();
+    expect(rendered).not.toContain('\x1b');
+    expect(rendered).not.toContain('\r');
+    expect(/^[\x00-\x7F]*$/.test(rendered)).toBeTrue();
   });
 });
