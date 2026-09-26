@@ -49,4 +49,39 @@ describe('ViteConfigBuilder Rolldown contract', () => {
       build.emptyOutDir,
     ).toBeFalse();
   });
+
+  it('keeps Vite silent so Testify owns terminal output', () => {
+    const builder =
+      new ViteConfigBuilder({
+        srcDirs: ['./src'],
+        testDirs: ['./src'],
+        outDir:
+          './dist/.vite-jasmine-build',
+        browser: 'node',
+        viteConfig: {
+          logLevel: 'info',
+          clearScreen: true,
+        },
+        jasmineConfig: {
+          env: {
+            random: false,
+            seed: 0,
+            stopSpecOnExpectationFailure:
+              false,
+          },
+        },
+      } as any);
+
+    const config =
+      builder.createViteConfig([
+        './src/example.ts',
+      ]);
+
+    expect(config.logLevel)
+      .toBe('silent');
+
+    expect(config.clearScreen)
+      .toBeFalse();
+  });
+
 });

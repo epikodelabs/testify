@@ -456,7 +456,11 @@ export class ViteConfigBuilder {
           // Browser test chunks need the standards-based global object.
           global: 'globalThis',
         },
-        logLevel: 'warn'
+        // Testify owns the terminal surface. Vite diagnostics must never write
+        // directly into the live preparation/results UI. Build failures still
+        // propagate as exceptions and are rendered through Testify's logger.
+        logLevel: 'silent',
+        clearScreen: false,
       };
     }
 
@@ -468,12 +472,14 @@ export class ViteConfigBuilder {
     const files = entryFiles && entryFiles.length > 0 ? entryFiles : this.discoverFilesSync();
     this.inputMap = this.buildInputMap(files);
 
-    return this.normalizeGeneratedOutput(
-      this.normalizeAliasConfig(
-        this.mergeUserConfig(
-          this.baseConfig(
-            this.inputMap,
-            false,
+    return this.enforceTerminalOwnership(
+      this.normalizeGeneratedOutput(
+        this.normalizeAliasConfig(
+          this.mergeUserConfig(
+            this.baseConfig(
+              this.inputMap,
+              false,
+            ),
           ),
         ),
       ),
@@ -501,13 +507,15 @@ export class ViteConfigBuilder {
 
     logger.println(ViteConfigMessages.incrementalBuild(Object.keys(this.inputMap).length));
 
-    return this.normalizeGeneratedOutput(
-      this.normalizeAliasConfig(
-        this.mergeUserConfig(
-          this.baseConfig(
-            this.inputMap,
-            true,
-            cache,
+    return this.enforceTerminalOwnership(
+      this.normalizeGeneratedOutput(
+        this.normalizeAliasConfig(
+          this.mergeUserConfig(
+            this.baseConfig(
+              this.inputMap,
+              true,
+              cache,
+            ),
           ),
         ),
       ),
@@ -530,6 +538,21 @@ export class ViteConfigBuilder {
         delete this.inputMap[key];
       }
     }
+  }
+
+  /* -------------------------------------------------- */
+  /* Terminal ownership                                 */
+  /* -------------------------------------------------- */
+
+  private enforceTerminalOwnership(config: InlineConfig): InlineConfig {
+    return {
+      ...config,
+      // Testify renders build warnings/errors through its own logger and live
+      // preparation surface. Vite must not print or clear the terminal itself,
+      // even when a consumer viteConfig requests a different log level.
+      logLevel: 'silent',
+      clearScreen: false,
+    };
   }
 
   /* -------------------------------------------------- */
