@@ -56,6 +56,7 @@ describe('Logger preparation pipeline', () => {
 
     logger.flushPreparation();
     expect(internal.preparationItems).toBeNull();
+    expect(internal.preparationDiagnostics).toBeNull();
     expect(internal.preparationLines).toBeNull();
     expect(internal.preparationView).toBeNull();
 
@@ -72,6 +73,98 @@ describe('Logger preparation pipeline', () => {
 
     (globalThis as any).__testifySuppressLogs = previousSuppression;
   });
+
+  it('keeps warning and error diagnostics inside preparation without inventing pipeline steps', () => {
+    const logger = new Logger({ output: false });
+    const internal = logger as any;
+
+    logger.preparationStart('');
+    logger.preparationContextLabel('HEADLESS · CHROME');
+    logger.preparationPlan([
+      { label: 'DISCOVER', message: 'Discover test files' },
+      { label: 'BUILD', message: 'Build test modules' },
+      { label: 'EXECUTE', message: 'Start test session' },
+    ]);
+
+    logger.preparationStep('DISCOVER', 'Found test files.', true);
+    logger.preparationStep('BUILD', 'Building test modules...');
+    logger.warn('%warn% Bundler emitted a recoverable warning.');
+    logger.warn('%warn% Bundler emitted a second warning.');
+    logger.preparationComplete('BUILD');
+
+    expect(internal.preparationItems.map((item: any) => [item.label, item.status])).toEqual([
+      ['DISCOVER', 'complete'],
+      ['BUILD', 'warning'],
+      ['EXECUTE', 'pending'],
+    ]);
+    expect(internal.preparationItems.some((item: any) => item.label === 'WARN')).toBeFalse();
+    expect(internal.preparationDiagnostics).toEqual([
+      jasmine.objectContaining({
+        severity: 'warning',
+        stepLabel: 'BUILD',
+        message: 'Bundler emitted a recoverable warning.',
+      }),
+      jasmine.objectContaining({
+        severity: 'warning',
+        stepLabel: 'BUILD',
+        message: 'Bundler emitted a second warning.',
+      }),
+    ]);
+
+    // Replanning (for example a browser -> Node fallback) must not erase the
+    // diagnostic that already occurred during preparation.
+    logger.preparationPlan([
+      { label: 'DISCOVER', message: 'Discover test files' },
+      { label: 'BUILD', message: 'Build test modules' },
+      { label: 'RUNNER', message: 'Prepare in-process test runner' },
+      { label: 'EXECUTE', message: 'Start Node test session' },
+    ]);
+    expect(internal.preparationDiagnostics.length).toBe(2);
+
+    logger.preparationStep('RUNNER', 'Generating runner...');
+    logger.error('%error% Runner generation failed.');
+    logger.preparationComplete('RUNNER');
+
+    const runner = internal.preparationItems.find((item: any) => item.label === 'RUNNER');
+    expect(runner.status).toBe('failed');
+    expect(internal.preparationItems.some((item: any) => item.label === 'ERROR')).toBeFalse();
+
+    const rendered = internal.renderPreparationPanel();
+    expect(rendered).toContain('[WARN]');
+    expect(rendered).toContain('WARNING');
+    expect(rendered).toContain('[BUILD] Bundler emitted a recoverable warning.');
+    expect(rendered).toContain('[FAIL]');
+    expect(rendered).toContain('ERROR');
+    expect(rendered).toContain('[RUNNER] Runner generation failed.');
+  });
+
+  it('renders a warning-tagged stage as warning even when the caller marks it complete', () => {
+    const logger = new Logger({ output: false });
+    const internal = logger as any;
+
+    logger.preparationStart('');
+    logger.preparationPlan([
+      { label: 'DISCOVER', message: 'Discover test files' },
+      { label: 'CONFIG', message: 'Prepare build configuration' },
+    ]);
+
+    logger.preparationStep(
+      'DISCOVER',
+      '%warn% No matching spec files found in src. Nothing to run.',
+      true,
+    );
+
+    expect(internal.preparationItems.map((item: any) => [item.label, item.status])).toEqual([
+      ['DISCOVER', 'warning'],
+      ['CONFIG', 'pending'],
+    ]);
+
+    const rendered = internal.renderPreparationPanel();
+    expect(rendered).toContain('[WARN]  DISCOVER');
+    expect(rendered).toContain('No matching spec files found in src. Nothing to run.');
+    expect(rendered).not.toContain('%warn%');
+  });
+
 });
 
 // Redirected output must never depend on Unicode terminal glyphs. This is a

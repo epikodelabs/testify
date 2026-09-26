@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { RunnerMessages } from './log-messages';
 
 describe('ViteJasmineRunner empty test discovery UX', () => {
   const source = fs.readFileSync(
@@ -17,6 +18,15 @@ describe('ViteJasmineRunner empty test discovery UX', () => {
 
     expect(source).not.toContain(
       "throw new ExitCodeError(EXIT_CODES.CONFIG_ERROR, 'No test files found');",
+    );
+  });
+
+
+  it('surfaces missing specs as a preparation warning rather than a successful discovery', () => {
+    expect(
+      RunnerMessages.noTestFilesFound('src'),
+    ).toBe(
+      '%warn% No matching spec files found in src. Nothing to run.',
     );
   });
 

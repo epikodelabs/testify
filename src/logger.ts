@@ -28,11 +28,18 @@ interface LoggedLine {
 }
 
 type PreparationStatus = 'pending' | 'running' | 'complete' | 'warning' | 'failed' | 'skipped';
+type PreparationDiagnosticSeverity = 'warning' | 'error';
 
 interface PreparationItem {
   label: string;
   message: string;
   status: PreparationStatus;
+}
+
+interface PreparationDiagnostic {
+  severity: PreparationDiagnosticSeverity;
+  message: string;
+  stepLabel?: string;
 }
 
 export interface PreparationPlanStep {
@@ -51,6 +58,8 @@ export class Logger {
   private plainPrompt = '> ';
   private preparationLines: string[] | null = null;
   private preparationItems: PreparationItem[] | null = null;
+  private preparationDiagnostics: PreparationDiagnostic[] | null = null;
+  private preparationActiveLabel: string | null = null;
   private preparationFlushed = false;
   private preparationView: LiveTerminalView | null = null;
   private preparationContext = '';
@@ -190,6 +199,7 @@ export class Logger {
     if (this.preparationFlushed) return true;
     this.preparationLines ??= [];
     this.preparationItems ??= [];
+    this.preparationDiagnostics ??= [];
     if (this.outputEnabled && !this.preparationView && supportsColor() && process.stdout.isTTY) {
       this.preparationView = startLiveTerminalView(this.renderPreparationPanel());
     }
@@ -224,6 +234,12 @@ export class Logger {
         status: existing?.status ?? 'pending' as const,
       };
     });
+    if (
+      this.preparationActiveLabel &&
+      !this.preparationItems.some((item) => item.label === this.preparationActiveLabel)
+    ) {
+      this.preparationActiveLabel = null;
+    }
     this.syncPreparationLines();
     return true;
   }
@@ -251,7 +267,7 @@ export class Logger {
       this.preparationItems.push(item);
     }
     item.message = this.cleanPreparationMessage(message);
-    item.status = severity === 'error'
+    const nextStatus: PreparationStatus = severity === 'error'
       ? 'failed'
       : severity === 'warn'
         ? 'warning'
@@ -259,6 +275,18 @@ export class Logger {
           ? 'complete'
           : 'running';
 
+    // Once a stage has emitted a warning/error, later progress/completion
+    // updates must not repaint it as a clean success. The stage can continue,
+    // but its final state still reflects the most severe diagnostic observed.
+    if (item.status === 'failed' && nextStatus !== 'failed') {
+      item.status = 'failed';
+    } else if (item.status === 'warning' && nextStatus !== 'failed' && nextStatus !== 'warning') {
+      item.status = 'warning';
+    } else {
+      item.status = nextStatus;
+    }
+
+    this.preparationActiveLabel = complete ? null : labelText;
     this.syncPreparationLines();
     return true;
   }
@@ -268,7 +296,12 @@ export class Logger {
     const item = this.preparationItems?.find((candidate) => candidate.label === label.trim());
     if (!item) return true;
     if (message) item.message = this.cleanPreparationMessage(message);
-    item.status = 'complete';
+    if (item.status !== 'warning' && item.status !== 'failed') {
+      item.status = 'complete';
+    }
+    if (this.preparationActiveLabel === item.label) {
+      this.preparationActiveLabel = null;
+    }
     this.syncPreparationLines();
     return true;
   }
@@ -279,6 +312,9 @@ export class Logger {
     if (!item) return true;
     if (message) item.message = this.cleanPreparationMessage(message);
     item.status = 'skipped';
+    if (this.preparationActiveLabel === item.label) {
+      this.preparationActiveLabel = null;
+    }
     this.syncPreparationLines();
     return true;
   }
@@ -309,6 +345,8 @@ export class Logger {
     }
     this.preparationLines = null;
     this.preparationItems = null;
+    this.preparationDiagnostics = null;
+    this.preparationActiveLabel = null;
     this.preparationFlushed = true;
     return true;
   }
@@ -316,7 +354,7 @@ export class Logger {
   error(msg: string) {
     if (areTestLogsSuppressed()) return true;
     if (this.preparationLines) {
-      this.preparationStep('ERROR', msg);
+      this.preparationDiagnostic('error', msg);
       return true;
     }
     if (this.preparationFlushed) {
@@ -360,7 +398,7 @@ export class Logger {
   warn(msg: string) {
     if (areTestLogsSuppressed()) return true;
     if (this.preparationLines) {
-      this.preparationStep('WARN', msg);
+      this.preparationDiagnostic('warning', msg);
       return true;
     }
     if (this.preparationFlushed) {
@@ -562,8 +600,70 @@ export class Logger {
 
   private syncPreparationLines(): void {
     if (!this.preparationItems) return;
-    this.preparationLines = this.preparationItems.map((item) => this.renderPreparationItem(item));
+    this.preparationLines = [
+      ...this.preparationItems.map((item) => this.renderPreparationItem(item)),
+      ...(this.preparationDiagnostics ?? []).flatMap((diagnostic) =>
+        this.renderPreparationDiagnostic(diagnostic),
+      ),
+    ];
     this.preparationView?.update(this.renderPreparationPanel());
+  }
+
+  private preparationDiagnostic(
+    severity: PreparationDiagnosticSeverity,
+    message: string,
+  ): void {
+    this.preparationDiagnostics ??= [];
+
+    const activeItem = this.preparationActiveLabel
+      ? this.preparationItems?.find((item) => item.label === this.preparationActiveLabel)
+      : undefined;
+
+    if (activeItem) {
+      if (severity === 'error') {
+        activeItem.status = 'failed';
+      } else if (activeItem.status !== 'failed') {
+        activeItem.status = 'warning';
+      }
+    }
+
+    this.preparationDiagnostics.push({
+      severity,
+      message: this.cleanPreparationMessage(message),
+      stepLabel: activeItem?.label,
+    });
+
+    this.syncPreparationLines();
+  }
+
+  private renderPreparationDiagnostic(diagnostic: PreparationDiagnostic): string[] {
+    const rich = this.outputEnabled && process.stdout.isTTY && supportsColor();
+    const isError = diagnostic.severity === 'error';
+    const symbol = rich
+      ? renderTerminalText(isError ? '×' : '!', {
+          bold: isError,
+          color: isError ? 'red' : 'yellow',
+        })
+      : isError
+        ? '[FAIL]'
+        : '[WARN]';
+    const labelText = (isError ? 'ERROR' : 'WARNING').padEnd(12);
+    const label = rich
+      ? renderTerminalText(labelText, {
+          bold: isError,
+          color: isError ? 'red' : 'yellow',
+        })
+      : labelText;
+    const context = diagnostic.stepLabel ? `[${diagnostic.stepLabel}] ` : '';
+    const lines = diagnostic.message.split('\n').filter(Boolean);
+    const body = lines.length > 0 ? lines : [''];
+
+    return body.map((line, index) => {
+      if (index === 0) {
+        return `${symbol}  ${label} ${context}${line}`;
+      }
+      return `${' '.repeat(rich ? 3 : symbol.length + 2)}${' '.repeat(labelText.length)} ${line}`;
+    });
   }
 
   private renderPreparationItem(item: PreparationItem): string {
@@ -602,11 +702,23 @@ export class Logger {
     }) : symbols[item.status];
     const labelText = item.label.padEnd(12);
     const label = rich ? renderTerminalText(labelText, {
-      bold: item.status === 'running',
-      color: item.status === 'running' ? 'cyan' : item.status === 'failed' ? 'red' : undefined,
+      bold: item.status === 'running' || item.status === 'failed',
+      color: item.status === 'running'
+        ? 'cyan'
+        : item.status === 'warning'
+          ? 'yellow'
+          : item.status === 'failed'
+            ? 'red'
+            : undefined,
     }) : labelText;
     const message = rich ? renderTerminalText(item.message, {
-      color: item.status === 'pending' || item.status === 'skipped' ? 'gray' : undefined,
+      color: item.status === 'pending' || item.status === 'skipped'
+        ? 'gray'
+        : item.status === 'warning'
+          ? 'yellow'
+          : item.status === 'failed'
+            ? 'red'
+            : undefined,
       dimColor: item.status === 'pending' || item.status === 'skipped',
     }) : item.message;
     return `${symbol}  ${label} ${message}`;

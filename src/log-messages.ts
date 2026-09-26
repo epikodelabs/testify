@@ -536,7 +536,7 @@ export const RunnerMessages = {
     `%rocket% Starting Jasmine Test Server...`,
 
   noTestFilesFound: (locations: string) =>
-    `%info% No matching spec files found in ${locations}. Nothing to run.`,
+    `%warn% No matching spec files found in ${locations}. Nothing to run.`,
 
   buildFailed: (error: unknown) =>
     `%error% Build failed: ${toConsoleSafe(String(error))}`,
