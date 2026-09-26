@@ -88,4 +88,116 @@ describe('BrowserManager headed startup', () => {
       (manager as any).currentPage,
     ).toBeNull();
   });
+
+  it('buffers page errors during a completed headless run instead of logging over live results', async () => {
+    const errorSpy = spyOn(logger, 'error');
+    spyOn(logger, 'warn');
+    spyOn(logger, 'println');
+    const manager = new BrowserManager({
+      browser: 'chrome',
+      headless: true,
+      jasmineConfig: {
+        env: {
+          timeout: 1000,
+        },
+      },
+    } as ViteJasmineConfig);
+
+    const handlers = new Map<string, (...args: any[]) => void>();
+    const page = {
+      setDefaultTimeout() {},
+      on(event: string, handler: (...args: any[]) => void) {
+        handlers.set(event, handler);
+      },
+      async goto() {
+        handlers.get('pageerror')?.(
+          new Error('rejected from spec'),
+        );
+      },
+      async waitForFunction() {},
+    };
+    const browser = {
+      async newPage() {
+        return page;
+      },
+      async close() {},
+    };
+    const browserType = {
+      async launch() {
+        return browser;
+      },
+    };
+
+    await expectAsync(
+      manager.runHeadlessBrowserTests(
+        browserType as any,
+        8888,
+      ),
+    ).toBeResolvedTo(true);
+
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+
+  it('logs buffered page errors when the headless browser session itself fails', async () => {
+    const errorSpy = spyOn(logger, 'error');
+    spyOn(logger, 'warn');
+    spyOn(logger, 'println');
+    const manager = new BrowserManager({
+      browser: 'chrome',
+      headless: true,
+      jasmineConfig: {
+        env: {
+          timeout: 1000,
+        },
+      },
+    } as ViteJasmineConfig);
+
+    const handlers = new Map<string, (...args: any[]) => void>();
+    const sessionFailure =
+      new Error('browser session failed');
+    const page = {
+      setDefaultTimeout() {},
+      on(event: string, handler: (...args: any[]) => void) {
+        handlers.set(event, handler);
+      },
+      async goto() {
+        handlers.get('pageerror')?.(
+          new Error('rejected before jasmine completed'),
+        );
+      },
+      async waitForFunction() {
+        throw sessionFailure;
+      },
+    };
+    const browser = {
+      async newPage() {
+        return page;
+      },
+      async close() {},
+    };
+    const browserType = {
+      async launch() {
+        return browser;
+      },
+    };
+
+    await expectAsync(
+      manager.runHeadlessBrowserTests(
+        browserType as any,
+        8888,
+      ),
+    ).toBeRejectedWith(
+      sessionFailure,
+    );
+
+    expect(
+      errorSpy.calls.allArgs()
+        .flat()
+        .join('\n'),
+    ).toContain(
+      'rejected before jasmine completed',
+    );
+  });
+
 });

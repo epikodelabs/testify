@@ -81,6 +81,8 @@ export class BrowserManager {
     process.on('SIGINT', sigintHandler);
     process.on('SIGTERM', sigtermHandler);
 
+    const pageErrors: Error[] = [];
+
     try {
       browser = await browserType.launch({
         headless: true,
@@ -101,7 +103,14 @@ export class BrowserManager {
         }
       });
 
-      page.on('pageerror', (error: Error) => logger.error(BrowserMessages.pageError(error.message)));
+      // Browser test failures are reported through the in-page Jasmine bridge.
+      // Keep Playwright's duplicate pageerror signal buffered so it cannot
+      // overwrite the reporter-owned live TEST RESULTS surface. If the browser
+      // session itself fails before Jasmine can finish, the buffered error is
+      // emitted from the catch path below.
+      page.on('pageerror', (error: Error) => {
+        pageErrors.push(error);
+      });
       page.on('requestfailed', (request: PlayWright.Request) => logger.error(BrowserMessages.requestFailed(request.url(), request.failure()?.errorText)));
 
       await page.goto(`http://localhost:${port}/index.html`, { waitUntil: 'networkidle', timeout: 120000 });
@@ -119,6 +128,17 @@ export class BrowserManager {
     } catch (error) {
       if (interrupted || error === interruptError) {
         throw new ExitCodeError(EXIT_CODES.SIGINT, 'Tests aborted by user');
+      }
+      const seenPageErrors = new Set<string>();
+      for (const pageError of pageErrors) {
+        const signature = pageError.stack ?? pageError.message;
+        if (seenPageErrors.has(signature)) continue;
+        seenPageErrors.add(signature);
+        logger.error(
+          BrowserMessages.pageError(
+            pageError.message,
+          ),
+        );
       }
       logger.error(BrowserMessages.testExecutionFailed(error));
       throw error;

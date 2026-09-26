@@ -153,6 +153,11 @@ function WebSocketEventForwarder() {
     window.addEventListener(
       'unhandledrejection',
       (event) => {
+        // Testify owns presentation of this failure. Prevent the browser's
+        // default console emission so Playwright does not print a duplicate
+        // diagnostic through the live TEST RESULTS surface.
+        event.preventDefault();
+
         self.recordAsyncFailure(
           'unhandledRejection',
           event.reason,

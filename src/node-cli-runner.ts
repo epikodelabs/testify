@@ -22,32 +22,42 @@ import { logger } from './logger';
 export async function runNodeCli(
   runner: NodeTestRunner,
 ): Promise<ExecutionResult> {
+  let capturedProcessFailure = false;
+
+  const recordProcessFailure = (
+    globalErrorType: 'unhandledRejection' | 'uncaughtException',
+    error: unknown,
+  ) => {
+    capturedProcessFailure = true;
+
+    runner.recordGlobalFailure({
+      globalErrorType,
+      message:
+        error instanceof Error
+          ? error.message || String(error)
+          : String(error),
+      ...(
+        error instanceof Error && error.stack
+          ? { stack: error.stack }
+          : {}
+      ),
+    });
+  };
+
   const processHost =
     new NodeProcessHost({
       onUnhandledRejection(error) {
-        logger.error(
-          NodeRunnerMessages
-            .unhandledRejection(
-              error instanceof Error
-                ? error.message
-                : String(error),
-            ),
+        recordProcessFailure(
+          'unhandledRejection',
+          error,
         );
-
-        process.exitCode =
-          EXIT_CODES.INTERNAL_ERROR;
       },
 
       onUncaughtException(error) {
-        logger.error(
-          NodeRunnerMessages
-            .uncaughtException(
-              error.message,
-            ),
+        recordProcessFailure(
+          'uncaughtException',
+          error,
         );
-
-        process.exitCode =
-          EXIT_CODES.INTERNAL_ERROR;
       },
 
       onSignal(signal) {
@@ -72,6 +82,11 @@ export async function runNodeCli(
   try {
     const result =
       await runner.start();
+
+    if (capturedProcessFailure) {
+      result.exitCode =
+        EXIT_CODES.INTERNAL_ERROR;
+    }
 
     applyExecutionExitCode(
       result,

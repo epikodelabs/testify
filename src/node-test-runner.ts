@@ -2,6 +2,7 @@ import type {
   TestSelector,
 } from './test-selection';
 import type {
+  ExecutionGlobalFailure,
   ExecutionResult,
 } from './execution-result';
 import type {
@@ -44,6 +45,9 @@ export class NodeTestRunner {
   private readonly reporter:
     jasmine.CustomReporter;
 
+  private externalGlobalFailures:
+    ExecutionGlobalFailure[] = [];
+
   private readonly artifacts:
     NodeArtifactHost;
 
@@ -81,6 +85,85 @@ export class NodeTestRunner {
     this.artifacts.generate();
   }
 
+  recordGlobalFailure(
+    failure: ExecutionGlobalFailure,
+  ): void {
+    const signature =
+      this.globalFailureSignature(
+        failure,
+      );
+
+    if (
+      !this.externalGlobalFailures.some(
+        (candidate) =>
+          this.globalFailureSignature(
+            candidate,
+          ) === signature,
+      )
+    ) {
+      this.externalGlobalFailures.push(
+        failure,
+      );
+    }
+
+    const reporter =
+      this.reporter as jasmine.CustomReporter & {
+        recordGlobalFailure?: (
+          failure: ExecutionGlobalFailure,
+        ) => void;
+      };
+
+    reporter.recordGlobalFailure?.(
+      failure,
+    );
+  }
+
+  private globalFailureSignature(
+    failure: ExecutionGlobalFailure,
+  ): string {
+    return [
+      String(
+        failure.globalErrorType ?? '',
+      ),
+      String(failure.message ?? ''),
+      String(failure.stack ?? ''),
+    ].join('\n@@\n');
+  }
+
+  private mergeExternalGlobalFailures(
+    result: ExecutionResult,
+  ): void {
+    const globalFailures =
+      Array.isArray(result.globalFailures)
+        ? [...result.globalFailures]
+        : [];
+
+    for (
+      const failure
+      of this.externalGlobalFailures
+    ) {
+      const signature =
+        this.globalFailureSignature(
+          failure,
+        );
+
+      if (
+        !globalFailures.some(
+          (candidate) =>
+            this.globalFailureSignature(
+              candidate,
+            ) === signature,
+        )
+      ) {
+        globalFailures.push(failure);
+      }
+    }
+
+    result.globalFailures =
+      globalFailures;
+    this.externalGlobalFailures = [];
+  }
+
   async start():
     Promise<ExecutionResult> {
     if (this.isRunning) {
@@ -104,21 +187,30 @@ export class NodeTestRunner {
       );
       logger.flushPreparation();
 
-      return await this.execution
-        .run(
-          this.reporter,
-          {
-            cwd: this.options.cwd,
-            env: this.options.env,
-            file: this.options.file,
-            suppressConsoleLogs:
-              this.options
-                .suppressConsoleLogs,
-            selector:
-              this.selector,
-          },
-        );
+      const result =
+        await this.execution
+          .run(
+            this.reporter,
+            {
+              cwd: this.options.cwd,
+              env: this.options.env,
+              file: this.options.file,
+              suppressConsoleLogs:
+                this.options
+                  .suppressConsoleLogs,
+              selector:
+                this.selector,
+            },
+          );
+
+      this.mergeExternalGlobalFailures(
+        result,
+      );
+
+      return result;
     } catch (error: unknown) {
+      this.externalGlobalFailures = [];
+
       const details =
         error instanceof Error
           ? error.stack ??

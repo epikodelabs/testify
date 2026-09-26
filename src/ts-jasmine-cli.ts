@@ -346,15 +346,41 @@ async function main() {
 
 
   const { jasmineEnv } = await loadJasmine();
+  const reporter = new AwaitableJasmineConsoleReporter();
+  let capturedProcessFailure = false;
 
-  process.on('unhandledRejection', (error) => {
-    logger.error(JasmineCLIMessages.unhandledRejection(safeStringify(error)));
-    process.exit(EXIT_CODES.INTERNAL_ERROR);
-  });
-  process.on('uncaughtException', (error) => {
-    logger.error(JasmineCLIMessages.uncaughtException(safeStringify(error)));
-    process.exit(EXIT_CODES.INTERNAL_ERROR);
-  });
+  const onUnhandledRejection = (error: unknown) => {
+    capturedProcessFailure = true;
+
+    const details =
+      error instanceof Error
+        ? {
+            message: error.message || String(error),
+            stack: error.stack,
+          }
+        : {
+            message: safeStringify(error),
+          };
+
+    reporter.recordGlobalFailure({
+      ...details,
+      globalErrorType: 'unhandledRejection',
+    });
+  };
+
+  const onUncaughtException = (error: Error) => {
+    capturedProcessFailure = true;
+
+    reporter.recordGlobalFailure({
+      message:
+        error.message || String(error),
+      stack: error.stack,
+      globalErrorType: 'uncaughtException',
+    });
+  };
+
+  process.on('unhandledRejection', onUnhandledRejection);
+  process.on('uncaughtException', onUncaughtException);
 
   jasmineEnv.configure({
     random: args.random,
@@ -362,7 +388,6 @@ async function main() {
     seed: args.seed,
   });
 
-  const reporter = new AwaitableJasmineConsoleReporter();
   jasmineEnv.addReporter(reporter);
 
   const unregisterRuntime =
@@ -376,11 +401,21 @@ async function main() {
     await jasmineEnv.execute();
     result = await reporter.complete;
   } finally {
+    process.off(
+      'unhandledRejection',
+      onUnhandledRejection,
+    );
+    process.off(
+      'uncaughtException',
+      onUncaughtException,
+    );
     await unregisterRuntime();
   }
 
   let exitCode: number;
-  if (result?.overallStatus === 'failed') {
+  if (capturedProcessFailure) {
+    exitCode = EXIT_CODES.INTERNAL_ERROR;
+  } else if (result?.overallStatus === 'failed') {
     exitCode = EXIT_CODES.TEST_FAILURES;
   } else if (result?.overallStatus === 'incomplete') {
     exitCode = EXIT_CODES.SUCCESS_WITH_PENDING;

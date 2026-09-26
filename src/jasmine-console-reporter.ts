@@ -31,6 +31,11 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   private failureCount = 0;
   private failedSpecs: jasmine.SpecResult[] = [];
   private pendingSpecs: jasmine.SpecResult[] = [];
+  private externalGlobalFailures: Array<{
+    message: string;
+    stack?: string;
+    globalErrorType?: string;
+  }> = [];
   private alwaysListPendingSpecs = true;
 
   private get separator(): string {
@@ -42,6 +47,97 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
 
   randomSeedReproductionCmd(seed: number | string) {
     return 'jasmine --random=true --seed=' + seed;
+  }
+
+  recordGlobalFailure(failure: {
+    message: string;
+    stack?: string;
+    globalErrorType?: string;
+  }): void {
+    const signature = [
+      failure.globalErrorType ?? '',
+      failure.message,
+      failure.stack ?? '',
+    ].join('\n@@\n');
+
+    const duplicate =
+      this.externalGlobalFailures.some(
+        (candidate) =>
+          [
+            candidate.globalErrorType ?? '',
+            candidate.message,
+            candidate.stack ?? '',
+          ].join('\n@@\n') === signature,
+      );
+
+    if (!duplicate) {
+      this.externalGlobalFailures.push(
+        failure,
+      );
+    }
+  }
+
+  private mergeExternalGlobalFailures(
+    result: jasmine.JasmineDoneInfo,
+  ): void {
+    if (this.externalGlobalFailures.length === 0) {
+      return;
+    }
+
+    const current =
+      Array.isArray(result.failedExpectations)
+        ? [...result.failedExpectations]
+        : [];
+    const normalizeMessage = (value: unknown) =>
+      String(value ?? '')
+        .replace(
+          /^Unhandled promise rejection:\s*/i,
+          '',
+        )
+        .replace(
+          /^Uncaught exception:\s*/i,
+          '',
+        )
+        .replace(
+          /^Error:\s*/i,
+          '',
+        )
+        .trim();
+
+    for (const failure of this.externalGlobalFailures) {
+      const message =
+        normalizeMessage(
+          failure.message,
+        );
+      const duplicate =
+        current.some((candidate: any) => {
+          const candidateMessage =
+            normalizeMessage(
+              candidate?.message ??
+                String(candidate),
+            );
+
+          return (
+            candidateMessage === message ||
+            (message.length > 0 &&
+              candidateMessage.includes(message)) ||
+            (candidateMessage.length > 0 &&
+              message.includes(candidateMessage))
+          );
+        });
+
+      if (!duplicate) {
+        current.push(
+          failure as any,
+        );
+      }
+    }
+
+    this.externalGlobalFailures = [];
+    (result as any).failedExpectations = current;
+    if (current.length > 0 && result.overallStatus !== 'failed') {
+      (result as any).overallStatus = 'failed';
+    }
   }
 
   /**
@@ -82,6 +178,10 @@ export class JasmineConsoleReporter implements jasmine.CustomReporter {
   }
 
   jasmineDone(result: jasmine.JasmineDoneInfo) {
+    this.mergeExternalGlobalFailures(
+      result,
+    );
+
     if (result.failedExpectations) {
       this.failureCount += result.failedExpectations.length;
     }

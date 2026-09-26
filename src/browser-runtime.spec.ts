@@ -52,6 +52,10 @@ describe('Browser runtime', () => {
     );
 
     expect(source).toContain(
+      'event.preventDefault();',
+    );
+
+    expect(source).toContain(
       'pendingSpecFailures: new Map()',
     );
 

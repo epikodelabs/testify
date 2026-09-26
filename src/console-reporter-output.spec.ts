@@ -277,3 +277,41 @@ describe('ConsoleReporter output sink', () => {
   });
 
 });
+// Process-level failures are captured outside Jasmine and merged only when the
+// run completes, so they cannot overwrite the live TEST RESULTS surface.
+describe('ConsoleReporter deferred process failures', () => {
+  it('renders an externally captured uncaught exception after the test run', () => {
+    const messages: string[] = [];
+    const reporter = new ConsoleReporter({
+      showColors: false,
+      print: (...args) => {
+        messages.push(args.join(''));
+      },
+    });
+
+    reporter.jasmineStarted({
+      totalTime: 0,
+    });
+
+    reporter.recordGlobalFailure({
+      globalErrorType: 'uncaughtException',
+      message: 'background callback exploded',
+      stack: 'Error: background callback exploded\n    at fixture.ts:10:3',
+    });
+
+    const result: any = {
+      overallStatus: 'passed',
+      failedExpectations: [],
+      totalTime: 0,
+    };
+
+    reporter.jasmineDone(result);
+
+    const rendered = messages.join('');
+    expect(result.overallStatus).toBe('failed');
+    expect(result.failedExpectations).toHaveSize(1);
+    expect(rendered).toContain('GLOBAL ERRORS');
+    expect(rendered).toContain('uncaughtException');
+    expect(rendered).toContain('background callback exploded');
+  });
+});

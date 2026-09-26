@@ -550,6 +550,10 @@ export function getBrowserRuntimeScript(
       window.addEventListener(
         'unhandledrejection',
         (event) => {
+          // The Testify reporter owns this diagnostic. Suppress the browser's
+          // default console emission so it is shown once with test results.
+          event.preventDefault();
+
           inBrowserReporter.recordAsyncFailure(
             'unhandledRejection',
             event.reason,

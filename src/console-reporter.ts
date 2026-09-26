@@ -83,6 +83,7 @@ export class ConsoleReporter {
   private failureCount: number;
   private failedSpecs: any[];
   private globalFailures: any[];
+  private externalGlobalFailures: any[];
   private pendingSpecs: any[];
   private skippedSpecs: any[];
   private startTime: number;
@@ -141,6 +142,7 @@ export class ConsoleReporter {
     this.failureCount = 0;
     this.failedSpecs = [];
     this.globalFailures = [];
+    this.externalGlobalFailures = [];
     this.pendingSpecs = [];
     this.skippedSpecs = [];
     this.startTime = 0;
@@ -158,6 +160,100 @@ export class ConsoleReporter {
 
   hasCompletedRun(): boolean {
     return this.runCompleted;
+  }
+
+
+  recordGlobalFailure(failure: {
+    message?: string;
+    stack?: string;
+    globalErrorType?: string;
+    [key: string]: unknown;
+  }): void {
+    const signature = this.globalFailureSignature(failure);
+    const duplicate =
+      this.externalGlobalFailures.some(
+        (candidate) =>
+          this.globalFailureSignature(candidate) === signature,
+      );
+
+    if (!duplicate) {
+      this.externalGlobalFailures.push(failure);
+    }
+  }
+
+  private globalFailureSignature(failure: any): string {
+    return [
+      failure?.globalErrorType ?? failure?.type ?? '',
+      this.normalizeGlobalFailureMessage(
+        failure?.message ?? String(failure),
+      ),
+      failure?.stack ?? '',
+    ].join('\n@@\n');
+  }
+
+  private normalizeGlobalFailureMessage(value: unknown): string {
+    return String(value ?? '')
+      .replace(
+        /^Unhandled promise rejection:\s*/i,
+        '',
+      )
+      .replace(
+        /^Uncaught exception:\s*/i,
+        '',
+      )
+      .replace(
+        /^Error:\s*/i,
+        '',
+      )
+      .trim();
+  }
+
+  private mergeExternalGlobalFailures(result?: any): any[] {
+    const current =
+      Array.isArray(result?.failedExpectations)
+        ? [...result.failedExpectations]
+        : [];
+
+    for (const failure of this.externalGlobalFailures) {
+      const message =
+        this.normalizeGlobalFailureMessage(
+          failure?.message ?? String(failure),
+        );
+
+      const duplicate =
+        current.some((candidate: any) => {
+          const candidateMessage =
+            this.normalizeGlobalFailureMessage(
+              candidate?.message ?? String(candidate),
+            );
+
+          return (
+            candidateMessage === message ||
+            (message.length > 0 &&
+              candidateMessage.includes(message)) ||
+            (candidateMessage.length > 0 &&
+              message.includes(candidateMessage))
+          );
+        });
+
+      if (!duplicate) {
+        current.push(failure);
+      }
+    }
+
+    this.externalGlobalFailures = [];
+
+    if (result) {
+      result.failedExpectations = current;
+      if (
+        current.length > 0 &&
+        result.overallStatus !== 'failed'
+      ) {
+        result.overallStatus = 'failed';
+      }
+    }
+
+    return current;
   }
 
   // Detect if terminal supports colors
@@ -533,11 +629,9 @@ export class ConsoleReporter {
 
   jasmineDone(result?: any) {
     const globalFailures =
-      Array.isArray(
-        result?.failedExpectations,
-      )
-        ? result.failedExpectations
-        : [];
+      this.mergeExternalGlobalFailures(
+        result,
+      );
 
     this.globalFailures =
       globalFailures;

@@ -31,6 +31,10 @@ describe('Browser WebSocket runtime', () => {
     );
 
     expect(source).toContain(
+      'event.preventDefault();',
+    );
+
+    expect(source).toContain(
       "window.addEventListener(\n      'error'",
     );
 
