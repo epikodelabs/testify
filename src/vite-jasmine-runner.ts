@@ -573,8 +573,9 @@ export class ViteJasmineRunner extends EventEmitter {
         onBrowserClose,
         { exitOnClose: false },
       );
-    } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    } catch {
+      // BrowserManager owns launch diagnostics. The runner owns propagation and
+      // cleanup only, otherwise the same Playwright failure is rendered twice.
       await this.cleanup();
       return EXIT_CODES.INTERNAL_ERROR;
     }
@@ -751,8 +752,9 @@ export class ViteJasmineRunner extends EventEmitter {
         this.config.port!,
         onBrowserClose,
       );
-    } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    } catch {
+      // BrowserManager owns launch diagnostics. The runner owns propagation and
+      // cleanup only, otherwise the same Playwright failure is rendered twice.
       await this.cleanup();
       return EXIT_CODES.INTERNAL_ERROR;
     }
