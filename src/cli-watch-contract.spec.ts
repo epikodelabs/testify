@@ -146,11 +146,23 @@ describe('Testify CLI watch contract', () => {
     expect(runnerSource).toContain(
       "logger.preparationStep('READY', RunnerMessages.pressCtrlCToStop()",
     );
+    expect(runnerSource).toContain(
+      "{ label: 'PORT', message: 'Acquire test server port' }",
+    );
     expect(serverSource).toContain(
       "logger.preparationStep('PORT', HttpServerMessages.portBusyRetrying(port))",
     );
     expect(serverSource).toContain(
       "logger.preparationStep('PORT', HttpServerMessages.portReclaimed(port))",
+    );
+    expect(serverSource).toContain(
+      "logger.preparationStep('PORT', HttpServerMessages.portAcquired(port), true)",
+    );
+    expect(serverSource).toContain(
+      'HttpServerMessages.failedToReleasePort(port)',
+    );
+    expect(serverSource).not.toContain(
+      'err.message, stderr',
     );
     expect(websocketSource).toContain(
       "logger.preparationStep('HMR', WebSocketMessages.hmrEnabled())",

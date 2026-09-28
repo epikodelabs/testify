@@ -77,6 +77,7 @@ export class ViteJasmineRunner extends EventEmitter {
       return [
         ...common,
         { label: 'PAGE', message: 'Prepare HMR test page' },
+        { label: 'PORT', message: 'Acquire test server port' },
         { label: 'SERVER', message: 'Start test server' },
         { label: 'HMR', message: 'Start HMR watcher' },
         { label: 'WS', message: 'Prepare real-time reporting' },
@@ -88,6 +89,7 @@ export class ViteJasmineRunner extends EventEmitter {
     return [
       ...common,
       { label: 'PAGE', message: 'Prepare browser test page' },
+      { label: 'PORT', message: 'Acquire test server port' },
       { label: 'SERVER', message: 'Start test server' },
       { label: 'EXECUTE', message: `Start ${browser} test session` },
     ];

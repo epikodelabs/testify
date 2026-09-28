@@ -287,6 +287,7 @@ export class HttpServerManager {
     return new Promise((resolve, reject) => {
       const tryListen = (attempt = 1) => {
         this.server!.listen(port, () => {
+          logger.preparationStep('PORT', HttpServerMessages.portAcquired(port), true);
           resolve(this.server!);
         });
 
@@ -304,7 +305,7 @@ export class HttpServerManager {
                 // ✅ Fixed: pass empty options object as second argument
                 exec(killCommand, {}, (err, stdout, stderr) => {
                   if (err) {
-                    logger.error(HttpServerMessages.failedToKillProcess(port, err.message, stderr));
+                    logger.error(HttpServerMessages.failedToReleasePort(port));
                   } else {
                     logger.preparationStep('PORT', HttpServerMessages.portReclaimed(port));
                   }

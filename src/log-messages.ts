@@ -290,8 +290,11 @@ export const HttpServerMessages = {
   portBusyRetrying: (port: number) =>
     `%hourglass% Port ${port} is busy. Waiting 3s before reclaiming it...`,
 
-  failedToKillProcess: (port: number, message: string, stderr: string) =>
-    `%error% Failed to kill process on port ${port}: ${message}\n${stderr}`,
+  portAcquired: (port: number) =>
+    `%checked% Port ${port} acquired.`,
+
+  failedToReleasePort: (port: number) =>
+    `%error% Unable to release port ${port}.`,
 
   portReclaimed: (port: number) =>
     `%checked% Port ${port} reclaimed.`,
