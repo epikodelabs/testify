@@ -455,34 +455,35 @@ export class HmrManager extends EventEmitter {
     // the first library-source change has no known dependent spec and is
     // incorrectly treated as a rebuild with nothing to execute.
     await this.buildDependencyGraph(this.allFiles);
-    this.watcher = watch(watchTargets, {
+    const watcher = watch(watchTargets, {
       ignored: /(^|[\/\\])\../,
       persistent: true,
       ignoreInitial: true
     });
+    this.watcher = watcher;
 
-    this.watcher.on('change', filePath => {
+    watcher.on('change', filePath => {
       filePath = norm(filePath);
       if (this.matchesFilter(filePath)) this.queueRebuild(filePath, 'change');
     });
 
-    this.watcher.on('add', filePath => {
+    watcher.on('add', filePath => {
       filePath = norm(filePath);
       if (this.matchesFilter(filePath)) this.handleFileAdd(filePath);
     });
 
-    this.watcher.on('unlink', filePath => {
+    watcher.on('unlink', filePath => {
       filePath = norm(filePath);
       if (this.matchesFilter(filePath)) this.handleFileRemove(filePath);
     });
 
-    this.watcher.on('addDir', dirPath => this.handleDirectoryAdd(norm(dirPath)));
-    this.watcher.on('unlinkDir', dirPath => this.handleDirectoryRemove(norm(dirPath)));
+    watcher.on('addDir', dirPath => this.handleDirectoryAdd(norm(dirPath)));
+    watcher.on('unlinkDir', dirPath => this.handleDirectoryRemove(norm(dirPath)));
 
     // Hold start() open until the initial scan finishes so the watcher's
     // summary lands inside the preparation card instead of after it.
     await new Promise<void>((resolveReady) => {
-      this.watcher.on('ready', async () => {
+      watcher.on('ready', async () => {
         logger.preparationStep('HMR', HmrMessages.watchingFiles(this.allFiles.length, this.rebuildMode, this.sourceChangeStrategy));
         this.emit('hmr:ready');
         resolveReady();

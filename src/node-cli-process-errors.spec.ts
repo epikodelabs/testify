@@ -40,6 +40,7 @@ describe('Node CLI deferred process errors', () => {
           new Error(
             'background callback exploded',
           ),
+          'uncaughtException',
         );
 
         return {

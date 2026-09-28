@@ -98,8 +98,10 @@ describe('ViteConfigBuilder Node resolution', () => {
       ),
     ).toBeFalse();
 
+    const aliases =
+      config.resolve?.alias as Record<string, string>;
     expect(
-      config.resolve?.alias?.['@epikodelabs/streamix'],
+      aliases['@epikodelabs/streamix'],
     ).toContain(
       'projects/libraries/streamix/src/lib/index.ts',
     );
