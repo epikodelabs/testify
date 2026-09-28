@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.56 - 2026-09-28
+
+### Fixed
+
+- Browser reports now show Jasmine's actual randomized order and seed.
+- Static browser pages consistently apply configured Jasmine randomization, seed, and stop-on-failure settings.
+- Final summaries identify specs that were disabled, incomplete, skipped, or not run instead of presenting an incomplete run as fully passed.
+- Narrow terminals render the preparation section once after wrapping, preventing duplicate live-panel frames.
+- Browser catalog counts no longer treat empty suites as executable specs.
+
 ## 1.0.54 - 2026-09-24
 
 ### Fixed
