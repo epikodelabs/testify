@@ -73,7 +73,9 @@ export class WebSocketManager extends EventEmitter {
         case 'jasmineStarted':
           this.failedSpecsCount = 0;
           this.pendingSpecsCount = 0;
-          this.reporter?.jasmineStarted(message);
+          // Browser reporters wrap Jasmine's suite info in `data`; passing
+          // the transport envelope hides `order.random` and `order.seed`.
+          this.reporter?.jasmineStarted(message.data ?? message);
           break;
         
         case 'suiteStarted':

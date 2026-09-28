@@ -313,7 +313,10 @@ function WebSocketEventForwarder() {
     const allSpecs = [];
     function collect(suite) {
       suite.children.forEach((child) => {
-        if (child.children && child.children.length > 0) {
+        // Jasmine suites always own a children array, including empty
+        // suites. A spec has no such array. Checking array length incorrectly
+        // treats an empty suite as a spec, inflating the advertised count.
+        if (Array.isArray(child.children)) {
           collect(child);
         } else {
           allSpecs.push(child);
@@ -331,7 +334,7 @@ function WebSocketEventForwarder() {
     function collect(suite) {
       allSuites.push(suite);
       suite.children.forEach((child) => {
-        if (child.children && child.children.length > 0) {
+        if (Array.isArray(child.children)) {
           collect(child);
         }
       });

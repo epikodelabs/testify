@@ -81,6 +81,15 @@ export class BrowserPageBuilder {
           this.config.jasmineConfig?.env
             ?.random ?? false,
       });
+    const jasmineEnv =
+      this.config.jasmineConfig?.env ?? {};
+    const staticJasmineConfiguration = JSON.stringify({
+      random: jasmineEnv.random ?? false,
+      seed: this.getInitialSeed(),
+      stopOnSpecFailure:
+        jasmineEnv.stopSpecOnExpectationFailure ?? false,
+      autoCleanClosures: false,
+    });
 
     return createBrowserPage({
       title:
@@ -101,6 +110,8 @@ export class BrowserPageBuilder {
         ),
         `<script type="module">
 ${websocketReporter}
+
+jasmine.getEnv().configure(${staticJasmineConfiguration});
 
 const forwarder =
   new WebSocketEventForwarder();

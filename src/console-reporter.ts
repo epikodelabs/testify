@@ -50,7 +50,7 @@ export interface TestSpec {
   id: string;
   description: string;
   fullName: string;
-  status: 'passed' | 'failed' | 'pending' | 'incomplete' | 'skipped' | 'running';
+  status: 'passed' | 'failed' | 'pending' | 'incomplete' | 'skipped' | 'disabled' | 'running';
   duration?: number;
   failedExpectations?: any[];
   pendingReason?: string;
@@ -68,7 +68,7 @@ export interface TestSuite {
   status?: TestStatus;
 }
 
-export type TestStatus = 'passed' | 'failed' | 'pending' | 'skipped' | 'running' | 'incomplete';
+export type TestStatus = 'passed' | 'failed' | 'pending' | 'skipped' | 'disabled' | 'running' | 'incomplete';
 
 export interface ConsoleReporterOptions {
   showColors?: boolean;
@@ -1595,7 +1595,12 @@ export class ConsoleReporter {
     let pending = 0;
     let skipped = 0;
     let incomplete = 0;
+    let disabled = 0;
     let notRun = 0;
+    const uncompletedSpecs: Array<{
+      fullName: string;
+      status: string;
+    }> = [];
 
     // Iterate through all specs to get accurate counts
     for (const [id, spec] of this.specById) {
@@ -1611,13 +1616,24 @@ export class ConsoleReporter {
           break;
         case 'skipped':
           skipped++;
+          uncompletedSpecs.push({ fullName: spec.fullName, status: 'skipped' });
           break;
         case 'incomplete':
           incomplete++;
+          uncompletedSpecs.push({ fullName: spec.fullName, status: 'incomplete' });
+          break;
+        case 'running':
+          incomplete++;
+          uncompletedSpecs.push({ fullName: spec.fullName, status: 'incomplete' });
+          break;
+        case 'disabled':
+          disabled++;
+          uncompletedSpecs.push({ fullName: spec.fullName, status: 'disabled' });
           break;
         default:
           // Specs that never got a status are "not run"
           notRun++;
+          uncompletedSpecs.push({ fullName: spec.fullName, status: 'not run' });
           break;
       }
     }
@@ -1668,6 +1684,9 @@ export class ConsoleReporter {
     if (skipped > 0)
       parts.push(this.colored('gray', `${SYMBOLS.skip} Skipped: ${skipped}`));
 
+    if (disabled > 0)
+      parts.push(this.colored('gray', `${SYMBOLS.skip} Disabled: ${disabled}`));
+
     if (notRun > 0)
       parts.push(this.colored('gray', `${SYMBOLS.not_run} Not Run: ${notRun}`));
 
@@ -1675,6 +1694,10 @@ export class ConsoleReporter {
       `${passed} passed`,
       ...(failed > 0 ? [`${failed} failed`] : []),
       ...(pending > 0 ? [`${pending} skipped`] : []),
+      ...(incomplete > 0 ? [`${incomplete} incomplete`] : []),
+      ...(skipped > 0 ? [`${skipped} skipped`] : []),
+      ...(disabled > 0 ? [`${disabled} disabled`] : []),
+      ...(notRun > 0 ? [`${notRun} not run`] : []),
       `finished in ${duration}`,
     ].join(` ${this.separator} `);
 
@@ -1682,17 +1705,35 @@ export class ConsoleReporter {
       ...(statsParts.length > 0 ? [statsParts.join(`  ${this.separator}  `)] : []),
       this.colored('gray', completionRecap),
       ...(slowestLine ? [this.colored('gray', slowestLine)] : []),
+      ...uncompletedSpecs.map((spec) =>
+        this.colored(
+          'brightYellow',
+          `[${spec.status}] ${spec.fullName}`,
+        ),
+      ),
     ];
+    const hasUncompletedSpecs =
+      incomplete > 0 ||
+      skipped > 0 ||
+      disabled > 0 ||
+      notRun > 0;
+    const summaryTone =
+      failed > 0
+        ? 'red'
+        : pending > 0 || hasUncompletedSpecs
+          ? 'yellow'
+          : 'green';
+
     if (this.appendResultSection(
       'TEST SUMMARY',
       summaryLines,
-      failed > 0 ? 'red' : pending > 0 ? 'yellow' : 'green',
+      summaryTone,
     )) return;
 
     this.print(renderTerminalPanel(
       'TEST SUMMARY',
       summaryLines,
-      failed > 0 ? 'red' : pending > 0 ? 'yellow' : 'green',
+      summaryTone,
       this.showColors,
     ) + '\n');
   }

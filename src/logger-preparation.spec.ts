@@ -2,6 +2,26 @@ import { Logger } from './logger';
 import { ANSI_FULL_REGEX } from './ansi-constants';
 
 describe('Logger preparation pipeline', () => {
+  it('defers preparation rendering in narrow terminals that would wrap live rows', () => {
+    const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+    const originalColumns = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'columns', { value: 50, configurable: true });
+
+    try {
+      const logger = new Logger();
+      logger.preparationStart('');
+
+      expect((logger as any).preparationView).toBeNull();
+    } finally {
+      if (originalIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalIsTTY);
+      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+      if (originalColumns) Object.defineProperty(process.stdout, 'columns', originalColumns);
+      else delete (process.stdout as { columns?: number }).columns;
+    }
+  });
+
   it('renders one runner-independent preparation lifecycle without owning stdout', () => {
     // This is deliberately a state-only logger. Testify's outer reporter owns
     // stdout while this spec runs, so a logger contract test must never create

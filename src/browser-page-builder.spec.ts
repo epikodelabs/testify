@@ -35,6 +35,28 @@ describe('BrowserPageBuilder', () => {
     expect(html).toContain(
       'globalThis.global ??= globalThis;',
     );
+    expect(html).toContain(
+      'jasmine.getEnv().configure({"random":false,"seed":0,"stopOnSpecFailure":false,"autoCleanClosures":false})',
+    );
+  });
+
+  it('configures randomized static browser runs before Jasmine starts', () => {
+    const builder = new BrowserPageBuilder({
+      ...config,
+      jasmineConfig: {
+        env: {
+          random: true,
+          seed: 42,
+          stopSpecOnExpectationFailure: false,
+        },
+      },
+    });
+
+    const html = builder.buildStatic(['forms.spec.mjs']);
+
+    expect(html).toContain(
+      'jasmine.getEnv().configure({"random":true,"seed":42,"stopOnSpecFailure":false,"autoCleanClosures":false})',
+    );
   });
 
   it('uses the shared BrowserPage renderer for HMR mode', () => {

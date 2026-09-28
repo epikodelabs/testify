@@ -1,4 +1,4 @@
-import { supportsColor } from './ansi-constants';
+import { getMaxWidth, supportsColor } from './ansi-constants';
 import { LOG_MESSAGES, LogMessageTemplate } from './messages';
 import { replacePlaceholders } from './symbols';
 import {
@@ -200,7 +200,16 @@ export class Logger {
     this.preparationLines ??= [];
     this.preparationItems ??= [];
     this.preparationDiagnostics ??= [];
-    if (this.outputEnabled && !this.preparationView && supportsColor() && process.stdout.isTTY) {
+    // Cursor-based replacement cannot reliably account for terminal-wrapped
+    // rows. Keep narrow terminals append-only and print their complete card
+    // once at the execution boundary instead of leaving duplicate frames.
+    if (
+      this.outputEnabled &&
+      !this.preparationView &&
+      supportsColor() &&
+      process.stdout.isTTY &&
+      getMaxWidth() >= 80
+    ) {
       this.preparationView = startLiveTerminalView(this.renderPreparationPanel());
     }
     return true;

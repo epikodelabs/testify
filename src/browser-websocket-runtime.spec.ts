@@ -50,4 +50,18 @@ describe('Browser WebSocket runtime', () => {
       'self.collectRunLevelFailures(result)',
     );
   });
+
+  it('distinguishes empty suites from specs when building the catalog', () => {
+    const source = getBrowserWebSocketReporterScript({
+      initialSeed: 0,
+      initialRandom: false,
+    });
+
+    expect(source).toContain(
+      'if (Array.isArray(child.children))',
+    );
+    expect(source).not.toContain(
+      'child.children && child.children.length > 0',
+    );
+  });
 });

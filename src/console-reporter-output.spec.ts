@@ -226,6 +226,31 @@ describe('ConsoleReporter output sink', () => {
     expect(rendered.toLowerCase()).not.toContain('pending');
   });
 
+  it('names and classifies a Jasmine-disabled spec in the final summary', () => {
+    const messages: string[] = [];
+    const reporter = new ConsoleReporter({
+      showColors: false,
+      print: (...args) => messages.push(args.join('')),
+    });
+
+    reporter.jasmineStarted({ totalTime: 0 });
+    reporter.specStarted({
+      id: 'disabled-spec',
+      description: 'is disabled',
+      fullName: 'focused suite is disabled',
+    });
+    reporter.specDone({
+      id: 'disabled-spec',
+      status: 'disabled',
+      fullName: 'focused suite is disabled',
+    });
+    reporter.jasmineDone({ overallStatus: 'incomplete', totalTime: 1 });
+
+    const rendered = messages.join('');
+    expect(rendered).toContain('1 disabled');
+    expect(rendered).toContain('[disabled] focused suite is disabled');
+  });
+
   it('keeps execution dots on the live result row at the panel body width', () => {
     const originalColumns = process.stdout.columns;
     const originalForceColor = process.env.FORCE_COLOR;
