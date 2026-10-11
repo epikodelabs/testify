@@ -448,6 +448,11 @@ export class CLIHandler {
       return exitCode;
     } catch (error) {
       logger.error(CLIMessages.failedToStartTestRunner(error));
+      // While the preparation card is open, logger.error buffers into it
+      // instead of printing. A failed start never reaches the execution
+      // boundary that flushes the card, so flush here or a redirected run
+      // exits with nothing visible but its exit code.
+      logger.flushPreparation();
       return getExitCode(error);
     }
   }
