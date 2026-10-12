@@ -1,8 +1,14 @@
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { logger } from './logger';
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import type * as PlayWright from 'playwright';
 import { EXIT_CODES, ExitCodeError } from './exit-codes';
 import { BrowserMessages } from './log-messages';
+
+const runtimeRequire = createRequire(import.meta.url);
 
 export class BrowserManager {
   private playwright: typeof PlayWright | null = null;
@@ -22,16 +28,32 @@ export class BrowserManager {
   private resolveBrowserType(
     playwright: typeof PlayWright,
     name: string
-  ): { type: PlayWright.BrowserType; normalized: string } | null {
+  ): {
+    type: PlayWright.BrowserType;
+    normalized: string;
+    installName: 'chromium' | 'firefox' | 'webkit';
+  } | null {
     switch (name.toLowerCase()) {
       case 'chromium':
       case 'chrome':
-        return { type: playwright.chromium, normalized: 'chrome' };
+        return {
+          type: playwright.chromium,
+          normalized: 'chrome',
+          installName: 'chromium',
+        };
       case 'firefox':
-        return { type: playwright.firefox, normalized: 'firefox' };
+        return {
+          type: playwright.firefox,
+          normalized: 'firefox',
+          installName: 'firefox',
+        };
       case 'webkit':
       case 'safari':
-        return { type: playwright.webkit, normalized: 'safari' };
+        return {
+          type: playwright.webkit,
+          normalized: 'safari',
+          installName: 'webkit',
+        };
       default:
         return null;
     }
@@ -45,6 +67,7 @@ export class BrowserManager {
         logger.warn(BrowserMessages.unknownBrowserFallback(browserName));
         return null;
       }
+      await this.ensureBrowserInstalled(resolved.type, resolved.installName);
       return resolved.type;
     } catch (err: any) {
       if (err.code === 'MODULE_NOT_FOUND') {
@@ -54,6 +77,35 @@ export class BrowserManager {
         logger.error(BrowserMessages.browserExecutionFailed(browserName, err.message));
       }
       return null;
+    }
+  }
+
+  /** Install only the browser revision required by this local Playwright copy. */
+  private async ensureBrowserInstalled(
+    browserType: PlayWright.BrowserType,
+    browserName: 'chromium' | 'firefox' | 'webkit',
+  ): Promise<void> {
+    const executablePath = browserType.executablePath?.();
+    if (!executablePath || existsSync(executablePath)) return;
+
+    const playwrightPackage = runtimeRequire.resolve('playwright/package.json');
+    const cliPath = join(dirname(playwrightPackage), 'cli.js');
+
+    await new Promise<void>((resolve, reject) => {
+      const install = spawn(
+        process.execPath,
+        [cliPath, 'install', browserName],
+        { stdio: 'inherit' },
+      );
+      install.once('error', reject);
+      install.once('exit', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Playwright browser installation exited with code ${code ?? 'unknown'}.`));
+      });
+    });
+
+    if (!existsSync(executablePath)) {
+      throw new Error(`Playwright did not install ${browserName} at ${executablePath}.`);
     }
   }
 
@@ -181,9 +233,18 @@ export class BrowserManager {
 
       if (!resolved) {
         logger.warn(BrowserMessages.unknownBrowserFallbackToChrome(browserName));
-        resolved = { type: playwright.chromium, normalized: 'chrome' };
+        resolved = {
+          type: playwright.chromium,
+          normalized: 'chrome',
+          installName: 'chromium',
+        };
         browserName = 'chrome';
       }
+
+      await this.ensureBrowserInstalled(
+        resolved.type,
+        resolved.installName,
+      );
 
       browser = await resolved.type.launch({
         headless: this.config.headless,

@@ -32,6 +32,7 @@ export class ViteJasmineRunner extends EventEmitter {
   private viteConfigBuilder: ViteConfigBuilder;
   private htmlGenerator: HtmlGenerator;
   private browserManager: BrowserManager;
+  private preparedBrowserType: import('playwright').BrowserType | null = null;
   private httpServerManager: HttpServerManager;
   private nodeTestRunner: NodeTestRunner;
   private webSocketManager: WebSocketManager | null = null;
@@ -77,6 +78,7 @@ export class ViteJasmineRunner extends EventEmitter {
       return [
         ...common,
         { label: 'PAGE', message: 'Prepare HMR test page' },
+        { label: 'BROWSER', message: `Ensure ${browser} is installed` },
         { label: 'PORT', message: 'Acquire test server port' },
         { label: 'SERVER', message: 'Start test server' },
         { label: 'HMR', message: 'Start HMR watcher' },
@@ -89,6 +91,7 @@ export class ViteJasmineRunner extends EventEmitter {
     return [
       ...common,
       { label: 'PAGE', message: 'Prepare browser test page' },
+      { label: 'BROWSER', message: `Ensure ${browser} is installed` },
       { label: 'PORT', message: 'Acquire test server port' },
       { label: 'SERVER', message: 'Start test server' },
       { label: 'EXECUTE', message: `Start ${browser} test session` },
@@ -126,6 +129,17 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       fs.rmSync(path.join(outDir, entry), { recursive: true, force: true });
+    }
+  }
+
+  private async prepareBrowser(): Promise<void> {
+    if (this.config.browser === 'node') return;
+
+    const browser = this.config.browser ?? 'chrome';
+    logger.preparationStep('BROWSER', `Ensuring ${browser} is installed...`);
+    this.preparedBrowserType = await this.browserManager.checkBrowser(browser);
+    if (this.preparedBrowserType) {
+      logger.preparationComplete('BROWSER');
     }
   }
   
@@ -483,6 +497,7 @@ export class ViteJasmineRunner extends EventEmitter {
         logger.flushPreparation();
         return EXIT_CODES.SUCCESS;
       }
+      await this.prepareBrowser();
     } catch (error) {
       logger.error(RunnerMessages.buildFailed(error));
       throw error instanceof ExitCodeError ? error : new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, String(error));
@@ -513,6 +528,7 @@ export class ViteJasmineRunner extends EventEmitter {
       logger.flushPreparation();
       return EXIT_CODES.SUCCESS;
     }
+    await this.prepareBrowser();
     return await this.runWatchMode();
   }
 
@@ -610,7 +626,7 @@ export class ViteJasmineRunner extends EventEmitter {
       testsCompletedResolve?.();
     });
 
-    const browserType = await this.browserManager.checkBrowser(this.config.browser!);
+    const browserType = this.preparedBrowserType ?? await this.browserManager.checkBrowser(this.config.browser!);
 
     if (!browserType) {
       logger.warn(RunnerMessages.headlessBrowserUnavailable());

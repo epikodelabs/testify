@@ -1,10 +1,10 @@
 # Changelog
 
-## 1.0.57 - 2026-10-11
+## 1.0.57 - 2026-10-12
 
-### Fixed
+### Improved
 
-- Failed runs now print their buffered preparation card and error details before exiting, so piped output is no longer just an exit code
+- Testify now checks the selected Playwright browser during preparation and installs its required Chromium, Firefox, or WebKit revision automatically when it is missing.
 
 
 ## 1.0.56 - 2026-09-28

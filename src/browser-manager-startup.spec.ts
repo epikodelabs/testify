@@ -18,6 +18,7 @@ describe('BrowserManager headed startup', () => {
     spyOn(logger, 'println');
     spyOn(logger, 'error');
     const manager = createManager();
+    (manager as any).ensureBrowserInstalled = async () => {};
     const failure = new Error(
       'browser launch failed',
     );
@@ -47,6 +48,7 @@ describe('BrowserManager headed startup', () => {
     spyOn(logger, 'println');
     spyOn(logger, 'error');
     const manager = createManager();
+    (manager as any).ensureBrowserInstalled = async () => {};
     const failure = new Error(
       'navigation failed',
     );
@@ -87,6 +89,54 @@ describe('BrowserManager headed startup', () => {
     expect(
       (manager as any).currentPage,
     ).toBeNull();
+  });
+
+  it('installs the managed Chromium revision before opening the chrome alias', async () => {
+    spyOn(logger, 'println');
+    spyOn(logger, 'error');
+    const manager = createManager();
+    const install = spyOn<any>(manager, 'ensureBrowserInstalled').and.resolveTo();
+    const browser = {
+      async newPage() {
+        return { async goto() {}, on() {} };
+      },
+    };
+
+    (manager as any).getPlaywright = async () => ({
+      chromium: { async launch() { return browser; } },
+    });
+
+    await manager.openBrowser(8888);
+
+    expect(install).toHaveBeenCalledWith(
+      (await (manager as any).getPlaywright()).chromium,
+      'chromium',
+    );
+  });
+
+  it('selects the matching Playwright installer target for every browser engine', () => {
+    const manager = createManager();
+    const playwright = {
+      chromium: {},
+      firefox: {},
+      webkit: {},
+    } as any;
+
+    expect(
+      (manager as any).resolveBrowserType(playwright, 'chromium').installName,
+    ).toBe('chromium');
+    expect(
+      (manager as any).resolveBrowserType(playwright, 'chrome').installName,
+    ).toBe('chromium');
+    expect(
+      (manager as any).resolveBrowserType(playwright, 'firefox').installName,
+    ).toBe('firefox');
+    expect(
+      (manager as any).resolveBrowserType(playwright, 'webkit').installName,
+    ).toBe('webkit');
+    expect(
+      (manager as any).resolveBrowserType(playwright, 'safari').installName,
+    ).toBe('webkit');
   });
 
   it('buffers page errors during a completed headless run instead of logging over live results', async () => {

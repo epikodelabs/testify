@@ -30,6 +30,12 @@ describe('Browser runtime', () => {
     );
   });
 
+  it('embeds CatalogQuery for RunnerSession catalog helpers', () => {
+    expect(source).toContain(
+      'class CatalogQuery',
+    );
+  });
+
   it('does not expose a separate runner facade', () => {
     expect(source).not.toContain(
       'globalThis.runner =',

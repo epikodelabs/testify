@@ -3,6 +3,12 @@ import type {
   TestCatalogSpec,
   TestCatalogSuite,
 } from './test-catalog';
+import {
+  CatalogQuery,
+} from './catalog-query-builder';
+import {
+  embedClassSource,
+} from './embedded-source';
 
 export interface TestListRow {
   suiteId: string;
@@ -113,5 +119,11 @@ export function getEmbeddedCatalogQuerySource():
     orderCatalogRows,
   ]
     .map((fn) => fn.toString())
+    .concat(
+      embedClassSource(
+        'CatalogQuery',
+        CatalogQuery,
+      ),
+    )
     .join('\n\n');
 }
