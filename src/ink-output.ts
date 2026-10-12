@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { Box, renderToString, Text } from 'ink';
 import { getMaxWidth, supportsColor } from './ansi-constants';
-import { visibleWidth } from './utils';
+import { visibleWidth, wrapLine } from './utils';
 
 const ANSI_ESCAPE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
 
@@ -94,6 +94,36 @@ export function panelContentWidth(): number {
   return Math.max(1, getMaxWidth() - 11);
 }
 
+/**
+ * Column where a panel row's message starts, so wrapped continuations align
+ * under it instead of hugging the border. Step rows look like
+ * `×  ERROR        message`; already-indented rows keep their own indent;
+ * anything else falls back to a small fixed gutter.
+ */
+function rowContinuationIndent(line: string): number {
+  const clean = line.replace(ANSI_ESCAPE, '');
+  const prefix = /^\S+\s{2,}\S{1,12}\s+/.exec(clean);
+  if (prefix) return prefix[0].length;
+  const leading = /^ +/.exec(clean);
+  return leading ? leading[0].length : 3;
+}
+
+/**
+ * Pre-wrap panel rows to the renderer's content budget. Ink would otherwise
+ * wrap overflowing rows at arbitrary token boundaries with no hanging indent,
+ * which shreds multi-line build diagnostics (nested error frames included)
+ * and desynchronizes row-based live redraws. The plain renderer wraps at its
+ * own inner width, which is wider than Ink's (it has no padding cells).
+ */
+function wrapPanelRows(lines: readonly string[], budget: number): string[] {
+  const contentWidth = Math.max(1, budget);
+  return lines.flatMap((line) =>
+    line === PANEL_RULE
+      ? [line]
+      : wrapLine(line, contentWidth, rowContinuationIndent(line), 'word'),
+  );
+}
+
 function renderPlainPanel(
   title: string,
   lines: readonly string[],
@@ -112,18 +142,14 @@ function renderPlainPanel(
     : Math.min(Math.max(contentWidth, visibleWidth(title)), maxWidth - 4);
   const border = `+${'-'.repeat(innerWidth + 2)}+`;
   const rule = `+${'-'.repeat(innerWidth + 2)}+`;
-  const row = (value: string) => {
-    const clean = value.replace(ANSI_ESCAPE, '');
-    const clipped = visibleWidth(clean) > innerWidth
-      ? `${clean.slice(0, Math.max(0, innerWidth - 3))}...`
-      : clean;
-    return `| ${clipped}${' '.repeat(Math.max(0, innerWidth - visibleWidth(clipped)))} |`;
-  };
+  const row = (value: string) =>
+    `| ${value}${' '.repeat(Math.max(0, innerWidth - visibleWidth(value)))} |`;
 
   return [
     border,
     row(title),
-    ...lines.map((line) => line === PANEL_RULE ? rule : row(line)),
+    ...wrapPanelRows(lines, innerWidth)
+      .map((line) => (line === PANEL_RULE ? rule : row(line.replace(ANSI_ESCAPE, '')))),
     border,
   ].join('\n');
 }
@@ -152,7 +178,7 @@ export function renderTerminalPanel(
         ...(fullWidth ? { width: getMaxWidth() - 7 } : {}),
       },
       createElement(Text, { bold: true, color: tone }, title),
-      ...lines.map((line, index) =>
+      ...wrapPanelRows(lines, panelContentWidth()).map((line, index) =>
         createElement(Text, { key: index }, line),
       ),
     ),

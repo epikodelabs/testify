@@ -34,6 +34,12 @@ const BROWSER_UNSUPPORTED_GLOBAL_PATTERNS = [
   /\b__filename\b/,
 ];
 
+/**
+ * Upper bound for the cycle-refinement passes that make compatibility
+ * verdicts independent of concurrent file walk order. A false verdict can
+ * move at most one import edge per pass, so one pass per visited file is a
+ * safe bound for every finite dependency graph.
+ */
 export class FileDiscoveryService {
   constructor(private config: ViteJasmineConfig) {}
 
@@ -156,6 +162,9 @@ export class FileDiscoveryService {
       }
 
       if (stack.has(normalizedPath)) {
+        // Optimistic: a cycle member's verdict is assumed from its caller.
+        // The refinement passes below correct any wrong assumption, keeping
+        // the final verdicts independent of file walk order.
         return true;
       }
 
@@ -164,8 +173,8 @@ export class FileDiscoveryService {
       const result =
         await this.computeBrowserCompatibility(
           normalizedPath,
-          isCompatible,
-          stack,
+          async (importedPath) =>
+            isCompatible(importedPath, stack),
         );
 
       stack.delete(normalizedPath);
@@ -177,48 +186,176 @@ export class FileDiscoveryService {
       return result;
     };
 
-    const filterFiles = async (
-      files: string[],
-    ): Promise<string[]> => {
-      const matches =
+    await Promise.all(
+      [...srcFiles, ...specFiles].map(
+        (filePath) => isCompatible(filePath),
+      ),
+    );
+
+    // A first-pass verdict can be wrongly optimistic when it was assumed
+    // through an import cycle. Re-evaluate every visited file against the
+    // completed map until it stabilizes: verdicts only ever move from true
+    // to false, and every false has a concrete non-cyclic cause, so this
+    // converges to the order-independent fixed point.
+    for (
+      let pass = 0;
+      pass < compatibility.size;
+      pass++
+    ) {
+      const reevaluated =
         await Promise.all(
-          files.map(
+          [...compatibility.keys()].map(
             async (filePath) => ({
               filePath,
-              isCompatible:
-                await isCompatible(
+              verdict:
+                await this.computeBrowserCompatibility(
                   filePath,
+                  async (importedPath) =>
+                    compatibility.get(importedPath) ?? true,
                 ),
             }),
           ),
         );
 
-      return matches
-        .filter(
-          (entry) =>
-            entry.isCompatible,
-        )
-        .map(
-          (entry) =>
-            entry.filePath,
-        );
-    };
+      let changed = false;
+      for (
+        const { filePath, verdict }
+        of reevaluated
+      ) {
+        if (
+          compatibility.get(filePath) !== verdict
+        ) {
+          compatibility.set(filePath, verdict);
+          changed = true;
+        }
+      }
+
+      if (!changed) break;
+    }
+
+    const kept = (files: string[]): string[] =>
+      files.filter(
+        (filePath) =>
+          compatibility.get(
+            norm(path.resolve(filePath)),
+          ) === true,
+      );
+
+    const keptSrcFiles = kept(srcFiles);
+    const keptSpecFiles = kept(specFiles);
+
+    await this.reportBrowserExclusions(
+      srcFiles,
+      specFiles,
+      keptSrcFiles,
+      keptSpecFiles,
+    );
 
     return {
-      srcFiles:
-        await filterFiles(srcFiles),
-      specFiles:
-        await filterFiles(specFiles),
+      srcFiles: keptSrcFiles,
+      specFiles: keptSpecFiles,
     };
+  }
+
+  /**
+   * Explains why a file was excluded by tracing the shortest chain to the
+   * first Node-only source or import in its dependency graph.
+   */
+  private async describeBrowserExclusion(
+    filePath: string,
+  ): Promise<string> {
+    const relative = (file: string) =>
+      path.relative(process.cwd(), file) || file;
+    const visited = new Set<string>();
+    const queue: Array<{ file: string; chain: string[] }> = [
+      { file: filePath, chain: [relative(filePath)] },
+    ];
+
+    while (queue.length > 0) {
+      const { file, chain } = queue.shift()!;
+      if (chain.length > 8 || visited.has(file)) continue;
+      visited.add(file);
+
+      let source = '';
+      try {
+        source = await fs.readFile(file, 'utf8');
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        continue;
+      }
+
+      if (this.usesBrowserUnsupportedGlobals(source)) {
+        return `${chain.join(' -> ')} (Node global in source)`;
+      }
+
+      for (
+        const specifier
+        of this.collectImportedSpecifiers(source)
+      ) {
+        if (this.isBrowserUnsupportedSpecifier(specifier)) {
+          return `${chain.join(' -> ')} (imports "${specifier}")`;
+        }
+
+        const resolved =
+          await this.resolveLocalImport(file, specifier);
+        if (resolved) {
+          queue.push({
+            file: resolved,
+            chain: [...chain, relative(resolved)],
+          });
+        }
+      }
+    }
+
+    return `${relative(filePath)} (browser-incompatible import)`;
+  }
+
+  private async reportBrowserExclusions(
+    srcFiles: string[],
+    specFiles: string[],
+    keptSrcFiles: string[],
+    keptSpecFiles: string[],
+  ): Promise<void> {
+    const droppedSpecFiles =
+      specFiles.filter(
+        (file) => !keptSpecFiles.includes(file),
+      );
+    const droppedSrcFiles =
+      srcFiles.filter(
+        (file) => !keptSrcFiles.includes(file),
+      );
+
+    if (
+      droppedSpecFiles.length === 0 &&
+      droppedSrcFiles.length === 0
+    ) {
+      return;
+    }
+
+    const entries: string[] = [];
+    for (
+      const file
+      of [...droppedSpecFiles, ...droppedSrcFiles]
+    ) {
+      entries.push(
+        await this.describeBrowserExclusion(file),
+      );
+    }
+
+    logger.warn(
+      FileDiscoveryMessages.browserCompatibilityExcluded(
+        droppedSpecFiles.length,
+        droppedSrcFiles.length,
+        entries,
+      ),
+    );
   }
 
   private async computeBrowserCompatibility(
     filePath: string,
-    isCompatible: (
-      filePath: string,
-      stack?: Set<string>,
-    ) => Promise<boolean>,
-    stack: Set<string>,
+    lookupImport: (
+      importedPath: string,
+    ) => Promise<boolean | undefined>,
   ): Promise<boolean> {
     let source = '';
 
@@ -269,10 +406,9 @@ export class FileDiscoveryService {
 
       if (
         resolvedImport &&
-        !(await isCompatible(
+        (await lookupImport(
           resolvedImport,
-          stack,
-        ))
+        )) === false
       ) {
         return false;
       }

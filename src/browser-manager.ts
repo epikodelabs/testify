@@ -165,7 +165,11 @@ export class BrowserManager {
       });
       page.on('requestfailed', (request: PlayWright.Request) => logger.error(BrowserMessages.requestFailed(request.url(), request.failure()?.errorText)));
 
-      await page.goto(`http://localhost:${port}/index.html`, { waitUntil: 'networkidle', timeout: 120000 });
+      // 'load' rather than 'networkidle': the runner page keeps long-lived
+      // connections (WebSocket bridge, HMR), so the network never idles and
+      // this navigation would time out even after a fully green run. Test
+      // completion is awaited explicitly via the jasmineFinished probe below.
+      await page.goto(`http://localhost:${port}/index.html`, { waitUntil: 'load', timeout: 120000 });
 
       await Promise.race([
         page.waitForFunction(() => (window as any).jasmineFinished === true, {

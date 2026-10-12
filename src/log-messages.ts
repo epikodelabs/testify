@@ -266,6 +266,8 @@ export const CoverageMessages = {
 export const FileDiscoveryMessages = {
   errorDiscoveringFiles: (error: unknown) =>
     `%error% Error discovering files: ${error}`,
+  browserCompatibilityExcluded: (specCount: number, srcCount: number, entries: string[]) =>
+    `%warn% Browser compatibility excluded ${specCount} spec file(s) and ${srcCount} source file(s) from this browser run:\n${entries.map((entry) => `  - ${entry}`).join('\n')}`,
 };
 
 // ─── host-adapter.ts ─────────────────────────────────────────────────────────

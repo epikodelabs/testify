@@ -336,4 +336,167 @@ describe('FileDiscoveryService', () => {
     }
   });
 
+  it('resolves import cycles to the order-independent compatibility verdict', async () => {
+    const root =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          'testify-discovery-cycle-',
+        ),
+      );
+
+    try {
+      fs.mkdirSync(
+        path.join(root, 'src'),
+        { recursive: true },
+      );
+      fs.mkdirSync(
+        path.join(root, 'tests'),
+        { recursive: true },
+      );
+
+      // cycle-a is incompatible through its own import; cycle-b only via the
+      // cycle back to cycle-a. The first optimistic pass may assume cycle-b
+      // is compatible; the refinement passes must correct it.
+      fs.writeFileSync(
+        path.join(root, 'src', 'cycle-a.ts'),
+        "import { b } from './cycle-b';\nimport { nodeFs } from './node-only';\nexport const a = { b, nodeFs };\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'src', 'cycle-b.ts'),
+        "import { a } from './cycle-a';\nexport const b = a;\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'src', 'node-only.ts'),
+        "import fs from 'fs';\nexport const nodeFs = fs;\n",
+      );
+      // A clean cycle must survive the pessimistic corrections.
+      fs.writeFileSync(
+        path.join(root, 'src', 'ok-a.ts'),
+        "import { okB } from './ok-b';\nexport const okA = okB;\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'src', 'ok-b.ts'),
+        "import { okA } from './ok-a';\nexport const okB = okA;\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'tests', 'cycle.spec.ts'),
+        "import { b } from '../src/cycle-b';\nvoid b;\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'tests', 'ok-cycle.spec.ts'),
+        "import { okA } from '../src/ok-a';\nvoid okA;\n",
+      );
+
+      const service =
+        new FileDiscoveryService(
+          createConfig(
+            root,
+            'chrome',
+          ),
+        );
+
+      const result =
+        await service.discoverSources();
+
+      expect(
+        result.specFiles.map(
+          (file) =>
+            path.basename(file),
+        ),
+      ).toEqual([
+        'ok-cycle.spec.ts',
+      ]);
+
+      expect(
+        result.srcFiles.map(
+          (file) =>
+            path.basename(file),
+        ).sort(),
+      ).toEqual([
+        'ok-a.ts',
+        'ok-b.ts',
+      ]);
+    } finally {
+      fs.rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  });
+
+  it('reports browser exclusions with their dependency chain', async () => {
+    const root =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          'testify-discovery-report-',
+        ),
+      );
+
+    try {
+      fs.mkdirSync(
+        path.join(root, 'src'),
+        { recursive: true },
+      );
+      fs.mkdirSync(
+        path.join(root, 'tests'),
+        { recursive: true },
+      );
+
+      fs.writeFileSync(
+        path.join(root, 'src', 'node-only.ts'),
+        "import fs from 'fs';\nexport const nodeFs = fs;\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'tests', 'uses-node.spec.ts'),
+        "import { nodeFs } from '../src/node-only';\nvoid nodeFs;\n",
+      );
+      fs.writeFileSync(
+        path.join(root, 'tests', 'browser.spec.ts'),
+        'void describe;\n',
+      );
+
+      const warnSpy =
+        spyOn(logger, 'warn');
+
+      const service =
+        new FileDiscoveryService(
+          createConfig(
+            root,
+            'chrome',
+          ),
+        );
+
+      await service.discoverSources();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        jasmine.stringContaining(
+          'excluded 1 spec file(s) and 1 source file(s)',
+        ),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        jasmine.stringContaining(
+          'uses-node.spec.ts',
+        ),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        jasmine.stringContaining(
+          '(imports "fs")',
+        ),
+      );
+    } finally {
+      fs.rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  });
+
 });
