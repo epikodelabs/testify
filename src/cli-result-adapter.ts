@@ -19,10 +19,6 @@ export function getExecutionExitCode(
     return EXIT_CODES.TEST_FAILURES;
   }
 
-  if (result.pending > 0) {
-    return EXIT_CODES.SUCCESS_WITH_PENDING;
-  }
-
   return EXIT_CODES.SUCCESS;
 }
 

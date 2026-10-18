@@ -4,7 +4,8 @@ export const EXIT_CODES = {
   INVALID_USAGE: 2,
   CONFIG_ERROR: 3,
   INTERNAL_ERROR: 4,
-  SUCCESS_WITH_PENDING: 5,
+  /** @deprecated Runs with skipped specs return SUCCESS (0). */
+  SUCCESS_WITH_PENDING: 0,
   SIGINT: 130,
   SIGTERM: 143,
 } as const;
@@ -13,8 +14,9 @@ export class ExitCodeError extends Error {
   constructor(
     public readonly exitCode: number,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = 'ExitCodeError';
   }
 }

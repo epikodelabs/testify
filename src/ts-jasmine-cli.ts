@@ -418,7 +418,7 @@ async function main() {
   } else if (result?.overallStatus === 'failed') {
     exitCode = EXIT_CODES.TEST_FAILURES;
   } else if (result?.overallStatus === 'incomplete') {
-    exitCode = EXIT_CODES.SUCCESS_WITH_PENDING;
+    exitCode = EXIT_CODES.SUCCESS;
   } else {
     exitCode = EXIT_CODES.SUCCESS;
   }

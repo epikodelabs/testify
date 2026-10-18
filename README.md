@@ -264,13 +264,15 @@ This is useful when you want to debug one test file directly without running the
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success |
+| `0` | Success, including runs with skipped tests and no failures |
 | `1` | Test failures |
 | `2` | Invalid CLI usage |
 | `3` | Configuration error |
 | `4` | Internal error |
 | `130` | Interrupted with SIGINT |
 | `143` | Terminated with SIGTERM |
+
+Skipped tests do not make a run fail. Coverage diagnostics do not change the test result; a missing completion message is an infrastructure error (`4`).
 
 ## CI Example
 

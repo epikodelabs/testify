@@ -35,7 +35,7 @@ describe('CLI result adapter', () => {
     );
   });
 
-  it('maps pending-only runs to pending exit code', () => {
+  it('maps skipped-only runs (Jasmine pending) to success', () => {
     expect(
       getExecutionExitCode({
         specResults: [],
@@ -46,7 +46,7 @@ describe('CLI result adapter', () => {
         globalFailures: [],
       }),
     ).toBe(
-      EXIT_CODES.SUCCESS_WITH_PENDING,
+      EXIT_CODES.SUCCESS,
     );
   });
 
