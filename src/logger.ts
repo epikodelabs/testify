@@ -1,8 +1,11 @@
 import { getMaxWidth, supportsColor } from './ansi-constants';
 import { LOG_MESSAGES, LogMessageTemplate } from './messages';
 import { replacePlaceholders } from './symbols';
+import { sanitizeTerminalText } from './utils';
+import { errorHint } from './preparation-error-insights';
 import {
   InkTextStyle,
+  PANEL_RULE,
   renderTerminalPanel,
   renderTerminalText,
   startLiveTerminalView,
@@ -28,7 +31,7 @@ interface LoggedLine {
 }
 
 type PreparationStatus = 'pending' | 'running' | 'complete' | 'warning' | 'failed' | 'skipped';
-type PreparationDiagnosticSeverity = 'warning' | 'error';
+type PreparationDiagnosticSeverity = 'warning' | 'error' | 'hint';
 
 interface PreparationItem {
   label: string;
@@ -40,6 +43,7 @@ interface PreparationDiagnostic {
   severity: PreparationDiagnosticSeverity;
   message: string;
   stepLabel?: string;
+  hint?: string;
 }
 
 export interface PreparationPlanStep {
@@ -75,7 +79,7 @@ export class Logger {
     key: T,
     ...args: Parameters<(typeof LOG_MESSAGES)[T]['text']>
   ) {
-    if (areTestLogsSuppressed()) return;
+    if (areTestLogsSuppressed() || !this.outputEnabled) return;
 
     const template: LogMessageTemplate = LOG_MESSAGES[key];
     const rawMessage = template.text(...args);
@@ -124,7 +128,7 @@ export class Logger {
   // ─── Legacy API: direct printing ─────────────────────────
 
   print(msg: string) {
-    if (areTestLogsSuppressed()) return true;
+    if (areTestLogsSuppressed() || !this.outputEnabled) return true;
 
     const prompt =
       supportsColor()
@@ -153,19 +157,22 @@ export class Logger {
   }
 
   println(msg = '') {
-    if (areTestLogsSuppressed()) return true;
+    if (areTestLogsSuppressed() && this.outputEnabled) return true;
 
     // Preparation is assembled as one card. Legacy callers still use
     // `println`, so absorb their ordinary setup notices instead of leaking
     // prompt-style rows above or below that card.
     if (msg && this.preparationLines) {
-      this.preparationStep('STATUS', msg);
+      if (/^%bulb%\s*/i.test(msg)) this.preparationDiagnostic('hint', msg);
+      else this.preparationStep('STATUS', msg);
       return true;
     }
     if (msg && this.preparationFlushed) {
-      this.printRuntimePanel('STATUS', msg, 'cyan');
+      if (/^%bulb%\s*/i.test(msg)) this.printRuntimePanel('TIP', msg, 'yellow');
+      else this.printRuntimePanel('STATUS', msg, 'cyan');
       return true;
     }
+    if (!this.outputEnabled) return true;
 
     if (msg) this.print(msg);
     process.stdout.write('\n');
@@ -174,8 +181,33 @@ export class Logger {
     return true;
   }
 
+  /** Surface an actionable tip with the standardized hint row style. */
+  hint(msg: string) {
+    if (areTestLogsSuppressed() && this.outputEnabled) return true;
+    if (this.preparationLines) {
+      this.preparationDiagnostic('hint', msg);
+      return true;
+    }
+    if (this.preparationFlushed) {
+      this.printRuntimePanel('TIP', msg, 'yellow');
+      return true;
+    }
+    if (!this.outputEnabled) return true;
+
+    const text = this.cleanPreparationMessage(msg);
+    const rich = supportsColor();
+    const line = rich
+      ? renderTerminalText(`↳  ${text}`, { color: 'yellow' })
+      : `[TIP] ${text}`;
+    this.writeLine(line);
+    process.stdout.write('\n');
+    this.addLine(line);
+    this.showPrompt = true;
+    return true;
+  }
+
   printRaw(line: string) {
-    if (areTestLogsSuppressed()) return true;
+    if (areTestLogsSuppressed() || !this.outputEnabled) return true;
 
     process.stdout.write(line);
     this.addLine(line, { isRaw: true });
@@ -332,9 +364,10 @@ export class Logger {
   flushPreparation() {
     if ((areTestLogsSuppressed() && this.outputEnabled) || !this.preparationLines) return true;
 
+    const failed = this.preparationHasErrors();
     if (this.preparationItems) {
       for (const item of this.preparationItems) {
-        if (item.status === 'running') item.status = 'complete';
+        if (item.status === 'running') item.status = failed ? 'skipped' : 'complete';
         else if (item.status === 'pending') item.status = 'skipped';
       }
       this.syncPreparationLines();
@@ -346,11 +379,18 @@ export class Logger {
     } else if (this.preparationView) {
       // The interactive view is already in the terminal; retain its final
       // frame and let the following section start on the next line.
-      this.preparationView.stop(true);
-      process.stdout.write('\n');
+      this.preparationView.stop(!failed);
+      if (failed) process.stderr.write(this.renderPreparationPanel() + '\n');
+      else process.stdout.write('\n');
       this.preparationView = null;
     } else {
-      this.printRaw(this.renderPreparationPanel() + '\n');
+      const panel = this.renderPreparationPanel() + '\n';
+      if (failed) {
+        process.stderr.write(panel);
+        this.addLine(panel, { isRaw: true });
+      } else {
+        this.printRaw(panel);
+      }
     }
     this.preparationLines = null;
     this.preparationItems = null;
@@ -360,16 +400,20 @@ export class Logger {
     return true;
   }
 
-  error(msg: string) {
-    if (areTestLogsSuppressed()) return true;
+  error(msg: string, hint?: string) {
+    // State-only loggers must keep recording diagnostics under suppression;
+    // only loggers that own stdout stand down (same contract as the
+    // preparation lifecycle methods).
+    if (areTestLogsSuppressed() && this.outputEnabled) return true;
     if (this.preparationLines) {
-      this.preparationDiagnostic('error', msg);
+      this.preparationDiagnostic('error', msg, hint);
       return true;
     }
     if (this.preparationFlushed) {
-      this.printRuntimePanel('ERROR', msg, 'red');
+      this.printRuntimePanel('ERROR', msg, 'red', hint);
       return true;
     }
+    if (!this.outputEnabled) return true;
 
     msg = this.stripLegacyPrefix(
       msg,
@@ -393,27 +437,31 @@ export class Logger {
       this.writeLine(
         formatted.text,
         formatted.color,
+        process.stderr,
       );
-      if (i < lines.length - 1) process.stdout.write('\n');
+      if (i < lines.length - 1) process.stderr.write('\n');
       this.addLine(
         formatted.text,
       );
     }
-    process.stdout.write('\n');
+    const resolvedHint = hint ?? errorHint(msg);
+    if (resolvedHint) this.printStandaloneHint(resolvedHint, process.stderr);
+    process.stderr.write('\n');
     this.showPrompt = true;
     return true;
   }
 
-  warn(msg: string) {
-    if (areTestLogsSuppressed()) return true;
+  warn(msg: string, hint?: string) {
+    if (areTestLogsSuppressed() && this.outputEnabled) return true;
     if (this.preparationLines) {
-      this.preparationDiagnostic('warning', msg);
+      this.preparationDiagnostic('warning', msg, hint);
       return true;
     }
     if (this.preparationFlushed) {
-      this.printRuntimePanel('WARNING', msg, 'yellow');
+      this.printRuntimePanel('WARNING', msg, 'yellow', hint);
       return true;
     }
+    if (!this.outputEnabled) return true;
 
     msg = this.stripLegacyPrefix(
       msg,
@@ -467,12 +515,13 @@ export class Logger {
 
   // ─── Internal helpers ────────────────────────────────────
 
-  private writeLine(line: string, color = '') {
+  private writeLine(line: string, color = '', stream: NodeJS.WriteStream = process.stdout) {
+    if (!this.outputEnabled) return;
     if (supportsColor()) {
-      this.clearLine();
-      process.stdout.write(renderTerminalText(line, color ? { color } : {}));
+      if (stream === process.stdout) this.clearLine();
+      stream.write(renderTerminalText(line, color ? { color } : {}));
     } else {
-      process.stdout.write(line);
+      stream.write(line);
     }
   }
 
@@ -609,22 +658,62 @@ export class Logger {
 
   private syncPreparationLines(): void {
     if (!this.preparationItems) return;
+    const diagnostics = this.preparationDiagnostics ?? [];
     this.preparationLines = [
       ...this.preparationItems.map((item) => this.renderPreparationItem(item)),
-      ...(this.preparationDiagnostics ?? []).flatMap((diagnostic) =>
+      ...(diagnostics.length > 0 ? [PANEL_RULE] : []),
+      ...diagnostics.flatMap((diagnostic) =>
         this.renderPreparationDiagnostic(diagnostic),
       ),
     ];
     this.preparationView?.update(this.renderPreparationPanel());
   }
 
+  /** True once any step failed or an error diagnostic was buffered. */
+  hasPreparationErrors(): boolean {
+    return this.preparationHasErrors();
+  }
+
+  private preparationHasErrors(): boolean {
+    return (
+      this.preparationDiagnostics?.some((diagnostic) => diagnostic.severity === 'error') === true ||
+      this.preparationItems?.some((item) => item.status === 'failed') === true
+    );
+  }
+
+  /**
+   * Two diagnostics describe the same underlying failure when the newer
+   * message re-wraps one already recorded: either verbatim (same headline) or
+   * through another catch-site template (same first stack frame). Log-then-
+   * throw call sites make this easy to regress, so the renderer deduplicates
+   * defensively instead of stacking three dumps of one error.
+   */
+  private isDuplicateErrorDiagnostic(existing: PreparationDiagnostic, message: string): boolean {
+    if (existing.severity !== 'error') return false;
+    const headline = existing.message.split('\n')[0]?.trim();
+    if (headline && message.includes(headline)) return true;
+    const frame = /^at .+$/m.exec(existing.message)?.[0];
+    return !!frame && message.includes(frame);
+  }
+
   private preparationDiagnostic(
     severity: PreparationDiagnosticSeverity,
     message: string,
+    hint?: string,
   ): void {
     this.preparationDiagnostics ??= [];
+    const sanitized = this.cleanPreparationMessage(message);
 
-    const activeItem = this.preparationActiveLabel
+    if (
+      severity === 'error' &&
+      this.preparationDiagnostics.some((existing) =>
+        this.isDuplicateErrorDiagnostic(existing, sanitized),
+      )
+    ) {
+      return;
+    }
+
+    const activeItem = severity !== 'hint' && this.preparationActiveLabel
       ? this.preparationItems?.find((item) => item.label === this.preparationActiveLabel)
       : undefined;
 
@@ -638,8 +727,11 @@ export class Logger {
 
     this.preparationDiagnostics.push({
       severity,
-      message: this.cleanPreparationMessage(message),
+      message: sanitized,
       stepLabel: activeItem?.label,
+      hint: hint ?? (severity === 'error' || severity === 'warning'
+        ? errorHint(sanitized)
+        : undefined),
     });
 
     this.syncPreparationLines();
@@ -647,32 +739,73 @@ export class Logger {
 
   private renderPreparationDiagnostic(diagnostic: PreparationDiagnostic): string[] {
     const rich = this.outputEnabled && process.stdout.isTTY && supportsColor();
+
+    if (diagnostic.severity === 'hint') {
+      const symbol = rich
+        ? renderTerminalText('↳', { color: 'yellow' })
+        : '[TIP]';
+      const lines = diagnostic.message.split('\n').filter(Boolean);
+      const body = lines.length > 0 ? lines : [''];
+      return body.map((line, index) => {
+        const text = rich ? renderTerminalText(line, { color: 'yellow' }) : line;
+        return index === 0
+          ? `${symbol}  ${text}`
+          : `${' '.repeat(rich ? 3 : symbol.length + 2)}${text}`;
+      });
+    }
+
     const isError = diagnostic.severity === 'error';
     const symbol = rich
-      ? renderTerminalText(isError ? '×' : '!', {
-          bold: isError,
-          color: isError ? 'red' : 'yellow',
+      ? renderTerminalText(isError ? '✕' : '!', {
+          bold: true,
+          color: isError ? 'redBright' : 'yellow',
         })
       : isError
-        ? '[FAIL]'
+        ? '[ERROR]'
         : '[WARN]';
+    // Rich rows spell the severity out next to the glyph; plain rows let the
+    // [ERROR]/[WARN] glyph carry it alone instead of stuttering the label.
     const labelText = (isError ? 'ERROR' : 'WARNING').padEnd(12);
     const label = rich
       ? renderTerminalText(labelText, {
-          bold: isError,
-          color: isError ? 'red' : 'yellow',
+          bold: true,
+          color: isError ? 'redBright' : 'yellow',
         })
-      : labelText;
+      : '';
     const context = diagnostic.stepLabel ? `[${diagnostic.stepLabel}] ` : '';
     const lines = diagnostic.message.split('\n').filter(Boolean);
     const body = lines.length > 0 ? lines : [''];
-
-    return body.map((line, index) => {
+    const detailIndent = rich
+      ? `${' '.repeat(3)}${' '.repeat(labelText.length)} `
+      : ' '.repeat(symbol.length + 2);
+    const rendered = body.map((line, index) => {
       if (index === 0) {
-        return `${symbol}  ${label} ${context}${line}`;
+        const headline = rich
+          ? renderTerminalText(`${context}${line}`, { bold: true, color: isError ? 'redBright' : 'yellow' })
+          : `${context}${line}`;
+        return label
+          ? `${symbol}  ${label} ${headline}`
+          : `${symbol}  ${headline}`;
       }
-      return `${' '.repeat(rich ? 3 : symbol.length + 2)}${' '.repeat(labelText.length)} ${line}`;
+      // Stack frames and continuation lines read as supporting detail: dim
+      // gray, hanging-indented under the headline like the FAILURES panel.
+      const detail = rich
+        ? renderTerminalText(line, { color: 'gray', dimColor: true })
+        : line;
+      return `${detailIndent}${detail}`;
     });
+
+    if (diagnostic.hint) {
+      const hintSymbol = rich
+        ? renderTerminalText('↳', { color: 'yellow' })
+        : '->';
+      const hintText = rich
+        ? renderTerminalText(`Hint: ${diagnostic.hint}`, { color: 'yellow' })
+        : `Hint: ${diagnostic.hint}`;
+      rendered.push(`${detailIndent}${hintSymbol}  ${hintText}`);
+    }
+
+    return rendered;
   }
 
   private renderPreparationItem(item: PreparationItem): string {
@@ -734,31 +867,69 @@ export class Logger {
   }
 
   private cleanPreparationMessage(message: string): string {
-    return replacePlaceholders(
-      message.replace(/^%[a-z_]+%\s*/i, ''),
-    )
-      .replace(LEGACY_LOG_TAG_PREFIX, '')
-      .replace(LEADING_BADGE_PREFIX, '');
+    return sanitizeTerminalText(
+      replacePlaceholders(
+        message.replace(/^%[a-z_]+%\s*/i, ''),
+      )
+        .replace(LEGACY_LOG_TAG_PREFIX, '')
+        .replace(LEADING_BADGE_PREFIX, ''),
+    );
   }
 
-  private printRuntimePanel(title: string, message: string, tone: string): void {
+  private printStandaloneHint(hint: string, stream: NodeJS.WriteStream = process.stdout): void {
+    const rich = supportsColor();
+    const line = rich
+      ? renderTerminalText(`↳  Hint: ${hint}`, { color: 'yellow' })
+      : `-> Hint: ${hint}`;
+    this.writeLine(line, '', stream);
+    this.addLine(line);
+  }
+
+  private printRuntimePanel(title: string, message: string, tone: string, hint?: string): void {
     const lines = message
       .split('\n')
       .map((line) => this.cleanPreparationMessage(line))
       .filter(Boolean);
-    this.printRaw(
-      renderTerminalPanel(title, lines, tone, supportsColor()) + '\n',
-    );
+    const rich = supportsColor();
+    // Errors and warnings use the standardized block: bold colored headline,
+    // dim gray detail, yellow hint row. Status and tips stay plain rows.
+    const structured = (tone === 'red' || tone === 'yellow') && lines.length > 0;
+    const rows = structured
+      ? [
+          renderTerminalText(lines[0], {
+            bold: true,
+            color: tone === 'red' ? 'redBright' : 'yellowBright',
+          }),
+          ...lines.slice(1).map((line) =>
+            renderTerminalText(line, { color: 'gray', dimColor: true }),
+          ),
+          ...(hint
+            ? [rich
+                ? renderTerminalText(`↳  Hint: ${hint}`, { color: 'yellow' })
+                : `-> Hint: ${hint}`]
+            : []),
+        ]
+      : lines;
+    const panel = renderTerminalPanel(title, rows, tone, rich) + '\n';
+    if (tone === 'red') {
+      if (this.outputEnabled) process.stderr.write(panel);
+      this.addLine(panel, { isRaw: true });
+    } else {
+      this.printRaw(panel);
+    }
   }
 
   private renderPreparationPanel(): string {
     const rich = this.outputEnabled && process.stdout.isTTY && supportsColor();
+    const failed = this.preparationHasErrors();
     const context = rich
       ? this.preparationContext
       : this.preparationContext.replace(/\s*·\s*/g, ' - ');
+    const heading = failed ? 'PREPARATION FAILED' : 'PREPARING TEST ENVIRONMENT';
+    const tone = failed ? 'red' : 'magenta';
     const title = context
-      ? `PREPARING TEST ENVIRONMENT${rich ? '  ·  ' : ' - '}${context}`
-      : 'PREPARING TEST ENVIRONMENT';
+      ? `${heading}${rich ? '  ·  ' : ' - '}${context}`
+      : heading;
 
     // Files, pipes and CI captures keep the section boundary, but render it
     // with the plain ASCII panel. This preserves structure without leaking
@@ -767,7 +938,7 @@ export class Logger {
       return renderTerminalPanel(
         title,
         this.preparationLines ?? [],
-        'magenta',
+        tone,
         false,
         true,
       );
@@ -776,7 +947,7 @@ export class Logger {
     return renderTerminalPanel(
       title,
       this.preparationLines ?? [],
-      'magenta',
+      tone,
       true,
       true,
     );

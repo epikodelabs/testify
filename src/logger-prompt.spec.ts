@@ -49,7 +49,7 @@ describe('Logger prompt styling', () => {
 
   it('exposes a dedicated warn logger method', () => {
     expect(source).toContain(
-      'warn(msg: string)',
+      'warn(msg: string, hint?: string)',
     );
     expect(source).toContain(
       'forceWarnPrefix',
@@ -59,7 +59,7 @@ describe('Logger prompt styling', () => {
   it('formats error output without throwing at runtime', () => {
     const writes: string[] = [];
     const originalWrite =
-      process.stdout.write;
+      process.stderr.write;
     const hadSuppression = Object.prototype.hasOwnProperty.call(
       globalThis,
       '__testifySuppressLogs',
@@ -67,11 +67,11 @@ describe('Logger prompt styling', () => {
     const previousSuppression = (globalThis as any).__testifySuppressLogs;
     delete (globalThis as any).__testifySuppressLogs;
 
-    process.stdout.write =
+    process.stderr.write =
       ((chunk: any) => {
         writes.push(String(chunk));
         return true;
-      }) as typeof process.stdout.write;
+      }) as typeof process.stderr.write;
 
     try {
       expect(() => {
@@ -86,7 +86,7 @@ describe('Logger prompt styling', () => {
         'Example failure',
       );
     } finally {
-      process.stdout.write =
+      process.stderr.write =
         originalWrite;
       if (hadSuppression) {
         (globalThis as any).__testifySuppressLogs = previousSuppression;

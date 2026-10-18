@@ -7,8 +7,33 @@ export const capitalize = (p?: string | null): string => {
 export const ANSI_FULL_REGEX =
   /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
 
+// Terminals advance two cells for East Asian wide and emoji-presentation code
+// points. Counting them as one underestimates row widths, which wraps panel
+// borders and desynchronizes cursor-based live redraws.
+const WIDE_CODE_POINT =
+  /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE10-\uFE19\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{20000}-\u{3FFFD}]/u;
+
 export function visibleWidth(text: string): number {
-  return [...text.replace(ANSI_FULL_REGEX, '')].length;
+  let width = 0;
+  for (const char of text.replace(ANSI_FULL_REGEX, '')) {
+    width += WIDE_CODE_POINT.test(char) ? 2 : 1;
+  }
+  return width;
+}
+
+/**
+ * Make text safe for panel rows and cursor-diffed live surfaces: strip ANSI
+ * escapes and C0 controls that would move the cursor or inject styling, and
+ * normalize line breaks. Embedded tool output (child processes, bundler
+ * diagnostics) is the usual source of these characters.
+ */
+export function sanitizeTerminalText(text: string): string {
+  return normalizeStackTrace(
+    text
+      .replace(ANSI_FULL_REGEX, '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''),
+  );
 }
 
 export type WrapMode = 'word' | 'char';
