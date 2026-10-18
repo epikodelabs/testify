@@ -16,8 +16,8 @@ describe('ViteJasmineRunner Node result boundary', () => {
       'getExecutionExitCode',
     );
 
-    expect(source).not.toContain(
-      'return exitCode;',
+    expect(source).toContain(
+      'runNodeCli(this.nodeTestRunner, { handleSignals: false, setProcessExitCode: false })',
     );
   });
 });

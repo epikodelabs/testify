@@ -58,4 +58,44 @@ describe('Testify CLI start-failure reporting', () => {
     expect(errorSpy).toHaveBeenCalled();
     expect(flushSpy).toHaveBeenCalled();
   });
+
+  it('does not re-log a failure the runner already reported into the card', async () => {
+    process.argv = ['node', 'testify'];
+    spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({
+      start: async () => {
+        throw new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, 'simulated build failure');
+      },
+      watch: async () => 0,
+      cleanup: async () => undefined,
+      abort: () => 0,
+    } as any);
+    const errorSpy = spyOn(logger, 'error');
+    spyOn(logger, 'flushPreparation').and.stub();
+    // The runner's own diagnostics are recorded as preparation errors; the
+    // backstay must stay silent so one failure never renders twice.
+    spyOn(logger, 'hasPreparationErrors').and.returnValue(true);
+
+    const exitCode = await CLIHandler.run();
+
+    expect(exitCode).toBe(EXIT_CODES.INTERNAL_ERROR);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('releases its lock, cleans up, and removes its handlers after repeated failures', async () => {
+    process.argv = ['node', 'testify'];
+    const events = ['SIGINT', 'SIGTERM', 'exit'] as const;
+    const before = events.map(event => process.listenerCount(event));
+    const cleanup = jasmine.createSpy('cleanup').and.resolveTo();
+    spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({
+      start: async () => { throw new Error('failed startup'); }, cleanup,
+    } as any);
+    spyOn(logger, 'error');
+    spyOn(logger, 'flushPreparation');
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect(await CLIHandler.run()).toBe(EXIT_CODES.INTERNAL_ERROR);
+      expect(events.map(event => process.listenerCount(event))).toEqual(before);
+    }
+    expect(cleanup).toHaveBeenCalledTimes(2);
+    expect(ProcessLock.prototype.releaseSync).toHaveBeenCalledTimes(2);
+  });
 });

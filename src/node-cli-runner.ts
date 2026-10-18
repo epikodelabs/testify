@@ -21,6 +21,7 @@ import { logger } from './logger';
 
 export async function runNodeCli(
   runner: NodeTestRunner,
+  options: { handleSignals?: boolean; setProcessExitCode?: boolean } = {},
 ): Promise<ExecutionResult> {
   let capturedProcessFailure = false;
 
@@ -46,6 +47,7 @@ export async function runNodeCli(
 
   const processHost =
     new NodeProcessHost({
+      handleSignals: options.handleSignals,
       onUnhandledRejection(error) {
         recordProcessFailure(
           'unhandledRejection',
@@ -73,7 +75,9 @@ export async function runNodeCli(
             signal,
           );
 
-        void runner.stop();
+        runner.stop().catch((error) => {
+          logger.error(`Failed to stop the Node test runner: ${String(error)}`);
+        });
       },
     });
 
@@ -88,13 +92,13 @@ export async function runNodeCli(
         EXIT_CODES.INTERNAL_ERROR;
     }
 
-    applyExecutionExitCode(
+    if (options.setProcessExitCode !== false) applyExecutionExitCode(
       result,
     );
 
     return result;
   } catch (error) {
-    process.exitCode =
+    if (options.setProcessExitCode !== false) process.exitCode =
       EXIT_CODES.INTERNAL_ERROR;
 
     throw error;

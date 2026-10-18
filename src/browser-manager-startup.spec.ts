@@ -102,14 +102,15 @@ describe('BrowserManager headed startup', () => {
       },
     };
 
-    (manager as any).getPlaywright = async () => ({
+    const playwright = {
       chromium: { async launch() { return browser; } },
-    });
+    };
+    (manager as any).getPlaywright = async () => playwright;
 
     await manager.openBrowser(8888);
 
     expect(install).toHaveBeenCalledWith(
-      (await (manager as any).getPlaywright()).chromium,
+      playwright.chromium,
       'chromium',
     );
   });

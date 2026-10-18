@@ -142,8 +142,8 @@ describe('ConsoleReporter output sink', () => {
       );
 
     expect(rendered)
-      .toContain(
-        '1 passed • 1 failed',
+      .toMatch(
+        /1 passed\s+[•*]\s+1 failed/,
       );
 
     expect(rendered)

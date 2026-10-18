@@ -2,6 +2,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { logger } from './logger';
 import { CLIHandler } from './cli-handler';
+import { getExitCode } from './exit-codes';
 
 export { BrowserManager } from './browser-manager';
 export { CLIHandler } from './cli-handler';
@@ -30,6 +31,7 @@ if (
 ) {
   CLIHandler.run({ printBanner: true }).then((code) => process.exit(code)).catch((error) => {
     logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-    process.exit(1);
+    logger.flushPreparation();
+    process.exit(getExitCode(error));
   });
 }

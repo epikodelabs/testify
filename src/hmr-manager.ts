@@ -59,6 +59,9 @@ export interface HmrManagerOptions {
 
 export class HmrManager extends EventEmitter {
   private watcher: FSWatcher | null = null;
+  private stopPromise: Promise<void> | null = null;
+  private stopped = false;
+  private cancelReady: (() => void) | null = null;
   private rebuildQueue: Set<string> = new Set();
   private directChanges: Set<string> = new Set();
   private allFiles: string[] = [];
@@ -455,18 +458,14 @@ export class HmrManager extends EventEmitter {
     // the first library-source change has no known dependent spec and is
     // incorrectly treated as a rebuild with nothing to execute.
     await this.buildDependencyGraph(this.allFiles);
-    const watcher = watch(watchTargets, {
-      ignored: /(^|[\/\\])\../,
-      persistent: true,
-      ignoreInitial: true
-    });
+    if (this.stopped) throw new Error('HMR startup cancelled during cleanup');
+    const watcher = this.createWatcher(watchTargets);
     this.watcher = watcher;
 
     watcher.on('change', filePath => {
       filePath = norm(filePath);
       if (this.matchesFilter(filePath)) this.queueRebuild(filePath, 'change');
     });
-
     watcher.on('add', filePath => {
       filePath = norm(filePath);
       if (this.matchesFilter(filePath)) this.handleFileAdd(filePath);
@@ -480,14 +479,41 @@ export class HmrManager extends EventEmitter {
     watcher.on('addDir', dirPath => this.handleDirectoryAdd(norm(dirPath)));
     watcher.on('unlinkDir', dirPath => this.handleDirectoryRemove(norm(dirPath)));
 
+    // Without an 'error' listener, a watcher failure (EACCES/EMFILE) is thrown
+    // by EventEmitter as an uncaughtException and kills the watch session with
+    // no Testify diagnostic.
+    watcher.on('error', (error: unknown) => {
+      logger.error(HmrMessages.watcherError(error));
+      this.emit('hmr:error', error);
+    });
+
     // Hold start() open until the initial scan finishes so the watcher's
-    // summary lands inside the preparation card instead of after it.
-    await new Promise<void>((resolveReady) => {
-      watcher.on('ready', async () => {
+    // summary lands inside the preparation card instead of after it. A watcher
+    // error before 'ready' must reject instead of hanging start() forever.
+    await new Promise<void>((resolveReady, rejectReady) => {
+      let settled = false;
+      const settle = (settleFn: () => void) => {
+        if (settled) return;
+        settled = true;
+        this.cancelReady = null;
+        settleFn();
+      };
+      this.cancelReady = () => settle(() => rejectReady(new Error('HMR startup cancelled during cleanup')));
+      watcher.once('ready', () => {
+        if (settled) return;
         logger.preparationStep('HMR', HmrMessages.watchingFiles(this.allFiles.length, this.rebuildMode, this.sourceChangeStrategy));
         this.emit('hmr:ready');
-        resolveReady();
+        settle(resolveReady);
       });
+      watcher.on('error', (error: unknown) => settle(() => rejectReady(error)));
+    });
+  }
+
+  private createWatcher(watchTargets: string[]): FSWatcher {
+    return watch(watchTargets, {
+      ignored: /(^|[\/\\])\../,
+      persistent: true,
+      ignoreInitial: true,
     });
   }
 
@@ -715,6 +741,7 @@ export class HmrManager extends EventEmitter {
   }
 
   private async queueRebuild(filePath: string, changeType: 'add' | 'change' | 'unlink' = 'change') {
+    if (this.stopped) return;
     const normalized = norm(filePath);
     
     // ✅ FIX: Skip if file doesn't exist (for unlink cases)
@@ -858,7 +885,6 @@ export class HmrManager extends EventEmitter {
           const result = await build(viteConfig);
           this.viteCache = result;
         } catch (buildError: any) {
-          logger.error(HmrMessages.viteBuildFailed(buildError));
           // Check if it's due to missing entry files
           if (buildError.code === 'UNRESOLVED_ENTRY') {
             logger.println(HmrMessages.retryingWithFilteredEntries());
@@ -977,8 +1003,8 @@ export class HmrManager extends EventEmitter {
         logger.println(HmrMessages.rebuildComplete(updateType, rebuiltFiles.length, duration));
       }
     } catch (error) {
-      logger.error(HmrMessages.rebuildFailed(error));
-      this.emit('hmr:error', error);
+      // queueRebuild owns the boundary diagnostic and the hmr:error emit;
+      // rethrow only so the same failure is not rendered twice.
       throw error;
     }
   }
@@ -1015,9 +1041,20 @@ export class HmrManager extends EventEmitter {
   }
 
   async stop(): Promise<void> {
-    if (this.watcher) {
-      await this.watcher.close();
+    this.stopped = true;
+    this.cancelReady?.();
+    this.stopPromise ??= this.closeWatcher();
+    return this.stopPromise;
+  }
+
+  private async closeWatcher(): Promise<void> {
+    const watcher = this.watcher;
+    try {
+      if (watcher) await watcher.close();
+    } finally {
       this.watcher = null;
+      await this.operationQueue;
+      await this.rebuildPromise;
       this.dependencyGraph.clear();
       this.reverseDependencyGraph.clear();
       logger.flushPreparation();

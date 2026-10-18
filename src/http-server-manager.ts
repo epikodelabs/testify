@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { extname } from 'path';
 import { exec } from 'child_process';   // ✅ new top‑level import
 import { ViteJasmineConfig } from './vite-jasmine-config';
+import { EXIT_CODES, ExitCodeError } from './exit-codes';
 import { norm } from './utils';
 import { logger } from './logger';
 import { HttpServerMessages } from './log-messages';
@@ -208,6 +209,11 @@ function isPathInside(
 
 export class HttpServerManager {
   private server: http.Server | null = null;
+  /** Incremented by cleanup(); retry timers compare to detect shutdown. */
+  private listenGeneration = 0;
+  private starting: Promise<http.Server> | null = null;
+  private cancelStart: (() => void) | null = null;
+  private retryTimer: NodeJS.Timeout | undefined;
 
   constructor(private config: ViteJasmineConfig) {}
 
@@ -265,9 +271,23 @@ export class HttpServerManager {
       }
 
       const stream = fs.createReadStream(resolvedPath);
-      stream.on('error', () => {
-        res.writeHead(404);
-        res.end('Not found');
+      stream.on('error', (error: NodeJS.ErrnoException) => {
+        if (res.headersSent) {
+          logger.error(HttpServerMessages.staticFileReadFailed(resolvedPath, error));
+          res.destroy(error);
+          return;
+        }
+        // A missing file is a normal 404; anything else (EACCES, EMFILE,
+        // EISDIR) is a host-side failure that must not masquerade as one, or
+        // users chase phantom module-load errors in the page.
+        if (error.code === 'ENOENT') {
+          res.writeHead(404);
+          res.end('Not found');
+          return;
+        }
+        logger.error(HttpServerMessages.staticFileReadFailed(resolvedPath, error));
+        res.writeHead(500);
+        res.end('Internal server error');
       });
       stream.on('open', () => {
         const ext = extname(resolvedPath);
@@ -282,41 +302,90 @@ export class HttpServerManager {
 
   async startServer(): Promise<http.Server> {
     const port = this.config.port ?? 8888;
+    // Re-entrant calls (a second start() on the same manager) must reuse the
+    // live listener instead of colliding with it and triggering the EADDRINUSE
+    // recovery path against our own server.
+    if (this.server?.listening) return this.server;
+    if (this.starting) return this.starting;
+    // Bumped by cleanup(); pending retry timers compare against it so a
+    // shut-down manager cannot resurrect a brand-new listener.
+    const generation = ++this.listenGeneration;
     this.server = this.createHttpServer();
 
-    return new Promise((resolve, reject) => {
+    const starting = new Promise<http.Server>((resolve, reject) => {
+      this.cancelStart = () => reject(new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, 'Server startup cancelled during cleanup'));
       const tryListen = (attempt = 1) => {
-        this.server!.listen(port, () => {
+        const server = this.server!;
+        server.listen(port, () => {
+          if (generation !== this.listenGeneration) return;
           logger.preparationStep('PORT', HttpServerMessages.portAcquired(port), true);
-          resolve(this.server!);
+          resolve(server);
         });
 
         this.server!.on('error', (error: any) => {
           if (error.code === 'EADDRINUSE' && attempt < 3) {
             logger.preparationStep('PORT', HttpServerMessages.portBusyRetrying(port));
 
-            this.server!.close(() => {
-              setTimeout(() => {
+            server.close(() => {
+              this.retryTimer = setTimeout(() => {
+                if (generation !== this.listenGeneration) return;
                 const isWindows = process.platform === 'win32';
-                const killCommand = isWindows
-                  ? `powershell -command "Get-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess | Stop-Process -Force"`
-                  : `lsof -ti:${port} | xargs -r kill -9`;
+                const pidCommand = isWindows
+                  ? `powershell -command "(Get-NetTCPConnection -LocalPort ${port}).OwningProcess"`
+                  : `lsof -ti:${port}`;
 
-                // ✅ Fixed: pass empty options object as second argument
-                exec(killCommand, {}, (err, stdout, stderr) => {
-                  if (err) {
-                    logger.error(HttpServerMessages.failedToReleasePort(port));
-                  } else {
-                    logger.preparationStep('PORT', HttpServerMessages.portReclaimed(port));
+                exec(pidCommand, {}, (pidError, pidStdout) => {
+                  if (generation !== this.listenGeneration) return;
+                  const pids = [...new Set((pidStdout ?? '').trim().split(/\s+/).map(Number))];
+                  if (pidError || pids.length === 0 || pids.some(pid => !Number.isSafeInteger(pid) || pid <= 0)) {
+                    reject(new ExitCodeError(EXIT_CODES.CONFIG_ERROR, `Unable to identify the owner of port ${port}; choose another port with --port.`, { cause: pidError ?? error }));
+                    return;
                   }
-                  this.server = this.createHttpServer();
-                  tryListen(attempt + 1);
+                  if (pids.includes(process.pid)) {
+                    // Killing "whatever holds the port" would kill Testify
+                    // itself; fail fast instead.
+                    logger.error(HttpServerMessages.portHeldByThisProcess(port));
+                    reject(new ExitCodeError(
+                      EXIT_CODES.CONFIG_ERROR,
+                      `Port ${port} is already in use by this process.`,
+                      { cause: error },
+                    ));
+                    return;
+                  }
+
+                  const killCommand = isWindows
+                    ? `powershell -command "Stop-Process -Id ${pids.join(',')} -Force"`
+                    : `kill -9 ${pids.join(' ')}`;
+
+                  exec(killCommand, {}, (err, _stdout, _stderr) => {
+                    if (generation !== this.listenGeneration) return;
+                    if (err) {
+                      // Retrying after a failed kill only re-runs the same
+                      // doomed sequence; surface the environment problem.
+                      logger.error(HttpServerMessages.failedToReleasePort(port));
+                      reject(new ExitCodeError(
+                        EXIT_CODES.CONFIG_ERROR,
+                        `Unable to release port ${port} held by another process.`,
+                        { cause: err },
+                      ));
+                      return;
+                    }
+                    logger.preparationStep('PORT', HttpServerMessages.portReclaimed(port));
+                    this.server = this.createHttpServer();
+                    tryListen(attempt + 1);
+                  });
                 });
               }, 3000);
             });
           } else if (error.code === 'EADDRINUSE') {
+            // A busy port is an environment/configuration problem, not a
+            // Testify defect.
             logger.error(HttpServerMessages.portStillBusy(port));
-            reject(error);
+            reject(new ExitCodeError(
+              EXIT_CODES.CONFIG_ERROR,
+              `Port ${port} is still in use after the reclaim attempt.`,
+              { cause: error },
+            ));
           } else {
             logger.error(HttpServerMessages.serverError(error));
             reject(error);
@@ -325,6 +394,13 @@ export class HttpServerManager {
       };
       tryListen();
     });
+    this.starting = starting;
+    try {
+      return await starting;
+    } finally {
+      this.starting = null;
+      this.cancelStart = null;
+    }
   }
 
   private getContentType(ext: string): string {
@@ -346,6 +422,7 @@ export class HttpServerManager {
   async waitForServerReady(url: string, timeout = 5000): Promise<void> {
     const start = Date.now();
     const { hostname, port } = new URL(url);
+    let lastError: unknown;
 
     while (Date.now() - start < timeout) {
       try {
@@ -371,19 +448,26 @@ export class HttpServerManager {
         });
         return;
       } catch (error) {
-        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        // Connection refusals are the expected transient state while the
+        // server binds; keep the last one for the timeout diagnosis instead
+        // of dumping a stack per 100ms probe.
+        lastError = error;
         await new Promise(r => setTimeout(r, 100));
       }
     }
-    throw new Error(`Server not ready at ${url} after ${timeout}ms`);
+    throw new Error(`Server not ready at ${url} after ${timeout}ms`, { cause: lastError });
   }
 
   async cleanup(): Promise<void> {
-    if (this.server) {
+    this.listenGeneration++;
+    clearTimeout(this.retryTimer);
+    this.cancelStart?.();
+    const server = this.server;
+    this.server = null;
+    if (server?.listening) {
       await new Promise<void>((resolve, reject) => {
-        this.server!.close(err => (err ? reject(err) : resolve()));
+        server.close(err => (err ? reject(err) : resolve()));
       });
-      this.server = null;
     }
   }
 }

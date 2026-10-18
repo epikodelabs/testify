@@ -35,7 +35,7 @@ describe('Playground session exit host command', () => {
       "await this.browserManager.closeBrowser();",
     );
     expect(source).toContain(
-      'watchFinishedResolve?.(EXIT_CODES.SUCCESS)',
+      'this.finishResolve?.(EXIT_CODES.SUCCESS)',
     );
   });
 });

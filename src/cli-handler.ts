@@ -7,7 +7,7 @@ import { PackageResolver } from "./package-resolver";
 import { ProcessLock } from "./process-lock";
 import { ViteJasmineConfig } from "./vite-jasmine-config";
 import { ViteJasmineRunner } from "./vite-jasmine-runner";
-import { EXIT_CODES, ExitCodeError, getExitCode } from "./exit-codes";
+import { EXIT_CODES, ExitCodeError, getExitCode, getSignalExitCode } from "./exit-codes";
 import { CLIMessages } from "./log-messages";
 import { setAnsiMode } from "./symbols";
 import { ProjectSetup } from "./project-setup";
@@ -239,34 +239,8 @@ export class CLIHandler {
   }
 
   static async run(options: CLIRunOptions = {}): Promise<number> {
-    let shuttingDown = false;
-    let sigintCount = 0;
-    process.on('SIGINT', async () => {
-      sigintCount += 1;
-      if (sigintCount > 1) {
-        // Second Ctrl+C: cleanup is hung or too slow, force exit now.
-        process.exit(EXIT_CODES.SIGINT);
-        return;
-      }
-      if (shuttingDown) return;
-      shuttingDown = true;
-
-      // A signal can arrive while the live preparation card is still growing.
-      // Freeze its completed frame before teardown clears terminal output.
-      logger.flushPreparation();
-      const exitCode = this.runner?.abort('SIGINT') ?? EXIT_CODES.SIGINT;
-      try {
-        await Promise.race([
-          this.cleanup(),
-          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('cleanup timeout')), 5000))
-        ]);
-      } catch (error) {
-        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-        // Cleanup timed out or failed; force exit anyway.
-      }
-      process.exit(exitCode);
-    });
-
+    // Arg parsing and pure-output modes never run anything; resolve them
+    // before taking over signal handling.
     const rawArgs = process.argv.slice(2);
 
     let parsed: ParsedCli;
@@ -331,6 +305,62 @@ export class CLIHandler {
       }
     }
 
+    let shuttingDown = false;
+    let signalCount = 0;
+    // Handlers are removed when the run settles: CLIHandler is exported for
+    // programmatic use, and stacked handlers would fire every historical run's
+    // cleanup (and process.exit) on one Ctrl+C.
+    const signalHandler = async (signal: NodeJS.Signals) => {
+      signalCount += 1;
+      if (signalCount > 1) {
+        // Second Ctrl+C: cleanup is hung or too slow, force exit now.
+        process.exit(getSignalExitCode(signal));
+        return;
+      }
+      if (shuttingDown) return;
+      shuttingDown = true;
+
+      // A signal can arrive while the live preparation card is still growing.
+      // Freeze its completed frame before teardown clears terminal output.
+      logger.flushPreparation();
+      const exitCode = this.runner?.abort(signal) ?? getSignalExitCode(signal);
+      let cleanupTimer: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          this.cleanup(),
+          new Promise<void>((_, reject) => {
+            cleanupTimer = setTimeout(() => reject(new Error('cleanup timeout')), 5000);
+          })
+        ]);
+      } catch (error) {
+        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        // Cleanup timed out or failed; force exit anyway.
+      } finally {
+        clearTimeout(cleanupTimer);
+      }
+      process.exit(exitCode);
+    };
+    const handleSignal = (signal: NodeJS.Signals) => {
+      signalHandler(signal).catch((error) => {
+        // Even a failure in abort()/logging must preserve the signal outcome.
+        process.stderr.write(`Signal cleanup failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+        process.exit(getSignalExitCode(signal));
+      });
+    };
+    const onSigint = () => handleSignal('SIGINT');
+    const onSigterm = () => handleSignal('SIGTERM');
+    process.on('SIGINT', onSigint);
+    // SIGTERM (kill <pid>) deserves the same orderly shutdown and its own
+    // exit code instead of bypassing cleanup entirely.
+    process.on('SIGTERM', onSigterm);
+    const removeSignalHandlers = () => {
+      process.removeListener('SIGINT', onSigint);
+      process.removeListener('SIGTERM', onSigterm);
+    };
+
+    let activeLock: ProcessLock | undefined;
+    let releaseLock: (() => void) | undefined;
+    this.runner = null;
     try {
       const normalizeDirConfig = (
         dirConfig: string | string[] | undefined,
@@ -434,7 +464,9 @@ export class CLIHandler {
       const resolvedOutDir = path.resolve(config.outDir ?? path.join(process.cwd(), 'dist/.vite-jasmine-build/'));
       const lock = new ProcessLock(config.project, config.port ?? 8888, resolvedOutDir);
       await lock.acquire(exclusive);
-      process.on('exit', () => lock.releaseSync());
+      activeLock = lock;
+      releaseLock = () => lock.releaseSync();
+      process.on('exit', releaseLock);
 
       const runner = cliDependencies.createViteJasmineRunner({
         ...config,
@@ -444,16 +476,30 @@ export class CLIHandler {
 
       const exitCode = watch ? await runner.watch() : await runner.start();
 
-      lock.releaseSync();
       return exitCode;
     } catch (error) {
-      logger.error(CLIMessages.failedToStartTestRunner(error));
+      // The runner logs its specific failures into the card itself; only the
+      // backstop speaks up when nothing was recorded, so one failure never
+      // renders twice.
+      if (!logger.hasPreparationErrors()) {
+        logger.error(CLIMessages.failedToStartTestRunner(error));
+      }
       // While the preparation card is open, logger.error buffers into it
       // instead of printing. A failed start never reaches the execution
       // boundary that flushes the card, so flush here or a redirected run
       // exits with nothing visible but its exit code.
       logger.flushPreparation();
       return getExitCode(error);
+    } finally {
+      removeSignalHandlers();
+      if (releaseLock) process.removeListener('exit', releaseLock);
+      try {
+        await this.cleanup();
+      } catch (error) {
+        logger.error(`Failed to clean up the test runner: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      }
+      activeLock?.releaseSync();
+      this.runner = null;
     }
   }
 

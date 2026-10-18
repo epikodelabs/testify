@@ -16,6 +16,7 @@ import {
 import {
   CoverageHost,
 } from './coverage-host';
+import { logger } from './logger';
 
 export interface NodeExecutionHostOptions {
   cwd?: string;
@@ -71,7 +72,9 @@ export class NodeExecutionHost {
     // The execution environment suppresses incidental test logging. Generate
     // coverage after it has restored the logger so the final report panel is
     // visible to the CLI user.
-    await this.coverage.generateGlobal();
+    await this.coverage.generateGlobal().catch((error) => {
+      logger.error(`Coverage generation failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    });
 
     return result;
   }

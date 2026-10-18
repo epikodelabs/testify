@@ -32,7 +32,7 @@ describe('Browser runtime', () => {
 
   it('embeds CatalogQuery for RunnerSession catalog helpers', () => {
     expect(source).toContain(
-      'class CatalogQuery',
+      'const CatalogQuery = class',
     );
   });
 

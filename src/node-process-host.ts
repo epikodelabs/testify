@@ -1,4 +1,5 @@
 export interface NodeProcessHostOptions {
+  handleSignals?: boolean;
   onUnhandledRejection?: (
     error: unknown,
   ) => void;
@@ -69,15 +70,17 @@ export class NodeProcessHost {
       this.onUncaughtException,
     );
 
-    process.on(
-      'SIGINT',
-      this.onSigint,
-    );
+    if (this.options.handleSignals !== false) {
+      process.on(
+        'SIGINT',
+        this.onSigint,
+      );
 
-    process.on(
-      'SIGTERM',
-      this.onSigterm,
-    );
+      process.on(
+        'SIGTERM',
+        this.onSigterm,
+      );
+    }
   }
 
   detach(): void {

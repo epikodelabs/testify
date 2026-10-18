@@ -13,8 +13,13 @@ export function getBrowserBootstrapScript(
 
   return `
 // Initialize everything after Jasmine is loaded
+let jasmineLoadAttempts = 0;
 (function initAfterJasmine() {
   if (!window.jasmineRequire) {
+    if (++jasmineLoadAttempts >= 500) {
+      console.error('Jasmine failed to load after 5 seconds');
+      return;
+    }
     return setTimeout(initAfterJasmine, 10);
   }
 

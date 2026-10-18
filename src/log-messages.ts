@@ -67,6 +67,9 @@ export const BrowserMessages = {
   pageError: (message: string) =>
     `%error% Page error: ${message}`,
 
+  pageErrorDuringPassingRun: (message: string) =>
+    `%warn% Page error during an otherwise passing run: ${message}`,
+
   requestFailed: (url: string, errorText: string | undefined) =>
     `%error% ${url}, ${errorText}`,
 
@@ -78,6 +81,12 @@ export const BrowserMessages = {
 
   browserInstallTip: (name: string) =>
     `%bulb% Tip: Install it by running: npx playwright install ${name.toLowerCase()}`,
+
+  installingBrowserRevision: (name: string) =>
+    `Installing missing ${name} revision (this can take a minute)...`,
+
+  installedBrowserRevision: (name: string) =>
+    `Installed missing ${name} revision`,
 
   openingBrowser: (name: string) =>
     `%globe% Opening ${name} browser...`,
@@ -304,6 +313,12 @@ export const HttpServerMessages = {
   portStillBusy: (port: number) =>
     `%error% Port ${port} is still busy after reclaim attempt.`,
 
+  portHeldByThisProcess: (port: number) =>
+    `%error% Port ${port} is already in use by this Testify process.`,
+
+  staticFileReadFailed: (filePath: string, error: unknown) =>
+    `%error% Failed to read ${filePath} while serving the test page: ${error}`,
+
   serverError: (error: unknown) =>
     `%error% ${error}`,
 };
@@ -381,6 +396,9 @@ export const HmrMessages = {
     if (other > 0) categories.push(`${other} other`);
     return `%box% Changed: ${fileCount(changed)} → Rebuilding: ${fileCount(total)} (${categories.join(', ')})`;
   },
+
+  watcherError: (error: unknown) =>
+    `%error% File watcher error: ${error}`,
 
   viteBuildFailed: (error: unknown) =>
     `%error% Vite build failed: ${toConsoleSafe(String(error))}`,
@@ -573,11 +591,17 @@ export const RunnerMessages = {
   sessionExitRequested: () =>
     `%stop% Testify Playground requested session exit`,
 
+  sessionExitCleanupFailed: (error: unknown) =>
+    `%error% Session exit requested, but cleanup after it failed: ${error}`,
+
   headlessBrowserUnavailable: () =>
     `%warn%  Headless browser not available. Falling back to Node.js runner.`,
 
-  browserTestExecutionFailed: () =>
-    `%error% Browser test execution failed. Need to install browser binaries?`,
+  browserTestExecutionFailed: (error: unknown) =>
+    `%error% Browser test execution failed: ${toConsoleSafe(String(error))}`,
+
+  coverageGenerationFailed: (error: unknown) =>
+    `%error% Tests finished, but coverage generation failed: ${error}`,
 
   nodeTestExecutionFailed: (message: string) =>
     `%error% Node test execution failed: ${message}`,
@@ -639,6 +663,12 @@ export const WebSocketMessages = {
 
   failedToParseMessage: (error: unknown) =>
     `%error% Failed to parse WebSocket message: ${error}`,
+
+  hmrScanFailed: (error: unknown) =>
+    `%error% Could not scan output directory for the HMR spec list: ${error}`,
+
+  coverageParseFailed: (error: unknown) =>
+    `%error% Test run passed, but its coverage payload could not be parsed: ${error}`,
 
   websocketError: (error: unknown) =>
     `%error% WebSocket error: ${error}`,

@@ -12,6 +12,9 @@ export class HostAdapter {
   }
 
   private bindListeners() {
+    this.child.on('error', (error) => {
+      logger.error(HostAdapterMessages.ipcEventError(error.message));
+    });
     this.child.on('message', (msg: any) => {
       if (!msg || typeof msg !== 'object') return;
 
@@ -22,7 +25,10 @@ export class HostAdapter {
 
       // Start queue processor if idle
       if (!this.isProcessing) {
-        this.processQueue();
+        this.processQueue().catch((error) => {
+          this.isProcessing = false;
+          logger.error(HostAdapterMessages.ipcEventError(String(error)));
+        });
       }
     });
   }
