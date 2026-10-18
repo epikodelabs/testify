@@ -51,6 +51,7 @@ export interface RebuildStats {
 export type SourceChangeStrategy = 'smart' | 'always-reload' | 'never-reload';
 
 export interface HmrManagerOptions {
+  selectedSpecFiles?: string[];
   fileFilter?: Partial<FileFilter>;
   rebuildMode?: 'all' | 'selective';
   sourceChangeStrategy?: SourceChangeStrategy;
@@ -58,6 +59,7 @@ export interface HmrManagerOptions {
 }
 
 export class HmrManager extends EventEmitter {
+  private selectedSpecFiles: Set<string> | undefined;
   private watcher: FSWatcher | null = null;
   private stopPromise: Promise<void> | null = null;
   private stopped = false;
@@ -101,6 +103,8 @@ export class HmrManager extends EventEmitter {
     options?: HmrManagerOptions
   ) {
     super();
+    this.selectedSpecFiles = options?.selectedSpecFiles
+      ? new Set(options.selectedSpecFiles.map(file => this.normalizedAbsolutePath(file))) : undefined;
     const srcDir = Array.isArray(config.srcDirs) && config.srcDirs.length > 0 ? config.srcDirs[0] : './src';
     const testDir = Array.isArray(config.testDirs) && config.testDirs.length > 0 ? config.testDirs[0] : './tests';
     this.primarySrcDir = this.normalizedAbsolutePath(srcDir);
@@ -130,6 +134,8 @@ export class HmrManager extends EventEmitter {
   }
 
   private matchesFilter(filePath: string): boolean {
+    if (this.selectedSpecFiles && /\.spec\.(?:[cm]?[jt]sx?)$/i.test(filePath) &&
+        !this.selectedSpecFiles.has(this.normalizedAbsolutePath(filePath))) return false;
     const normalizedPath = filePath;
 
     if (this.fileFilter.extensions?.length) {

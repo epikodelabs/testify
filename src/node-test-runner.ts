@@ -81,8 +81,8 @@ export class NodeTestRunner {
       );
   }
 
-  generateTestRunner(): void {
-    this.artifacts.generate();
+  generateTestRunner(selectedSpecFiles?: string[]): void {
+    this.artifacts.generate(selectedSpecFiles);
   }
 
   recordGlobalFailure(

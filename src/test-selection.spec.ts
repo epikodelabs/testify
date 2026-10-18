@@ -102,6 +102,15 @@ describe('TestSelector', () => {
     ).toEqual(['spec2']);
   });
 
+  it('does not broaden a path-qualified selector to other files with the same basename', () => {
+    const nestedCatalog: TestCatalog = { suites: [], specs: [
+      { id: 'admin', description: 'admin', fullName: 'admin', file: 'src/admin/login.spec.mjs' },
+      { id: 'forms', description: 'forms', fullName: 'forms', file: 'src/forms/login.spec.mjs' },
+    ] };
+    expect(resolveTestSelector(nestedCatalog, { file: 'src/forms/login.spec.ts' })).toEqual(['forms']);
+    expect(resolveTestSelector(nestedCatalog, { file: 'src/missing/login.spec.ts' })).toEqual([]);
+  });
+
   it('intersects file and suite selectors', () => {
     expect(
       resolveTestSelector(

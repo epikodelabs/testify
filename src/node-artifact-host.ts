@@ -36,7 +36,7 @@ export class NodeArtifactHost {
       ViteJasmineConfig,
   ) {}
 
-  generate(): NodeRunnerHost | null {
+  generate(selectedSpecFiles?: string[]): NodeRunnerHost | null {
     const outDir =
       this.config.outDir;
 
@@ -49,6 +49,7 @@ export class NodeArtifactHost {
       discoverNodeBuildArtifacts(
         outDir,
       );
+    if (selectedSpecFiles) artifacts.specFiles = artifacts.specFiles.filter(file => selectedSpecFiles.includes(file));
 
     if (
       artifacts.specFiles.length === 0

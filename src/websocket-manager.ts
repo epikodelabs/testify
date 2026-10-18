@@ -15,6 +15,7 @@ export class WebSocketManager extends EventEmitter {
   private wsClients: WebSocket[] = [];
   private hmrManager: HmrManager | null = null;
   private hmrEnabled: boolean = false;
+  private selectedSpecFiles: string[] | undefined;
   private jsonCleaner = new JSONCleaner();
   private failedSpecsCount: number = 0;
   private pendingSpecsCount: number = 0;
@@ -66,6 +67,7 @@ export class WebSocketManager extends EventEmitter {
     try {
       const files = await this.fileDiscovery.scanDir(this.config.outDir, '/**/*.{js,mjs}');
       specFiles = files.filter(file => /\.spec\.(?:js|mjs)$/i.test(file)).map(file => path.basename(file)).sort();
+      if (this.selectedSpecFiles) specFiles = specFiles.filter(file => this.selectedSpecFiles!.includes(file));
     } catch (error) {
       logger.error(WebSocketMessages.hmrScanFailed(error));
     }
@@ -151,7 +153,8 @@ export class WebSocketManager extends EventEmitter {
   }
 
   // New method to enable HMR
-  enableHmr(hmrManager: HmrManager): void {
+  enableHmr(hmrManager: HmrManager, selectedSpecFiles?: string[]): void {
+    this.selectedSpecFiles = selectedSpecFiles;
     this.hmrManager = hmrManager;
     this.hmrEnabled = true;
 

@@ -127,6 +127,14 @@ npx testify --file "forms (legacy).spec.ts"
 
 Testify accepts source filenames such as `forms.spec.ts` and resolves them to the corresponding built test artifacts internally.
 
+Use a path relative to the working directory (or an absolute path) to select a concrete file when names repeat:
+
+```bash
+npx testify --file src/admin/login.spec.ts
+```
+
+A basename such as `login.spec.ts` runs all matching files. An explicit relative or absolute path selects only that file. File resolution happens before environment preparation or process-lock acquisition; when several files match, their paths are listed. This behavior is the same in interactive terminals and CI, with no prompt. An unmatched explicit selector exits with usage code `2`.
+
 ### Select a suite
 
 Use `--suite` or `-s`:

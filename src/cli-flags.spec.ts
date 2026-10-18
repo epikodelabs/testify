@@ -22,6 +22,7 @@ function baseConfig(overrides: Record<string, unknown> = {}) {
 function stubSuccessfulRunner() {
   let capturedConfig: any;
   const fakeRunner: any = {
+    selectSpecFiles: async () => {},
     start: async () => 0,
     watch: async () => 0,
     cleanup: async () => undefined,
@@ -184,6 +185,7 @@ describe('Testify CLI flags', () => {
     process.argv = ['node', 'testify', '-w', '-b', 'node'];
     const { watch } = { watch: jasmine.createSpy('watch').and.resolveTo(0) };
     spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({
+      selectSpecFiles: async () => {},
       start: async () => 0,
       watch,
       cleanup: async () => undefined,

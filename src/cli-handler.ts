@@ -453,6 +453,14 @@ export class CLIHandler {
         await printTestifyConsoleBanner();
       }
 
+      const resolvedOutDir = path.resolve(config.outDir ?? path.join(process.cwd(), 'dist/.vite-jasmine-build/'));
+      const lock = new ProcessLock(config.project, config.port ?? 8888, resolvedOutDir);
+      const runner = cliDependencies.createViteJasmineRunner({
+        ...config,
+        lockFilePath: lock.getPidFilePath(),
+      });
+      await runner.selectSpecFiles();
+
       // Begin this before the process lock is acquired so any ordinary setup
       // notices are retained in the preparation card.
       logger.preparationStart('');
@@ -461,17 +469,11 @@ export class CLIHandler {
         logger.println(CLIMessages.preserveOutputsEnabled());
       }
 
-      const resolvedOutDir = path.resolve(config.outDir ?? path.join(process.cwd(), 'dist/.vite-jasmine-build/'));
-      const lock = new ProcessLock(config.project, config.port ?? 8888, resolvedOutDir);
       await lock.acquire(exclusive);
       activeLock = lock;
       releaseLock = () => lock.releaseSync();
       process.on('exit', releaseLock);
 
-      const runner = cliDependencies.createViteJasmineRunner({
-        ...config,
-        lockFilePath: lock.getPidFilePath(),
-      });
       this.runner = runner;
 
       const exitCode = watch ? await runner.watch() : await runner.start();

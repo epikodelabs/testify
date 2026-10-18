@@ -42,6 +42,7 @@ describe('Testify CLI start-failure reporting', () => {
   it('flushes the buffered preparation card when the runner start fails', async () => {
     process.argv = ['node', 'testify'];
     spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({
+      selectSpecFiles: async () => {},
       start: async () => {
         throw new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, 'simulated build failure');
       },
@@ -62,6 +63,7 @@ describe('Testify CLI start-failure reporting', () => {
   it('does not re-log a failure the runner already reported into the card', async () => {
     process.argv = ['node', 'testify'];
     spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({
+      selectSpecFiles: async () => {},
       start: async () => {
         throw new ExitCodeError(EXIT_CODES.INTERNAL_ERROR, 'simulated build failure');
       },
@@ -87,6 +89,7 @@ describe('Testify CLI start-failure reporting', () => {
     const before = events.map(event => process.listenerCount(event));
     const cleanup = jasmine.createSpy('cleanup').and.resolveTo();
     spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({
+      selectSpecFiles: async () => {},
       start: async () => { throw new Error('failed startup'); }, cleanup,
     } as any);
     spyOn(logger, 'error');
@@ -97,5 +100,38 @@ describe('Testify CLI start-failure reporting', () => {
     }
     expect(cleanup).toHaveBeenCalledTimes(2);
     expect(ProcessLock.prototype.releaseSync).toHaveBeenCalledTimes(2);
+  });
+
+  it('finishes file selection before opening preparation or acquiring the process lock', async () => {
+    process.argv = ['node', 'testify', '--file', 'login.spec.ts'];
+    const events: string[] = [];
+    let choose!: () => void;
+    const selected = new Promise<void>(resolve => { choose = resolve; });
+    spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({
+      selectSpecFiles: async () => { await selected; events.push('selection'); },
+      start: async () => { events.push('execution'); return 0; },
+      cleanup: async () => {},
+    } as any);
+    const preparation = spyOn(logger, 'preparationStart').and.callFake(() => { events.push('preparation'); return true; });
+    (ProcessLock.prototype.acquire as jasmine.Spy).and.callFake(async () => { events.push('lock'); });
+    const running = CLIHandler.run();
+    await Promise.resolve();
+    expect(preparation).not.toHaveBeenCalled();
+    expect(ProcessLock.prototype.acquire).not.toHaveBeenCalled();
+    choose();
+    expect(await running).toBe(0);
+    expect(events).toEqual(['selection', 'preparation', 'lock', 'execution']);
+  });
+
+  it('rejects unmatched files without beginning preparation or acquiring a lock', async () => {
+    process.argv = ['node', 'testify', '--file', 'login.spec.ts'];
+    spyOn(cliDependencies, 'createViteJasmineRunner').and.returnValue({
+      selectSpecFiles: async () => { throw new ExitCodeError(EXIT_CODES.INVALID_USAGE, 'No spec file matches'); },
+    } as any);
+    const preparation = spyOn(logger, 'preparationStart');
+    spyOn(logger, 'error');
+    expect(await CLIHandler.run()).toBe(EXIT_CODES.INVALID_USAGE);
+    expect(preparation).not.toHaveBeenCalled();
+    expect(ProcessLock.prototype.acquire).not.toHaveBeenCalled();
   });
 });

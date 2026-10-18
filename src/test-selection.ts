@@ -150,7 +150,7 @@ export function fileSelectorMatches(
   return (
     candidate === selected ||
     candidate.endsWith('/' + selected) ||
-    candidate.split('/').at(-1) === selected.split('/').at(-1)
+    (!selected.includes('/') && candidate.split('/').at(-1) === selected)
   );
 }
 

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { norm } from './utils';
+import { norm, sanitizeTerminalText } from './utils';
 import { glob } from 'glob';
 import { EventEmitter } from 'events';
 import { BrowserManager } from './browser-manager';
@@ -21,6 +21,7 @@ import { setAnsiMode } from './symbols';
 import { RunnerMessages } from './log-messages';
 import { ExitCodeError, EXIT_CODES } from './exit-codes';
 import { getExecutionExitCode } from './cli-result-adapter';
+import { resolveSpecFiles } from './spec-file-selection';
 
 const { build: viteBuild } = await import('vite');
 
@@ -42,6 +43,9 @@ export class ViteJasmineRunner extends EventEmitter {
   private coverageHost: CoverageHost;
   private hmrManager: HmrManager | null = null;
   private started = false;
+  private selectedSpecFiles: string[] | undefined;
+  private fileSelectionPromise: Promise<void> | undefined;
+  private selectedSpecArtifacts: string[] | undefined;
   private cleanupPromise: Promise<void> | null = null;
   /** Resolves the promise returned by the active watch()/headed run. */
   private finishResolve: ((code: number) => void) | null = null;
@@ -267,38 +271,36 @@ export class ViteJasmineRunner extends EventEmitter {
         ) || '.';
   }
 
+  /** Resolve user input before preparation, locking, or building starts. */
+  async selectSpecFiles(): Promise<void> {
+    if (!this.config.fileFilter) return;
+    this.fileSelectionPromise ??= (async () => {
+      try {
+        const { specFiles } = await this.fileDiscovery.discoverAllSources();
+        this.selectedSpecFiles = resolveSpecFiles(specFiles, this.config.fileFilter!);
+        this.assertActive();
+        if (this.selectedSpecFiles.length > 1) logger.printlnRaw(
+          `Running ${this.selectedSpecFiles.length} matching spec files:\n` +
+          this.selectedSpecFiles.map(file => `  ${sanitizeTerminalText(norm(path.relative(process.cwd(), file)))}`).join('\n'),
+        );
+      } catch (error) {
+        throw error instanceof ExitCodeError ? error
+          : new ExitCodeError(EXIT_CODES.CONFIG_ERROR, String(error), { cause: error });
+      }
+    })();
+    return this.fileSelectionPromise;
+  }
+
   async preprocess(): Promise<PreprocessResult> {
+    await this.selectSpecFiles();
     try {
       logger.preparationStep('DISCOVER', 'Discovering test files...');
       let { srcFiles, specFiles: discoveredSpecFiles } = await this.fileDiscovery.discoverSources();
-      const normalizeSpecFile = (value: string) =>
-        norm(value)
-          .replace(/^\.\//, '')
-          .replace(/\.(?:[cm]?[jt]sx?)$/i, '');
-      const selectedFile = this.config.fileFilter
-        ? normalizeSpecFile(this.config.fileFilter)
-        : undefined;
-      const selector = selectedFile ?? '';
-      const matchesSelector = (file: string) => {
-            const candidate = normalizeSpecFile(
-              norm(path.relative(process.cwd(), file)),
-            );
-            return (
-              candidate === selector ||
-              candidate.endsWith('/' + selector) ||
-              path.posix.basename(candidate) === path.posix.basename(selector)
-            );
-          };
-
-      let specFiles = selectedFile
-        ? discoveredSpecFiles.filter(matchesSelector)
-        : discoveredSpecFiles;
-
-      if (selectedFile && specFiles.length === 0 && this.config.browser !== 'node') {
-        const { specFiles: allSpecFiles } = await this.fileDiscovery.discoverAllSources();
-        const nodeOnlyMatches = allSpecFiles.filter(matchesSelector);
-
-        if (nodeOnlyMatches.length > 0) {
+      let specFiles = this.selectedSpecFiles ?? discoveredSpecFiles;
+      if (this.selectedSpecFiles) {
+        if (this.config.browser !== 'node' && specFiles.some(file => !discoveredSpecFiles.includes(file))) {
+          if (this.config.watch) throw new ExitCodeError(EXIT_CODES.INVALID_USAGE,
+            'The selected specs require Node.js. Run with --browser node without --watch.');
           // The requested spec belongs to the Node host graph. Switch the
           // isolated run to the Node pipeline instead of handing its imports
           // to Vite's browser resolver.
@@ -306,7 +308,6 @@ export class ViteJasmineRunner extends EventEmitter {
           this.config.headless = true;
           this.refreshPreparationPlan();
           ({ srcFiles, specFiles: discoveredSpecFiles } = await this.fileDiscovery.discoverSources());
-          specFiles = discoveredSpecFiles.filter(matchesSelector);
         }
       }
 
@@ -331,6 +332,7 @@ export class ViteJasmineRunner extends EventEmitter {
       const selectedSpecArtifacts = specFiles.map((file) =>
         this.fileDiscovery.getOutputName(file),
       );
+      this.selectedSpecArtifacts = this.config.fileFilter ? selectedSpecArtifacts : undefined;
       logger.preparationStep(
         'CONFIG',
         RunnerMessages.preparingBuildConfiguration(),
@@ -431,7 +433,7 @@ export class ViteJasmineRunner extends EventEmitter {
       if (moduleFiles.length > 0) logger.preparationComplete('INSTRUMENT');
 
       const htmlPath = path.join(this.config.outDir, 'index.html');
-      const preserveHtml = this.shouldPreserve() && fs.existsSync(htmlPath);
+      const preserveHtml = this.shouldPreserve() && fs.existsSync(htmlPath) && !this.config.fileFilter;
       if (!(this.config.headless && this.config.browser === 'node') && !preserveHtml) {
         logger.preparationStep('PAGE', 'Generating browser test page...');
         if (this.config.watch) {
@@ -451,10 +453,10 @@ export class ViteJasmineRunner extends EventEmitter {
       }
 
       const runnerPath = path.join(this.config.outDir, 'test-runner.mjs');
-      const preserveRunner = this.shouldPreserve() && fs.existsSync(runnerPath);
+      const preserveRunner = this.shouldPreserve() && fs.existsSync(runnerPath) && !this.config.fileFilter;
       if (this.config.headless && this.config.browser === 'node' && !preserveRunner) {
         logger.preparationStep('RUNNER', 'Generating in-process test runner...');
-        this.nodeTestRunner.generateTestRunner();
+        this.nodeTestRunner.generateTestRunner(this.selectedSpecArtifacts);
         logger.preparationComplete('RUNNER');
       } else if (this.config.headless && this.config.browser === 'node' && preserveRunner) {
         logger.preparationStep('RUNNER', RunnerMessages.preservingExistingRunner(), true);
@@ -513,6 +515,7 @@ export class ViteJasmineRunner extends EventEmitter {
     this.started = true;
     this.config.watch = false;
 
+    await this.selectSpecFiles();
     this.beginPreparation();
 
     try {
@@ -560,6 +563,7 @@ export class ViteJasmineRunner extends EventEmitter {
     this.started = true;
 
     this.config.watch = true;
+    await this.selectSpecFiles();
     this.beginPreparation();
     try {
       const preprocessResult = await this.preprocess();
@@ -587,9 +591,11 @@ export class ViteJasmineRunner extends EventEmitter {
     logger.preparationStep('HMR', RunnerMessages.startingHmrWatcher());
 
     this.webSocketManager = new WebSocketManager(this.fileDiscovery, this.config, server, this.consoleReporter);
-    this.hmrManager = new HmrManager(this.fileDiscovery, this.config, this.viteConfigBuilder, this.viteCache);
+    this.hmrManager = new HmrManager(this.fileDiscovery, this.config, this.viteConfigBuilder, this.viteCache, {
+      selectedSpecFiles: this.selectedSpecFiles,
+    });
 
-    this.webSocketManager.enableHmr(this.hmrManager);
+    this.webSocketManager.enableHmr(this.hmrManager, this.selectedSpecArtifacts);
     await this.hmrManager.start();
     this.assertActive();
     logger.preparationComplete('HMR');
@@ -693,7 +699,7 @@ export class ViteJasmineRunner extends EventEmitter {
       this.config.headless = true;
       this.refreshPreparationPlan();
       logger.preparationStep('RUNNER', 'Generating in-process test runner...');
-      this.nodeTestRunner.generateTestRunner();
+      this.nodeTestRunner.generateTestRunner(this.selectedSpecArtifacts);
       logger.preparationComplete('RUNNER');
 
       try {
