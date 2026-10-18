@@ -65,8 +65,7 @@ export class FileDiscoveryService {
       let files = await glob(basePath, { absolute: true, ignore: exclude });
       return files.map((s) => norm(s));
     } catch (error) {
-      logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
-      throw new Error("Failed to discover source and test files");
+      throw new Error(`Failed to discover source and test files in ${dir}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
   }
 
@@ -123,8 +122,7 @@ export class FileDiscoveryService {
         specFiles: dedupedSpecFiles,
       };
     } catch (error) {
-      logger.error(FileDiscoveryMessages.errorDiscoveringFiles(error));
-      throw new Error("Failed to discover source and test files");
+      throw error;
     }
   }
 
@@ -280,7 +278,7 @@ export class FileDiscoveryService {
       try {
         source = await fs.readFile(file, 'utf8');
       } catch (error) {
-        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        logger.warn(`Unable to inspect browser compatibility for ${file}: ${error instanceof Error ? error.message : String(error)}`);
         continue;
       }
 
@@ -366,7 +364,7 @@ export class FileDiscoveryService {
           'utf8',
         );
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      logger.warn(`Unable to inspect browser compatibility for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
       return true;
     }
 

@@ -1,4 +1,4 @@
-import fs from 'fs';
+import { getTestifyVersion as getInstalledTestifyVersion } from './testify-version';
 import { getMaxWidth, isAnsiMode, supportsColor } from './ansi-constants';
 
 // ─── TESTIFY console wordmark ────────────────────────────────
@@ -77,19 +77,7 @@ export function renderTestifyConsoleBanner(
 }
 
 function getTestifyVersion(): string {
-  const packageFiles = [
-    new URL('../package.json', import.meta.url),
-    new URL('../../package.json', import.meta.url),
-  ];
-  const packageFile = packageFiles.find((candidate) => fs.existsSync(candidate));
-  if (!packageFile) return 'unknown';
-
-  try {
-    const manifest = JSON.parse(fs.readFileSync(packageFile, 'utf8')) as { version?: string };
-    return manifest.version ?? 'unknown';
-  } catch (_error) {
-    return 'unknown';
-  }
+  return getInstalledTestifyVersion().replace(/^v/, '');
 }
 
 function formatCaptionVersion(version: string): string {

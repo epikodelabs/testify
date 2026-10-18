@@ -1,4 +1,7 @@
 import fs from 'fs';
+import { logger } from './logger';
+
+let warned = false;
 
 /**
  * Returns the installed Testify package version.
@@ -13,12 +16,16 @@ export function getTestifyVersion(): string {
     new URL('../../package.json', import.meta.url),
   ];
   const packageFile = packageFiles.find((candidate) => fs.existsSync(candidate));
-  if (!packageFile) return 'unknown';
-
   try {
+    if (!packageFile) throw new Error('Testify package.json was not found');
     const manifest = JSON.parse(fs.readFileSync(packageFile, 'utf8')) as { version?: string };
-    return manifest.version ? `v${manifest.version}` : 'unknown';
-  } catch (_error) {
+    if (!manifest.version) throw new Error('Testify package.json has no version');
+    return `v${manifest.version}`;
+  } catch (error) {
+    if (!warned) {
+      warned = true;
+      logger.warn(`Unable to determine Testify version: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return 'unknown';
   }
 }

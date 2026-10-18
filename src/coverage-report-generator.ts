@@ -46,7 +46,7 @@ export class CoverageReportGenerator {
           const sourceMap = JSON.parse(fs.readFileSync(mapPath, 'utf-8'));
           remapper.registerMap(filePath, sourceMap);
         } catch (error) {
-          logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+          logger.warn(`Skipping unreadable source map ${mapPath}: ${error instanceof Error ? error.message : String(error)}`);
           // Skip unreadable or malformed source maps
         }
       }
@@ -63,7 +63,7 @@ export class CoverageReportGenerator {
           const fileCoverage = remappedCoverage.fileCoverageFor(filePath);
           filteredCoverage.addFileCoverage(fileCoverage);
         } catch (error) {
-          logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+          logger.warn(`Skipping unavailable remapped coverage for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
           // Skip files that don't have coverage data after remapping
         }
       }

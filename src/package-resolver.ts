@@ -16,8 +16,10 @@ export class PackageResolver {
         return norm(path.resolve(projectValue));
       }
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-      // not a directory, continue to name resolution
+      // Package names are expected not to exist as local paths.
+      if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+        logger.warn(`Unable to inspect project path '${projectValue}': ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     // Try tsconfig references
@@ -39,7 +41,7 @@ export class PackageResolver {
     try {
       tsconfig = this.cleaner.parse(fs.readFileSync(configPath, 'utf8'));
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      logger.warn(`Unable to read project references from ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
     }
 
@@ -61,7 +63,7 @@ export class PackageResolver {
           return packageDir;
         }
       } catch (error) {
-        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        logger.warn(`Skipping unreadable package ${pkgJsonPath}: ${error instanceof Error ? error.message : String(error)}`);
         // skip unreadable package.json
       }
     }
@@ -92,13 +94,13 @@ export class PackageResolver {
                 return norm(path.dirname(pkgJsonPath));
               }
             } catch (error) {
-              logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+              logger.warn(`Skipping unreadable package ${pkgJsonPath}: ${error instanceof Error ? error.message : String(error)}`);
               // skip
             }
           }
         }
       } catch (error) {
-        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        logger.warn(`Unable to inspect workspaces in ${rootPkgPath}: ${error instanceof Error ? error.message : String(error)}`);
         // skip unreadable root package.json
       }
     }
@@ -122,13 +124,13 @@ export class PackageResolver {
                 return norm(path.dirname(pkgJsonPath));
               }
             } catch (error) {
-              logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+              logger.warn(`Skipping unreadable package ${pkgJsonPath}: ${error instanceof Error ? error.message : String(error)}`);
               // skip
             }
           }
         }
       } catch (error) {
-        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        logger.warn(`Unable to inspect ${pnpmWorkspacePath}: ${error instanceof Error ? error.message : String(error)}`);
         // skip unreadable pnpm-workspace.yaml
       }
     }

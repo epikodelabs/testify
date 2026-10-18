@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import { logger } from './logger';
 import { ProcessLockMessages } from './log-messages';
 import { norm } from './utils';
+import { EXIT_CODES, ExitCodeError } from './exit-codes';
 
 export class ProcessLock {
   private pidFile: string;
@@ -33,6 +34,7 @@ export class ProcessLock {
 
   releaseSync(): void {
     try {
+      if (fs.existsSync(this.pidFile) && fs.readFileSync(this.pidFile, 'utf8').trim() !== String(process.pid)) return;
       this.unlinkPidFileSync();
     } catch (error) {
       logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
@@ -46,24 +48,28 @@ export class ProcessLock {
 
       const raw = fs.readFileSync(this.pidFile, 'utf-8').trim();
       const pid = parseInt(raw, 10);
-      if (!Number.isFinite(pid)) {
+      if (!Number.isSafeInteger(pid) || pid <= 0) {
         this.unlinkPidFileSync();
         return;
+      }
+      if (pid === process.pid) {
+        throw new Error('Another Testify runner in this process already owns the lock');
       }
 
       // Check if process is still alive
       try {
         process.kill(pid, 0);
       } catch (err: any) {
-        logger.error(`${err instanceof Error ? err.stack ?? err.message : String(err)}`);
         if (err.code === 'EPERM') {
           // Process exists but we lack permission to query it (e.g. debugger attached).
           // Assume it's alive and proceed with the kill attempt.
-        } else {
+        } else if (err.code === 'ESRCH') {
           // Stale PID file
           logger.println(ProcessLockMessages.staleLockFile(pid));
           this.unlinkPidFileSync();
           return;
+        } else {
+          throw err;
         }
       }
 
@@ -89,14 +95,13 @@ export class ProcessLock {
       // Verify final state and log
       const finalAlive = await this.isAlive(pid);
       if (finalAlive) {
-        logger.error(ProcessLockMessages.couldNotTerminate(pid));
+        throw new Error(ProcessLockMessages.couldNotTerminate(pid));
       } else {
         logger.println(ProcessLockMessages.terminatedPrevious(pid));
       }
       this.unlinkPidFileSync();
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-      // Ignore any errors during cleanup
+      throw new ExitCodeError(EXIT_CODES.CONFIG_ERROR, `Unable to acquire the previous Testify process lock: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
   }
 
@@ -165,10 +170,10 @@ export class ProcessLock {
    * Returns [{ pid, name }] for each child process.
    */
   private async getWindowsChildren(pid: number): Promise<Array<{ pid: number; name: string }>> {
-    return new Promise((resolve) => {
-      exec(`tasklist /FI "ParentPID eq ${pid}" /FO CSV /NH`, { encoding: 'utf-8' }, (error, stdout) => {
+    return new Promise((resolve, reject) => {
+      exec(`powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process -Filter 'ParentProcessId = ${pid}' | Select-Object Name,ProcessId | ConvertTo-Csv -NoTypeInformation"`, { encoding: 'utf-8' }, (error, stdout) => {
         if (error) {
-          resolve([]);
+          reject(new Error(`Unable to enumerate children of process ${pid}`, { cause: error }));
           return;
         }
         const lines = stdout.trim().split(/\r?\n/).filter((l) => l.trim());
@@ -194,16 +199,18 @@ export class ProcessLock {
       return [];
     }
 
-    const directChildren = await new Promise<number[]>((resolve) => {
-      exec(`ps -o pid= --ppid ${pid}`, { encoding: 'utf-8' }, (error, stdout) => {
+    const directChildren = await new Promise<number[]>((resolve, reject) => {
+      exec('ps -axo pid=,ppid=', { encoding: 'utf-8' }, (error, stdout) => {
         if (error) {
-          resolve([]);
+          reject(new Error(`Unable to enumerate children of process ${pid}`, { cause: error }));
           return;
         }
         const pids = stdout
           .trim()
-          .split(/\s+/)
-          .map((p) => parseInt(p.trim(), 10))
+          .split(/\r?\n/)
+          .map(line => line.trim().split(/\s+/).map(Number))
+          .filter(([, parent]) => parent === pid)
+          .map(([child]) => child)
           .filter(Number.isFinite);
         resolve(pids);
       });
@@ -222,9 +229,10 @@ export class ProcessLock {
     try {
       process.kill(pid, 0);
       return true;
-    } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-      return false;
+    } catch (error: any) {
+      if (error.code === 'ESRCH') return false;
+      if (error.code === 'EPERM') return true;
+      throw error;
     }
   }
 
@@ -253,14 +261,14 @@ export class ProcessLock {
   }
 
   private async getProcessName(pid: number): Promise<string | null> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const cmd = process.platform === 'win32'
         ? `tasklist /FI "PID eq ${pid}" /FO CSV /NH`
         : `ps -p ${pid} -o comm=`;
 
       exec(cmd, { encoding: 'utf-8' }, (error, stdout) => {
         if (error) {
-          resolve(null);
+          reject(new Error(`Unable to inspect process ${pid}`, { cause: error }));
           return;
         }
         const output = stdout.trim();

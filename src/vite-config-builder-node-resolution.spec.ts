@@ -4,6 +4,8 @@ import {
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { EXIT_CODES } from './exit-codes';
+import { logger } from './logger';
 
 describe('ViteConfigBuilder Node resolution', () => {
   let tsconfigPath = '';
@@ -22,6 +24,20 @@ describe('ViteConfigBuilder Node resolution', () => {
 
   afterEach(() => {
     fs.rmSync(path.dirname(tsconfigPath), { recursive: true, force: true });
+  });
+
+  it('reports one actionable configuration failure for unresolved extends without logging candidate misses', () => {
+    fs.writeFileSync(tsconfigPath, JSON.stringify({ extends: './missing-base' }));
+    const errors = spyOn(logger, 'error');
+    const builder = new ViteConfigBuilder({ tsconfig: tsconfigPath } as any);
+    expect(() => (builder as any).loadResolvedTsconfigData()).toThrowError(/Cannot resolve tsconfig extends/);
+    try {
+      (builder as any).loadResolvedTsconfigData();
+    } catch (error) {
+      expect((error as any).exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
+      expect((error as Error).cause).toBeInstanceOf(Error);
+    }
+    expect(errors).not.toHaveBeenCalled();
   });
 
   it('uses Node resolution, external packages, and no vendor chunking', () => {

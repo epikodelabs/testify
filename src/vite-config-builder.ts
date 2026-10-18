@@ -11,6 +11,7 @@ import { norm } from './utils';
 import JSONCleaner from './json-cleaner';
 import { logger } from './logger';
 import { ViteConfigMessages } from './log-messages';
+import { EXIT_CODES, ExitCodeError } from './exit-codes';
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -106,7 +107,7 @@ export class ViteConfigBuilder {
         }
       }
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      logger.warn(`Unable to inspect package dependencies: ${error instanceof Error ? error.message : String(error)}`);
       // Dependency externalization is an optimization/isolation boundary.
       // A malformed package.json should still be reported by the normal
       // project/tooling path instead of making Testify config construction fail.
@@ -318,7 +319,7 @@ export class ViteConfigBuilder {
     try {
       content = fs.readFileSync(filePath, 'utf8');
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      logger.warn(`Unable to inspect TypeScript source ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
 
@@ -684,12 +685,14 @@ export class ViteConfigBuilder {
   private loadResolvedTsconfigData(): ResolvedTsconfigData | null {
     try {
       const tsconfigPath = path.resolve(this.config.tsconfig ?? 'tsconfig.json');
-      if (!fs.existsSync(tsconfigPath)) return null;
+      if (!fs.existsSync(tsconfigPath)) {
+        if (this.config.tsconfig) throw new Error(`Configured tsconfig does not exist: ${tsconfigPath}`);
+        return null;
+      }
 
       return this.resolveTsconfigData(tsconfigPath);
     } catch (err) {
-      logger.error(ViteConfigMessages.tsconfigParseFailed(err));
-      return null;
+      throw new ExitCodeError(EXIT_CODES.CONFIG_ERROR, ViteConfigMessages.tsconfigParseFailed(err), { cause: err });
     }
   }
 
@@ -727,7 +730,7 @@ export class ViteConfigBuilder {
         fs.readFileSync(projectPackageJsonPath, 'utf8')
       );
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      logger.warn(`Unable to read project package ${projectPackageJsonPath}: ${error instanceof Error ? error.message : String(error)}`);
       return {};
     }
 
@@ -752,7 +755,7 @@ export class ViteConfigBuilder {
         builtPackage
       );
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      logger.warn(`Unable to read built package ${builtPackageRoot}: ${error instanceof Error ? error.message : String(error)}`);
       return {};
     }
   }
@@ -775,7 +778,7 @@ export class ViteConfigBuilder {
           return norm(path.dirname(candidate));
         }
       } catch (error) {
-        logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        logger.warn(`Skipping unreadable package ${candidate}: ${error instanceof Error ? error.message : String(error)}`);
         continue;
       }
     }
@@ -974,6 +977,8 @@ export class ViteConfigBuilder {
       const extendsPath = this.resolveExtendedTsconfigPath(tsconfig.extends, configDir);
       if (extendsPath && fs.existsSync(extendsPath)) {
         inherited = this.resolveTsconfigData(extendsPath, seen);
+      } else {
+        throw new Error(`Cannot resolve tsconfig extends '${tsconfig.extends}' from ${normalizedTsconfigPath}`);
       }
     }
 
@@ -1014,15 +1019,18 @@ export class ViteConfigBuilder {
     }
 
     try {
-      return nodeRequire.resolve(extendsRef);
+      return nodeRequire.resolve(extendsRef, { paths: [configDir] });
     } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);}
+      // Expected candidate miss; report the complete resolution failure once.
+      if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') throw error;
+    }
 
-    for (const candidate of this.candidateTsconfigPaths(extendsRef)) {
+    for (const candidate of [extendsRef + '.json', extendsRef + '/tsconfig.json']) {
       try {
-        return nodeRequire.resolve(candidate);
+        return nodeRequire.resolve(candidate, { paths: [configDir] });
       } catch (error) {
-      logger.error(`${error instanceof Error ? error.stack ?? error.message : String(error)}`);}
+        if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') throw error;
+      }
     }
 
     return null;
