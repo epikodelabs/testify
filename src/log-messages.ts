@@ -3,6 +3,7 @@
 // They are intentionally kept as plain ASCII placeholders so the strings remain
 // portable and easy to localise / override.
 import { toConsoleSafe } from './ascii-sanitizer';
+import { ExitCodeError } from './exit-codes';
 
 // %checked%       → ✅  (success / done)
 // %cross%         → x  (error / failure)
@@ -158,8 +159,16 @@ export const CLIMessages = {
   preserveOutputsEnabled: () =>
     `%info% Preserve outputs enabled (skip regenerating index.html and test-runner.mjs when present).`,
 
-  failedToStartTestRunner: (error: unknown) =>
-    `%error% Failed to start test runner: ${toConsoleSafe(String(error))}`,
+  failedToStartTestRunner: (error: unknown) => {
+    // The backstop for unexpected internal failures: this is exactly where a
+    // stack matters, so keep it for anything that is not a classified
+    // ExitCodeError (those carry their own user-facing message).
+    if (error instanceof ExitCodeError) {
+      return `%error% Failed to start test runner: ${toConsoleSafe(error.message)}`;
+    }
+    const stack = error instanceof Error ? error.stack : undefined;
+    return toConsoleSafe(`%error% Failed to start test runner: ${stack ?? String(error)}`);
+  },
 
   // Help text — kept as a single block so the caller can println() each line
   helpLines: (): string[] => [
