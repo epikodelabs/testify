@@ -21,9 +21,28 @@ export class IstanbulInstrumenter {
     this.config = config;
   }
 
+  /**
+   * Vendor chunks are third-party code by construction: the browser build
+   * routes everything it pulls from node_modules into `vendor.mjs` (suffixed
+   * `vendor2.mjs`, `vendor3.mjs`, … when split). Coverage exists to describe
+   * first-party code, and the chunks dwarf user sources — a large dependency
+   * graph produces tens-of-MB chunks, and instrumenting those exhausts the
+   * V8 heap both in the browser page and again while merging counters.
+   */
+  private isVendorChunk(filename: string): boolean {
+    const resolved = path.resolve(filename);
+    return (
+      path.dirname(resolved) === path.resolve(this.config.outDir) &&
+      /^vendor(?:\d+)?\.mjs$/i.test(path.basename(resolved))
+    );
+  }
+
   async instrument({ filename, source, sourceMap }: InstrumenterOptions): Promise<InstrumentationResult> {
     // Only instrument if coverage is enabled
     if (!this.config.coverage) return { code: source };
+
+    // Vendor chunks are never first-party code; skip them entirely.
+    if (this.isVendorChunk(filename)) return { code: source };
 
     // Skip generated test modules and their maps.
     if (
