@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.58 - 2026-10-24
+
+### Fixed
+
+- Coverage instrumentation skips vendor chunks (`vendor.mjs`, `vendor2.mjs`, …) that the browser build routes from `node_modules`. Instrumenting these multi-megabyte bundles exhausted the V8 heap during preparation, so a large dependency graph (for example a bundled TypeScript compiler) aborted the runner with `JavaScript heap out of memory` before any test ran.
+- Browser runs exclude spec files that import Node-only modules (`node:fs`, `node:path`, Node globals) directly or through the sources they import, and report every exclusion with its reason instead of failing the session inside the browser.
+- `-f` file filters now resolve before preparation, locking, and building start, and a basename filter runs every matching spec file instead of an arbitrary one.
+- Preparation failures render once as a standardized error block (bright-red headline, indented detail, `↳ Hint:` row) with hints resolved automatically from the failure, and the CLI start backstop prints full stack traces for unclassified errors.
+- Failed preparation cards and runtime error panels are routed to stderr while success output stays on stdout, so piped runs keep their diagnostics and exit codes stay meaningful.
+- Runs containing skipped, disabled, or incomplete specs exit 0, and original errors are preserved as `cause` through wrapped exit-code errors.
+- Configuration and lifecycle failures surface as single attributed diagnostics: tsconfig `extends` resolution, port conflicts (`EADDRINUSE`), and process-lock failures report their cause instead of warn-and-ignore or per-poll stack dumps.
+- Cancellation shuts down deterministically: one shared SIGINT/SIGTERM handler, idempotent server and browser cleanup, aborted installs kill their child processes, and buffered page errors surface as warnings on otherwise green runs.
+
+
 ## 1.0.57 - 2026-10-12
 
 ### Improved
