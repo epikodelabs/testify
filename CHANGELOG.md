@@ -5,6 +5,7 @@
 ### Fixed
 
 - In-process Node runs buffer spec console output while the live result table is on screen and flush it after the table closes. Interleaved writes (for example the Angular dev-mode banner printed by the specs themselves) used to desynchronize the reporter's cursor-tracked redraw, stacking duplicate progress and suite rows.
+- Live panels (preparation and the result table) write every frame with auto-wrap (DECAWM) disabled and restore it before returning. When the reported terminal width overstates the real window — a Windows console whose buffer stays wider than its window after a resize — a row's trailing character used to land on the physical last column and advance the cursor an extra line per row, so successive frames interleaved instead of replacing: step rows stranded mid-list, duplicate borders, split entries.
 
 ### Changed
 

@@ -209,6 +209,8 @@ export interface LiveTerminalView {
 const CURSOR_SAVE = '\x1b[s';
 const CURSOR_RESTORE = '\x1b[u';
 const CLEAR_LINE = '\x1b[2K';
+const DISABLE_AUTO_WRAP = '\x1b[?7l';
+const ENABLE_AUTO_WRAP = '\x1b[?7h';
 
 function cursorUp(lines: number): string {
   return lines > 0 ? `\x1b[${lines}A` : '';
@@ -228,13 +230,34 @@ function moveRight(columns: number): string {
 export function startLiveTerminalView(initialText: string): LiveTerminalView {
   let previousText = initialText;
   let previousLines = initialText.split('\n');
-  process.stdout.write(initialText);
+
+  // Every view write happens with auto-wrap (DECAWM) disabled and is restored
+  // before the write returns. When the reported terminal width overstates the
+  // real one — a Windows console whose buffer stays wider than its window
+  // after a resize — a row's trailing character lands on the physical last
+  // column. With wrapping enabled the cursor then advances an extra physical
+  // line per row, so the `\r` + cursor-up arithmetic below counts from rows
+  // that only exist on screen: successive frames interleave instead of
+  // replacing, stranding step rows and duplicate borders mid-panel. Disabled,
+  // the trailing character simply overwrites the last column, each logical
+  // row occupies exactly one physical line, and the redraw arithmetic stays
+  // honest. Explicit `\r\n` separators keep every row starting at column 0,
+  // which LF alone does not guarantee while wrapping is off. Restoring wrap
+  // between writes means output from other writers keeps its normal wrapping.
+  const writeFrame = (text: string): void => {
+    process.stdout.write(
+      DISABLE_AUTO_WRAP + '\r' + text.split('\n').join('\r\n') + ENABLE_AUTO_WRAP,
+    );
+  };
+
+  writeFrame(initialText);
 
   const replaceSurface = (nextText: string, nextLines: string[]) => {
     const up = Math.max(0, previousLines.length - 1);
     process.stdout.write(
-      `\r${cursorUp(up)}\x1b[J${nextText}`,
+      `\r${cursorUp(up)}\x1b[J`,
     );
+    writeFrame(nextText);
     previousText = nextText;
     previousLines = nextLines;
   };
@@ -259,7 +282,9 @@ export function startLiveTerminalView(initialText: string): LiveTerminalView {
         if (growsFromBottom) {
           const addedLines = nextLines.slice(sharedHeaderLength, -1);
           process.stdout.write(
-            `\r${CLEAR_LINE}\r${addedLines.join('\n')}\n${nextLines[nextLines.length - 1]}`,
+            DISABLE_AUTO_WRAP +
+              `\r${CLEAR_LINE}\r${addedLines.join('\r\n')}\r\n${nextLines[nextLines.length - 1]}` +
+              ENABLE_AUTO_WRAP,
           );
           previousText = nextText;
           previousLines = nextLines;
@@ -292,7 +317,7 @@ export function startLiveTerminalView(initialText: string): LiveTerminalView {
 
       if (changed) {
         output += CURSOR_RESTORE;
-        process.stdout.write(output);
+        process.stdout.write(DISABLE_AUTO_WRAP + output + ENABLE_AUTO_WRAP);
       }
 
       previousText = nextText;
