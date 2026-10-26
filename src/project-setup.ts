@@ -4,6 +4,7 @@ import { createRequire } from 'module';
 import JSONCleaner from './json-cleaner';
 import { logger } from './logger';
 import { norm } from './utils';
+import { configureVsCodeLaunchConfig } from './vscode-launch-config';
 
 const JASMINE_TYPE_NAME = 'jasmine';
 const TSCONFIG_CANDIDATES = [
@@ -25,6 +26,10 @@ export class ProjectSetup {
     const root = norm(path.resolve(projectRoot));
     const jasmineTypesAvailable = this.hasJasmineTypes(root);
     const tsconfigPath = this.findTsconfig(root);
+
+    // Editor setup is independent of the TypeScript configuration, so both
+    // `testify init` and `jasmine init` write it even when no tsconfig exists.
+    configureVsCodeLaunchConfig(root);
 
     if (!jasmineTypesAvailable) {
       logger.println(

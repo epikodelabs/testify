@@ -238,8 +238,11 @@ Testify also provides a Jasmine CLI for running an individual spec directly in N
 Initialize editor support once:
 
 ```bash
-npx jasmine init
+npx testify init
 ```
+
+`npx jasmine init` configures the same `.vscode/launch.json` entry for
+single-spec debugging.
 
 The Jasmine CLI uses `tsx` and the nearest TypeScript project configuration automatically. Testify also resolves extensionless relative imports and directory indexes consistently with its browser runner.
 

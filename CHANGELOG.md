@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.59 - 2026-10-26
+
+### Changed
+
+- `testify init` now creates and updates `.vscode/launch.json` with the current single-spec debug configuration, the same entry `jasmine init` writes. Existing jasmine-style configurations are replaced in place — including legacy ones that still register the removed `esm-loader.mjs` — while unrelated launch configurations are preserved. The launch-config logic moved out of the Jasmine CLI into a shared `vscode-launch-config` module so both init commands stay consistent.
+
 ## 1.0.58 - 2026-10-24
 
 ### Fixed
