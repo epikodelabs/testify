@@ -2,6 +2,10 @@
 
 ## 1.0.59 - 2026-10-26
 
+### Fixed
+
+- In-process Node runs buffer spec console output while the live result table is on screen and flush it after the table closes. Interleaved writes (for example the Angular dev-mode banner printed by the specs themselves) used to desynchronize the reporter's cursor-tracked redraw, stacking duplicate progress and suite rows.
+
 ### Changed
 
 - `testify init` now creates and updates `.vscode/launch.json` with the current single-spec debug configuration, the same entry `jasmine init` writes. Existing jasmine-style configurations are replaced in place — including legacy ones that still register the removed `esm-loader.mjs` — while unrelated launch configurations are preserved. The launch-config logic moved out of the Jasmine CLI into a shared `vscode-launch-config` module so both init commands stay consistent.

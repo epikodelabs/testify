@@ -22,6 +22,7 @@ import { RunnerMessages } from './log-messages';
 import { ExitCodeError, EXIT_CODES } from './exit-codes';
 import { getExecutionExitCode } from './cli-result-adapter';
 import { resolveSpecFiles } from './spec-file-selection';
+import { installConsoleCapture } from './console-capture';
 
 const { build: viteBuild } = await import('vite');
 
@@ -702,6 +703,7 @@ export class ViteJasmineRunner extends EventEmitter {
       this.nodeTestRunner.generateTestRunner(this.selectedSpecArtifacts);
       logger.preparationComplete('RUNNER');
 
+      const capture = installConsoleCapture({ suppress: this.config.suppressConsoleLogs });
       try {
         const result =
           await runNodeCli(this.nodeTestRunner, { handleSignals: false, setProcessExitCode: false });
@@ -716,6 +718,11 @@ export class ViteJasmineRunner extends EventEmitter {
         if (error instanceof ExitCodeError) return error.exitCode;
         return EXIT_CODES.INTERNAL_ERROR;
       } finally {
+        const lines = capture.flush();
+        // Plain lines, not logger panels: this is the specs' own console
+        // output, and the result table has already closed.
+        for (const line of lines) process.stdout.write(`${line}\n`);
+        capture.restore();
         await this.cleanup();
       }
     }
@@ -770,6 +777,11 @@ export class ViteJasmineRunner extends EventEmitter {
   }
 
   private async runHeadlessNodeMode(): Promise<number> {
+    // Spec console output must not reach stdout while the live result table
+    // is cursor-redrawn: interleaved writes (for example the Angular dev-mode
+    // banner printed by the specs themselves) desynchronize the redraw and
+    // stack duplicate table rows. Buffer it and flush after the table closes.
+    const capture = installConsoleCapture({ suppress: this.config.suppressConsoleLogs });
     try {
       const result =
         await runNodeCli(this.nodeTestRunner, { handleSignals: false, setProcessExitCode: false });
@@ -782,6 +794,12 @@ export class ViteJasmineRunner extends EventEmitter {
       // stack; swallowing here keeps the CLI backstop from re-rendering it.
       if (error instanceof ExitCodeError) return error.exitCode;
       return EXIT_CODES.INTERNAL_ERROR;
+    } finally {
+      const lines = capture.flush();
+      // Plain lines, not logger panels: this is the specs' own console
+      // output, and the result table has already closed.
+      for (const line of lines) process.stdout.write(`${line}\n`);
+      capture.restore();
     }
   }
 
