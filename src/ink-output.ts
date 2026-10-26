@@ -201,8 +201,15 @@ export function renderTerminalPanel(
 
 /** A small persistent terminal surface for reporter-owned live output. */
 export interface LiveTerminalView {
-  update(text: string): void;
-  replace(text: string): void;
+  /**
+   * Apply the next frame. Returns false once the view has given up
+   * cursor-based editing — the frame reached the viewport height, or the
+   * viewport shrank beneath the current frame — because cursor-up sequences
+   * can no longer reach its top rows. Callers must switch to their
+   * append-only path; every later call is a no-op returning false.
+   */
+  update(text: string): boolean;
+  replace(text: string): boolean;
   stop(preserve?: boolean): void;
 }
 
@@ -230,6 +237,37 @@ function moveRight(columns: number): string {
 export function startLiveTerminalView(initialText: string): LiveTerminalView {
   let previousText = initialText;
   let previousLines = initialText.split('\n');
+  let abandoned = false;
+
+  // Cursor-up arithmetic can only reach rows that are still on the visible
+  // screen. Once a frame fills the viewport, its top rows live in scrollback:
+  // every cursor-up sequence clamps at the viewport's top row, so successive
+  // edits overwrite that one row and replacement frames stack beneath stale
+  // fragments instead of replacing them. The view refuses to enter that
+  // state — on any growth that would reach the viewport height, and on any
+  // edit after the window shrank beneath the current frame — and hands
+  // output back to the caller's append-only path, which prints one complete
+  // panel instead of interleaved rows. `rows` is Infinity when unknown,
+  // preserving the old behavior for environments that never report it.
+  const viewportRows = (): number => {
+    const rows = process.stdout.rows;
+    return typeof rows === 'number' && rows > 0 ? rows : Infinity;
+  };
+
+  const abandon = (): void => {
+    abandoned = true;
+    if (previousLines.length < viewportRows()) {
+      // The current frame is still fully on screen: erase it so the caller's
+      // next append-only panel starts on a clean line instead of stacking
+      // beneath a duplicate of this frame.
+      const up = Math.max(0, previousLines.length - 1);
+      process.stdout.write(`\r${cursorUp(up)}\x1b[J`);
+    } else {
+      // Its top rows are already in scrollback and unreachable. Leave the
+      // frame alone and move to a fresh line for the append-only output.
+      process.stdout.write('\n');
+    }
+  };
 
   // Every view write happens with auto-wrap (DECAWM) disabled and is restored
   // before the write returns. When the reported terminal width overstates the
@@ -264,9 +302,18 @@ export function startLiveTerminalView(initialText: string): LiveTerminalView {
 
   return {
     update: (nextText) => {
-      if (nextText === previousText) return;
+      if (abandoned) return false;
+      if (nextText === previousText) return true;
 
       const nextLines = nextText.split('\n');
+      // Either this growth would fill the viewport, or the viewport shrank
+      // beneath the current frame. In both states the top rows are no longer
+      // addressable, so give up before an edit clamps to the viewport's top
+      // row and clobbers it.
+      if (nextLines.length >= viewportRows()) {
+        abandon();
+        return false;
+      }
       if (nextLines.length !== previousLines.length) {
         // A panel which only gains body rows can grow from its bottom border.
         // This is both cheaper and more reliable on Windows terminals than
@@ -288,10 +335,10 @@ export function startLiveTerminalView(initialText: string): LiveTerminalView {
           );
           previousText = nextText;
           previousLines = nextLines;
-          return;
+          return true;
         }
         replaceSurface(nextText, nextLines);
-        return;
+        return true;
       }
 
       const lastLineIndex = previousLines.length - 1;
@@ -322,12 +369,32 @@ export function startLiveTerminalView(initialText: string): LiveTerminalView {
 
       previousText = nextText;
       previousLines = nextLines;
+      return true;
     },
-    replace: (nextText) => replaceSurface(nextText, nextText.split('\n')),
+    replace: (nextText) => {
+      if (abandoned) return false;
+      const nextLines = nextText.split('\n');
+      if (nextLines.length >= viewportRows()) {
+        abandon();
+        return false;
+      }
+      replaceSurface(nextText, nextLines);
+      return true;
+    },
     stop: (preserve = false) => {
+      // Once abandoned, the cursor's relationship to the frame is no longer
+      // trusted; erasing would clamp and clear the wrong region.
+      if (abandoned) return;
       if (!preserve) {
-        const up = Math.max(0, previousLines.length - 1);
-        process.stdout.write(`\r${cursorUp(up)}\x1b[J`);
+        if (previousLines.length < viewportRows()) {
+          const up = Math.max(0, previousLines.length - 1);
+          process.stdout.write(`\r${cursorUp(up)}\x1b[J`);
+        } else {
+          // The frame's top rows are in scrollback (the window shrank after
+          // the last edit). Erasing would clamp mid-frame; hand the caller a
+          // fresh line instead.
+          process.stdout.write('\n');
+        }
       }
     },
   };

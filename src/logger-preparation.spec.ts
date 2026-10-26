@@ -33,6 +33,99 @@ describe('Logger preparation pipeline', () => {
     }
   });
 
+  it('defers preparation rendering when the viewport is too short for cursor edits', () => {
+    const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+    const originalColumns = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+    const originalRows = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
+
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'columns', { value: 100, configurable: true });
+    Object.defineProperty(process.stdout, 'rows', { value: 8, configurable: true });
+
+    try {
+      const logger = new Logger();
+      logger.preparationStart('');
+
+      expect((logger as any).preparationView).toBeNull();
+    } finally {
+      if (originalIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalIsTTY);
+      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+      if (originalColumns) Object.defineProperty(process.stdout, 'columns', originalColumns);
+      else delete (process.stdout as { columns?: number }).columns;
+      if (originalRows) Object.defineProperty(process.stdout, 'rows', originalRows);
+      else delete (process.stdout as { rows?: number }).rows;
+    }
+  });
+
+  it('drops the live surface when diagnostics push the card past the viewport and prints one complete card at flush', () => {
+    const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+    const originalColumns = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+    const originalRows = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
+    const originalWrite = Object.getOwnPropertyDescriptor(process.stdout, 'write');
+    const previousSuppression = (globalThis as any).__testifySuppressLogs;
+    const writes: string[] = [];
+
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'columns', { value: 100, configurable: true });
+    Object.defineProperty(process.stdout, 'rows', { value: 20, configurable: true });
+    Object.defineProperty(process.stdout, 'write', {
+      value: ((chunk: unknown) => { writes.push(String(chunk)); return true; }),
+      configurable: true,
+      writable: true,
+    });
+    (globalThis as any).__testifySuppressLogs = false;
+
+    try {
+      const logger = new Logger();
+      const internal = logger as any;
+
+      logger.preparationStart('');
+      logger.preparationContextLabel('HEADLESS · CHROME');
+      logger.preparationPlan([
+        { label: 'DISCOVER', message: 'Discover test files' },
+        { label: 'CONFIG', message: 'Prepare build configuration' },
+        { label: 'OUTPUT', message: 'Prepare output directory' },
+        { label: 'BUILD', message: 'Build test modules' },
+        { label: 'INSTRUMENT', message: 'Instrument compiled modules' },
+        { label: 'PAGE', message: 'Prepare browser test page' },
+        { label: 'BROWSER', message: 'Ensure chrome is installed' },
+        { label: 'PORT', message: 'Acquire test server port' },
+        { label: 'SERVER', message: 'Start test server' },
+        { label: 'EXECUTE', message: 'Start chrome test session' },
+      ]);
+      expect(internal.preparationView).not.toBeNull();
+
+      writes.length = 0;
+      logger.warn(
+        'Browser compatibility excluded 9 spec file(s):\n' +
+        Array.from({ length: 40 }, (_, i) => `  - excluded-${i}.ts`).join('\n'),
+      );
+      // A 20-row viewport cannot address a card grown by the diagnostic block,
+      // so the live view hands back to the append-only narrow-terminal path.
+      expect(internal.preparationView).toBeNull();
+
+      logger.flushPreparation();
+      expect(internal.preparationFlushed).toBe(true);
+
+      const card = writes.join('').replace(ANSI_FULL_REGEX, '');
+      expect(card).toContain('Browser compatibility excluded 9 spec file(s)');
+      expect(card).toContain('excluded-39.ts');
+      // The abandoned live frame was erased and exactly one complete card was
+      // printed at the flush boundary — no stacked duplicate frames.
+      expect((card.match(/PREPARING TEST ENVIRONMENT/g) ?? []).length).toBe(1);
+    } finally {
+      (globalThis as any).__testifySuppressLogs = previousSuppression;
+      if (originalWrite) Object.defineProperty(process.stdout, 'write', originalWrite);
+      else delete (process.stdout as { write?: unknown }).write;
+      if (originalIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalIsTTY);
+      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+      if (originalColumns) Object.defineProperty(process.stdout, 'columns', originalColumns);
+      else delete (process.stdout as { columns?: number }).columns;
+      if (originalRows) Object.defineProperty(process.stdout, 'rows', originalRows);
+      else delete (process.stdout as { rows?: number }).rows;
+    }
+  });
+
   it('renders one runner-independent preparation lifecycle without owning stdout', () => {
     // This is deliberately a state-only logger. Testify's outer reporter owns
     // stdout while this spec runs, so a logger contract test must never create

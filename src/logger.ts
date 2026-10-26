@@ -20,6 +20,17 @@ const LEGACY_LOG_TAG_PREFIX =
 const LEADING_BADGE_PREFIX =
   /^[^\p{L}\p{N}\s"'([{<]+\s+/u;
 
+/**
+ * Minimum viewport height for the live preparation surface. Below this, even
+ * the shortest declared plan (Node mode, ten rows) cannot stay addressable by
+ * cursor-up redraws once the first diagnostic grows the card, so the
+ * narrow-terminal policy applies: no live surface, one complete card printed
+ * at the execution boundary. Taller viewports still degrade the same way the
+ * moment a diagnostic pushes the card past their height (see the live view's
+ * viewport guard in ink-output.ts).
+ */
+const MIN_PREPARATION_VIEWPORT_ROWS = 12;
+
 function areTestLogsSuppressed(): boolean {
   return (globalThis as any).__testifySuppressLogs === true;
 }
@@ -233,14 +244,17 @@ export class Logger {
     this.preparationItems ??= [];
     this.preparationDiagnostics ??= [];
     // Cursor-based replacement cannot reliably account for terminal-wrapped
-    // rows. Keep narrow terminals append-only and print their complete card
-    // once at the execution boundary instead of leaving duplicate frames.
+    // rows, and cursor-up sequences cannot reach rows scrolled out of a
+    // short viewport. Keep narrow or short terminals append-only and print
+    // their complete card once at the execution boundary instead of leaving
+    // duplicate frames.
     if (
       this.outputEnabled &&
       !this.preparationView &&
       supportsColor() &&
       process.stdout.isTTY &&
-      getMaxWidth() >= 80
+      getMaxWidth() >= 80 &&
+      (process.stdout.rows ?? Infinity) >= MIN_PREPARATION_VIEWPORT_ROWS
     ) {
       this.preparationView = startLiveTerminalView(this.renderPreparationPanel());
     }
@@ -255,7 +269,7 @@ export class Logger {
   preparationContextLabel(context: string) {
     if ((areTestLogsSuppressed() && this.outputEnabled) || this.preparationFlushed) return true;
     this.preparationContext = context.trim().toUpperCase();
-    this.preparationView?.update(this.renderPreparationPanel());
+    this.updatePreparationView();
     return true;
   }
 
@@ -666,7 +680,20 @@ export class Logger {
         this.renderPreparationDiagnostic(diagnostic),
       ),
     ];
-    this.preparationView?.update(this.renderPreparationPanel());
+    this.updatePreparationView();
+  }
+
+  /**
+   * Push the latest card to the live surface. When the view reports that it
+   * gave up cursor-based editing — the card reached the viewport height or
+   * the window shrank beneath it — drop the reference so preparation renders
+   * like a narrow terminal from here on: the complete card prints once when
+   * preparation flushes, instead of stranding interleaved frames.
+   */
+  private updatePreparationView(): void {
+    if (this.preparationView?.update(this.renderPreparationPanel()) === false) {
+      this.preparationView = null;
+    }
   }
 
   /** True once any step failed or an error diagnostic was buffered. */
