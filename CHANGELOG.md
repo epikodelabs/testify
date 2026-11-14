@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Bundle Oxc-generated runtime helpers from Testify's own dependency tree in Node and browser builds. Decorated test sources no longer require consumers to install `@oxc-project/runtime`, and Node builds still leave ordinary application dependencies and built-ins external.
+
 ## 1.0.59 - 2026-10-26
 
 ### Fixed

@@ -74,6 +74,11 @@ describe('ViteConfigBuilder Node externals', () => {
       expect(
         external('./local-module'),
       ).toBeFalse();
+
+      expect(external('@oxc-project/runtime/helpers/decorate')).toBeFalse();
+      expect(external('@oxc-project/runtime/helpers/esm/decorate')).toBeFalse();
+      expect(external('@oxc-project/runtime-other/helpers/decorate')).toBeTrue();
+
     } finally {
       process.chdir(
         previousCwd,

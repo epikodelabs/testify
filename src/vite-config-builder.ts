@@ -4,7 +4,7 @@ import { createHash } from 'crypto';
 import { builtinModules, createRequire } from 'module';
 import { globSync } from 'glob';
 import picomatch from 'picomatch';
-import { InlineConfig } from 'vite';
+import { InlineConfig, type Plugin } from 'vite';
 import type { WarningHandlerWithDefault } from 'rollup';
 import { ViteJasmineConfig } from './vite-jasmine-config';
 import { norm } from './utils';
@@ -146,10 +146,31 @@ export class ViteConfigBuilder {
       return false;
     }
 
+    // Generated transform helpers belong to Testify, not the consumer.
+    // Resolve and bundle these even when the consumer has no runtime package.
+    if (id.startsWith('@oxc-project/runtime/')) {
+      return false;
+    }
+
     // Any remaining bare specifier is a package import.
     // In Node mode, Node owns package resolution. Bundling these is what
     // allowed Vite to substitute browser stubs such as __vite-browser-external.
     return true;
+  }
+
+  private runtimeHelpersPlugin(): Plugin {
+    return {
+      name: 'testify-runtime-helpers',
+      enforce: 'pre',
+      resolveId(id) {
+        if (id.startsWith('@oxc-project/runtime/')) {
+          // Resolve from Testify's own dependency tree, including nested
+          // installs. The consumer's cwd need not contain this package.
+          return nodeRequire.resolve(id);
+        }
+        return null;
+      },
+    };
   }
 
   private isPathAlias(id: string): boolean {
@@ -473,7 +494,7 @@ export class ViteConfigBuilder {
     const files = entryFiles && entryFiles.length > 0 ? entryFiles : this.discoverFilesSync();
     this.inputMap = this.buildInputMap(files);
 
-    return this.enforceTerminalOwnership(
+    return this.finalizeConfig(
       this.normalizeGeneratedOutput(
         this.normalizeAliasConfig(
           this.mergeUserConfig(
@@ -508,7 +529,7 @@ export class ViteConfigBuilder {
 
     logger.println(ViteConfigMessages.incrementalBuild(Object.keys(this.inputMap).length));
 
-    return this.enforceTerminalOwnership(
+    return this.finalizeConfig(
       this.normalizeGeneratedOutput(
         this.normalizeAliasConfig(
           this.mergeUserConfig(
@@ -542,12 +563,14 @@ export class ViteConfigBuilder {
   }
 
   /* -------------------------------------------------- */
-  /* Terminal ownership                                 */
+  /* Final config invariants                            */
   /* -------------------------------------------------- */
 
-  private enforceTerminalOwnership(config: InlineConfig): InlineConfig {
+  private finalizeConfig(config: InlineConfig): InlineConfig {
     return {
       ...config,
+      // Keep helper resolution when consumers provide their own plugins.
+      plugins: [this.runtimeHelpersPlugin(), ...(config.plugins ?? [])],
       // Testify renders build warnings/errors through its own logger and live
       // preparation surface. Vite must not print or clear the terminal itself,
       // even when a consumer viteConfig requests a different log level.
